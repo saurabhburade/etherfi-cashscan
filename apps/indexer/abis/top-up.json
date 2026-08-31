@@ -1,0 +1,11 @@
+[
+  {
+    "type": "event",
+    "name": "ProcessTopUp",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "token", "type": "address" },
+      { "indexed": false, "name": "amount", "type": "uint256" }
+    ]
+  }
+]

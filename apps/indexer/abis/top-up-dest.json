@@ -1,0 +1,26 @@
+[
+  {
+    "type": "event",
+    "name": "TopUp",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "txId", "type": "bytes32" },
+      { "indexed": true, "name": "user", "type": "address" },
+      { "indexed": true, "name": "token", "type": "address" },
+      { "indexed": false, "name": "sourceTxHash", "type": "bytes32" },
+      { "indexed": false, "name": "chainId", "type": "uint256" },
+      { "indexed": false, "name": "amount", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "LendSupplyFailed",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": true, "name": "token", "type": "address" },
+      { "indexed": false, "name": "amount", "type": "uint256" },
+      { "indexed": false, "name": "reason", "type": "bytes" }
+    ]
+  }
+]

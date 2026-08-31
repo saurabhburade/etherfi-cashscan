@@ -1,0 +1,11 @@
+[
+  {
+    "type": "event",
+    "name": "BeaconProxyDeployed",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": false, "name": "salt", "type": "bytes32" },
+      { "indexed": true, "name": "deployed", "type": "address" }
+    ]
+  }
+]

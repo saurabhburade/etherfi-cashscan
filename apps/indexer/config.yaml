@@ -1,0 +1,143 @@
+# yaml-language-server: $schema=./node_modules/envio/evm.schema.json
+name: etherfi-cash-explorer
+description: Destination top-up and settled-spend ledger for Ether.fi Cash
+schema: ./schema.graphql
+handlers: ./src/handlers
+address_format: lowercase
+rollback_on_reorg: true
+field_selection:
+  transaction_fields:
+    - hash
+    - transactionIndex
+
+contracts:
+  - name: TopUpDest
+    abi_file_path: ./abis/top-up-dest.json
+    events:
+      - event: TopUp
+  - name: CashEventEmitter
+    abi_file_path: ./abis/cash-event-emitter.json
+    events:
+      - event: WithdrawalRequested
+      - event: WithdrawalAmountUpdated
+      - event: WithdrawalCancelled
+      - event: WithdrawalProcessed
+      - event: RepayDebtManager
+      - event: Repay
+      - event: RepayLendTokenAmount
+      - event: LendOptOutRequested
+      - event: LendOptOutExecuted
+      - event: LendOptedIn
+      - event: SpendingLimitChanged
+      - event: ModeSet
+      - event: Spend
+      - event: CollateralResupplied
+      - event: LendSupplyFailed
+      - event: LendBorrowed
+      - event: Cashback
+      - event: PendingCashbackCleared
+      - event: SafeTiersSet
+      - event: TierCashbackPercentageSet
+      - event: CashbackSplitToSafeBpsSet
+      - event: DelaysSet
+      - event: SettlementDispatcheUpdated
+      - event: LendGatewaySet
+      - event: WithdrawTokensConfigured
+      - event: ModulesCanRequestWithdrawConfigured
+  - name: DebtManager
+    abi_file_path: ./abis/debt-manager.json
+    events:
+      - event: Supplied
+      - event: Borrowed
+      - event: Repaid
+      - event: Liquidated
+      - event: InterestIndexUpdated
+  - name: DebtManagerLegacy
+    abi_file_path: ./abis/debt-manager.json
+    events:
+      - event: Supplied
+      - event: Borrowed
+      - event: Repaid
+      - event: Liquidated
+      - event: InterestIndexUpdated
+  - name: RampVolumeEmitter
+    abi_file_path: ./abis/ramp-volume.json
+    events:
+      - event: RampVolume
+  - name: EurUsdOracle
+    abi_file_path: ./abis/chainlink-aggregator.json
+    events:
+      - event: AnswerUpdated
+  - name: EtherFiSafeFactory
+    abi_file_path: ./abis/beacon-factory.json
+    events:
+      - event: BeaconProxyDeployed
+  - name: UserSafeFactory
+    abi_file_path: ./abis/legacy-safe-factory.json
+    events:
+      - event: UserSafeDeployed
+  # Addresses registered under this contract are Safe addresses. Wildcard
+  # Transfer matching uses them only as indexed from/to topic filters; the
+  # event emitter itself remains the ERC-20 token contract.
+  - name: TrackedSafeTransfer
+    abi_file_path: ./abis/erc20.json
+    events:
+      - event: Transfer
+  # The legacy Scroll emitter proxy was upgraded in-place, so this address can
+  # emit both the pre-upgrade and current Spend signatures.
+  - name: ScrollCashEmitter
+    events:
+      - event: "Spend(address indexed safe, bytes32 indexed txId, uint8 indexed binSponsor, address[] tokens, uint256[] amounts, uint256[] amountInUsd, uint256 totalUsdAmt, uint8 mode)"
+        name: CurrentSpend
+      - event: "Spend(address indexed userSafe, address indexed token, uint256 amount, uint256 amountInUsd, uint8 mode)"
+        name: LegacySpend
+  - name: LegacyTopUpDest
+    abi_file_path: ./abis/legacy-top-up-dest.json
+    events:
+      - event: TopUp
+      - event: TopUpBatch
+
+# These floors precede the known destination deployments. Replace them with
+# independently verified contract-specific creation blocks before production.
+chains:
+  - id: 10
+    start_block: 115000000
+    rpc:
+      - url: ${OPTIMISM_RPC_URL:-https://optimism-rpc.publicnode.com}
+        for: realtime
+    contracts:
+      - name: CashEventEmitter
+        address: "0x380b2e96799405be6e3d965f4044099891881acb"
+      - name: TopUpDest
+        address: "0x3a6a724595184dda4be69db1ce726f2ac3d66b87"
+      - name: DebtManager
+        address: "0x0078c5a459132e279056b2371fe8a8ec973a9553"
+      - name: DebtManagerLegacy
+        address: "0x8f9d2cd33551ce06dd0564ba147513f715c2f4a0"
+      - name: RampVolumeEmitter
+        address: "0xabfb1aa2b401248242d98ba8de0be1c81f8b699c"
+      - name: EurUsdOracle
+        address: "0x3b9c20928f913645ee1e56aaa8bf399367fb4dcb"
+      - name: EtherFiSafeFactory
+        address: "0xf4e147db314947fc1275a8cbb6cde48c510cd8cf"
+
+  - id: 534352
+    start_block: 5000000
+    rpc:
+      - url: ${SCROLL_RPC_URL:-https://scroll-rpc.publicnode.com}
+        for: realtime
+    contracts:
+      - name: CashEventEmitter
+        address: "0x380b2e96799405be6e3d965f4044099891881acb"
+      - name: ScrollCashEmitter
+        address: "0x5423885b376ebb4e6104b8ab1a908d350f6a162e"
+      - name: TopUpDest
+        address: "0x3a6a724595184dda4be69db1ce726f2ac3d66b87"
+      - name: DebtManager
+        address: "0x0078c5a459132e279056b2371fe8a8ec973a9553"
+      - name: LegacyTopUpDest
+        address: "0xeb61c16a60ab1b4a9a1f8e92305808f949f4ea9b"
+      - name: EtherFiSafeFactory
+        address: "0xf4e147db314947fc1275a8cbb6cde48c510cd8cf"
+      - name: UserSafeFactory
+        address: "0x18fa07df94b4e9f09844e1128483801b24fe8a27"

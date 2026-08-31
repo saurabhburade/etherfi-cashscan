@@ -1,0 +1,628 @@
+scalar BigInt
+scalar Timestamp
+
+type ActiveSafe {
+  id: ID!
+  chainId: Int!
+  address: String!
+  firstSpendAt: Timestamp!
+  firstSpendBlock: BigInt!
+  firstSpendTransactionHash: String!
+}
+
+# Dune's card metric is a global distinct safe count across Spend events. Keep
+# this separate from chain-qualified ActiveSafe so network filters still work.
+type GlobalActiveSafe {
+  id: ID!
+  address: String! @index
+  firstSpendChainId: Int!
+  firstSpendAt: Timestamp!
+  firstSpendBlock: BigInt!
+  firstSpendTransactionHash: String!
+}
+
+type DailyActiveSafe {
+  id: ID!
+  chainId: Int!
+  day: String!
+  address: String!
+}
+
+type GlobalDailyActiveSafe {
+  id: ID!
+  day: String!
+  address: String!
+  firstSpendChainId: Int!
+}
+
+type AccountTokenBalance {
+  id: ID!
+  chainId: Int!
+  accountAddress: String!
+  accountKind: String!
+  tokenAddress: String!
+  amount: BigInt!
+  inflow: BigInt!
+  outflow: BigInt!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+  transactionHash: String!
+}
+
+# Exact ERC-20 Transfer ledger for a factory-discovered Ether.fi Safe. This is
+# separate from AccountTokenBalance, which is the Cash top-up/spend product
+# ledger rather than an ERC-20 wallet balance.
+type SafeTokenBalance {
+  id: ID!
+  chainId: Int! @index
+  safeAddress: String! @index
+  tokenAddress: String! @index
+  amount: BigInt!
+  inflow: BigInt!
+  outflow: BigInt!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+  transactionHash: String!
+}
+
+type Token {
+  id: ID!
+  chainId: Int! @index
+  address: String! @index
+  name: String!
+  symbol: String!
+  decimals: Int!
+  decimalsVerified: Boolean!
+  totalSupply: BigInt!
+  metadataStatus: String!
+  oracleAddress: String!
+  oraclePair: String!
+  oracleDecimals: Int!
+  oracleHeartbeat: Int!
+  oracleDiscovery: String!
+  price: BigInt!
+  priceUpdatedAt: BigInt!
+  discoveredAt: Timestamp!
+  discoveredBlock: BigInt!
+}
+
+type TopUp {
+  id: ID!
+  chainId: Int!
+  sourceChainId: BigInt!
+  txId: String!
+  sourceTransactionHash: String!
+  account: String!
+  user: String!
+  tradingSafe: String!
+  tokenAddress: String!
+  amount: BigInt!
+  status: String!
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+}
+
+# Ranking by destination top-up frequency. The destination event does not
+# expose a trustworthy cross-token USD value or necessarily the source wallet.
+type TopUpRecipientMetric {
+  id: ID!
+  chainId: Int! @index
+  recipient: String! @index
+  topUpCount: BigInt!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
+
+type Spend {
+  id: ID!
+  chainId: Int!
+  safe: String!
+  txId: String!
+  sponsor: Int!
+  tokens: String!
+  amounts: String!
+  amountsUsd: String!
+  totalUsd: BigInt!
+  usdDecimals: Int!
+  mode: Int!
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+  dataAvailability: String!
+}
+
+# One deterministic USD valuation observation for each token leg in Spend.
+type SpendTokenValuation {
+  id: ID!
+  chainId: Int! @index
+  spendId: String! @index
+  tokenAddress: String! @index
+  tokenIndex: Int!
+  amount: BigInt!
+  amountUsd: BigInt!
+  tokenDecimals: Int!
+  usdDecimals: Int!
+  priceUsdE18: BigInt!
+  priceStatus: String!
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+}
+
+type Repayment {
+  id: ID!
+  chainId: Int!
+  safe: String!
+  tokenAddress: String!
+  amount: BigInt!
+  amountUsd: BigInt!
+  repaymentType: String!
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+}
+
+type Cashback {
+  id: ID!
+  chainId: Int!
+  safe: String!
+  recipient: String!
+  spendingUsd: BigInt!
+  tokenAddress: String!
+  amount: BigInt!
+  amountUsd: BigInt!
+  cashbackType: BigInt!
+  paid: Boolean!
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+}
+
+# Cashback actually received: paid Cashback events plus later
+# PendingCashbackCleared settlements, without counting pending issuance twice.
+type CashbackReceiverMetric {
+  id: ID!
+  chainId: Int! @index
+  recipient: String! @index
+  rewardCount: BigInt!
+  amountUsd: BigInt!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
+
+type WithdrawalEvent {
+  id: ID!
+  chainId: Int!
+  safe: String!
+  recipient: String!
+  tokens: String!
+  amounts: String!
+  status: String!
+  finalizeTimestamp: BigInt!
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+}
+
+type DailyCashMetric {
+  id: ID!
+  chainId: Int!
+  day: String!
+  spendCount: BigInt!
+  spendUsd: BigInt!
+  creditSpendUsd: BigInt!
+  debitSpendUsd: BigInt!
+  activeCardCount: BigInt!
+  newCardCount: BigInt!
+  topUpCount: BigInt!
+  cashbackUsd: BigInt!
+  onrampUsd: BigInt!
+  offrampUsd: BigInt!
+  borrowedUsd: BigInt!
+  repaidUsd: BigInt!
+}
+
+type SafeTierState {
+  id: ID!
+  chainId: Int!
+  safe: String! @index
+  tierId: Int!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
+type SafeTierChange {
+  id: ID!
+  chainId: Int!
+  safe: String! @index
+  previousTierId: Int
+  tierId: Int!
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+  arrayIndex: Int!
+}
+type TierDailyMetric {
+  id: ID!
+  chainId: Int!
+  day: String!
+  tierId: Int!
+  entries: BigInt!
+  exits: BigInt!
+  netChange: BigInt!
+  transitionCount: BigInt!
+}
+type SafeLendState {
+  id: ID!
+  chainId: Int!
+  safe: String! @index
+  status: String!
+  finalizeTime: BigInt!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
+type SafeLendEvent {
+  id: ID!
+  chainId: Int!
+  safe: String! @index
+  eventType: String!
+  finalizeTime: BigInt!
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+}
+type SafeModeState {
+  id: ID!
+  chainId: Int!
+  safe: String! @index
+  currentModeId: Int!
+  pendingModeId: Int!
+  activationTime: BigInt!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
+type SafeModeChange {
+  id: ID!
+  chainId: Int!
+  safe: String! @index
+  previousModeId: Int!
+  modeId: Int!
+  activationTime: BigInt!
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+}
+type SafeSpendingLimitState {
+  id: ID!
+  chainId: Int!
+  safe: String! @index
+  dailyLimit: BigInt!
+  monthlyLimit: BigInt!
+  spentToday: BigInt!
+  spentThisMonth: BigInt!
+  newDailyLimit: BigInt!
+  newMonthlyLimit: BigInt!
+  dailyRenewalTimestamp: BigInt!
+  monthlyRenewalTimestamp: BigInt!
+  dailyLimitChangeActivationTime: BigInt!
+  monthlyLimitChangeActivationTime: BigInt!
+  timezoneOffset: BigInt!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
+type SafeSpendingLimitChange {
+  id: ID!
+  chainId: Int!
+  safe: String! @index
+  oldDailyLimit: BigInt!
+  oldMonthlyLimit: BigInt!
+  oldSpentToday: BigInt!
+  oldSpentThisMonth: BigInt!
+  oldNewDailyLimit: BigInt!
+  oldNewMonthlyLimit: BigInt!
+  oldDailyRenewalTimestamp: BigInt!
+  oldMonthlyRenewalTimestamp: BigInt!
+  oldDailyLimitChangeActivationTime: BigInt!
+  oldMonthlyLimitChangeActivationTime: BigInt!
+  oldTimezoneOffset: BigInt!
+  newDailyLimit: BigInt!
+  newMonthlyLimit: BigInt!
+  newSpentToday: BigInt!
+  newSpentThisMonth: BigInt!
+  newNewDailyLimit: BigInt!
+  newNewMonthlyLimit: BigInt!
+  newDailyRenewalTimestamp: BigInt!
+  newMonthlyRenewalTimestamp: BigInt!
+  newDailyLimitChangeActivationTime: BigInt!
+  newMonthlyLimitChangeActivationTime: BigInt!
+  newTimezoneOffset: BigInt!
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+}
+type PendingWithdrawalState {
+  id: ID!
+  chainId: Int!
+  safe: String! @index
+  recipient: String!
+  tokens: String!
+  amounts: String!
+  status: String!
+  finalizeTimestamp: BigInt!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
+type CollateralResupply {
+  id: ID!
+  chainId: Int!
+  safe: String! @index
+  tokenAddress: String!
+  amount: BigInt!
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+}
+type LendSupplyFailure {
+  id: ID!
+  chainId: Int!
+  safe: String! @index
+  tokenAddress: String!
+  amount: BigInt!
+  reason: String!
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+}
+type PendingCashbackBalance {
+  id: ID!
+  chainId: Int!
+  recipient: String! @index
+  tokenAddress: String! @index
+  amount: BigInt!
+  amountUsd: BigInt!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
+type TierCashbackPercentage {
+  id: ID!
+  chainId: Int!
+  tierId: Int!
+  percentage: BigInt!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
+type SafeCashbackSplit {
+  id: ID!
+  chainId: Int!
+  safe: String! @index
+  splitInBps: BigInt!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
+type CashDelaysState {
+  id: ID!
+  chainId: Int!
+  withdrawalDelay: BigInt!
+  spendingLimitDelay: BigInt!
+  modeDelay: BigInt!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
+type SettlementDispatcherState {
+  id: ID!
+  chainId: Int!
+  binSponsorId: Int!
+  dispatcher: String!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
+type LendGatewayState {
+  id: ID!
+  chainId: Int!
+  gateway: String!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
+type WithdrawalTokenWhitelist {
+  id: ID!
+  chainId: Int!
+  tokenAddress: String! @index
+  whitelisted: Boolean!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
+type WithdrawalModuleWhitelist {
+  id: ID!
+  chainId: Int!
+  moduleAddress: String! @index
+  whitelisted: Boolean!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
+type CashConfigEvent {
+  id: ID!
+  chainId: Int!
+  configType: String!
+  subject: String!
+  value: String!
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+  arrayIndex: Int!
+}
+
+type UserSafe {
+  id: ID!
+  chainId: Int! @index
+  address: String! @index
+  factoryAddress: String!
+  discoveryType: String!
+  deploymentSalt: String!
+  discoveredAt: Timestamp!
+  discoveredBlock: BigInt!
+  transactionHash: String!
+}
+
+type DebtEvent {
+  id: ID!
+  chainId: Int! @index
+  debtManager: String!
+  managerVersion: String!
+  eventType: String!
+  user: String! @index
+  payer: String!
+  tokenAddress: String! @index
+  amount: BigInt!
+  amountUsd: BigInt!
+  usdStatus: String!
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+}
+
+type DebtPosition {
+  id: ID!
+  chainId: Int! @index
+  debtManager: String! @index
+  user: String! @index
+  tokenAddress: String! @index
+  borrowedAmount: BigInt!
+  repaidAmount: BigInt!
+  liquidatedAmount: BigInt!
+  outstandingAmount: BigInt!
+  borrowedUsd: BigInt!
+  repaidUsd: BigInt!
+  outstandingUsd: BigInt!
+  usdStatus: String!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
+
+type DebtInterestIndex {
+  id: ID!
+  chainId: Int! @index
+  debtManager: String! @index
+  managerVersion: String!
+  tokenAddress: String! @index
+  oldIndex: BigInt!
+  newIndex: BigInt!
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+}
+
+type RampVolumeSnapshot {
+  id: ID!
+  chainId: Int! @index
+  label: String! @index
+  token: String! @index
+  rampKind: String! @index
+  dayTimestamp: BigInt! @index
+  # Raw six-decimal amount emitted by the ramp contract. EURC is denominated
+  # in EUR and must be converted with the indexed EUR/USD feed.
+  amountRaw: BigInt!
+  rawDecimals: Int!
+  amountUsd: BigInt!
+  fxRate: BigInt!
+  fxDecimals: Int!
+  fxStatus: String!
+  asOf: BigInt!
+  usdDecimals: Int!
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+}
+
+type PriceFeedUpdate {
+  id: ID!
+  chainId: Int! @index
+  feedAddress: String! @index
+  pair: String!
+  answer: BigInt!
+  decimals: Int!
+  roundId: BigInt!
+  updatedAt: BigInt! @index
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+}
+
+# Latest observed feed answer for a UTC day. Ramp analytics join against this
+# entity so a later oracle observation can correct historical EURC valuation
+# without an RPC read or an external FX API.
+type DailyFxRate {
+  id: ID!
+  chainId: Int! @index
+  feedAddress: String! @index
+  pair: String! @index
+  day: String! @index
+  answer: BigInt!
+  decimals: Int!
+  roundId: BigInt!
+  updatedAt: BigInt! @index
+  updatedBlock: BigInt!
+  transactionHash: String!
+}
+
+type PriceFeedState {
+  id: ID!
+  chainId: Int! @index
+  feedAddress: String! @index
+  pair: String! @index
+  answer: BigInt!
+  decimals: Int!
+  roundId: BigInt!
+  updatedAt: BigInt! @index
+  updatedBlock: BigInt!
+  transactionHash: String!
+}
+
+type SpendBucketMetric {
+  id: ID!
+  chainId: Int!
+  bucket: String!
+  sortOrder: Int!
+  spendCount: BigInt!
+  spendUsd: BigInt!
+}
+
+type HourlySpendMetric {
+  id: ID!
+  chainId: Int!
+  hour: Int!
+  spendCount: BigInt!
+  spendUsd: BigInt!
+}
+
+type ProtocolEvent {
+  id: ID!
+  chainId: Int!
+  contractAddress: String!
+  eventType: String!
+  actor: String!
+  tokenAddress: String!
+  amount: BigInt!
+  amountUsd: BigInt!
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+  metadata: String!
+}

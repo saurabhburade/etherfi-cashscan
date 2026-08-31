@@ -1,0 +1,66 @@
+[
+  {
+    "type": "event",
+    "name": "Supplied",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "sender", "type": "address" },
+      { "indexed": true, "name": "user", "type": "address" },
+      { "indexed": true, "name": "token", "type": "address" },
+      { "indexed": false, "name": "amount", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Borrowed",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "user", "type": "address" },
+      { "indexed": true, "name": "token", "type": "address" },
+      { "indexed": false, "name": "amount", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Repaid",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "user", "type": "address" },
+      { "indexed": true, "name": "payer", "type": "address" },
+      { "indexed": true, "name": "token", "type": "address" },
+      { "indexed": false, "name": "amount", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Liquidated",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "liquidator", "type": "address" },
+      { "indexed": true, "name": "user", "type": "address" },
+      { "indexed": true, "name": "debtTokenToLiquidate", "type": "address" },
+      {
+        "indexed": false,
+        "name": "userCollateralLiquidated",
+        "type": "tuple[]",
+        "components": [
+          { "name": "token", "type": "address" },
+          { "name": "amount", "type": "uint256" },
+          { "name": "liquidationBonus", "type": "uint256" }
+        ]
+      },
+      { "indexed": false, "name": "beforeDebtAmount", "type": "uint256" },
+      { "indexed": false, "name": "debtAmountLiquidated", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "InterestIndexUpdated",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "borrowToken", "type": "address" },
+      { "indexed": false, "name": "oldIndex", "type": "uint256" },
+      { "indexed": false, "name": "newIndex", "type": "uint256" }
+    ]
+  }
+]

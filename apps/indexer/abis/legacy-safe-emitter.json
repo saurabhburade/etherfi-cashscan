@@ -1,0 +1,38 @@
+[
+  {
+    "type": "event",
+    "name": "Spend",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "userSafe", "type": "address" },
+      { "indexed": true, "name": "token", "type": "address" },
+      { "indexed": false, "name": "amount", "type": "uint256" },
+      { "indexed": false, "name": "amountInUsd", "type": "uint256" },
+      { "indexed": false, "name": "mode", "type": "uint8" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "RepayDebtManager",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "userSafe", "type": "address" },
+      { "indexed": true, "name": "token", "type": "address" },
+      { "indexed": false, "name": "debtAmount", "type": "uint256" },
+      { "indexed": false, "name": "debtAmountInUsd", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Cashback",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "userSafe", "type": "address" },
+      { "indexed": false, "name": "spendingInUsd", "type": "uint256" },
+      { "indexed": true, "name": "cashbackToken", "type": "address" },
+      { "indexed": false, "name": "cashbackAmount", "type": "uint256" },
+      { "indexed": false, "name": "cashbackInUsd", "type": "uint256" },
+      { "indexed": false, "name": "paid", "type": "bool" }
+    ]
+  }
+]

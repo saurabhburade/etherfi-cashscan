@@ -1,0 +1,26 @@
+[
+  {
+    "type": "event",
+    "name": "TopUp",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": false, "name": "chainId", "type": "uint256" },
+      { "indexed": false, "name": "txId", "type": "bytes32" },
+      { "indexed": false, "name": "userSafe", "type": "address" },
+      { "indexed": false, "name": "token", "type": "address" },
+      { "indexed": false, "name": "amount", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "TopUpBatch",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": false, "name": "chainId", "type": "uint256[]" },
+      { "indexed": false, "name": "txId", "type": "bytes32[]" },
+      { "indexed": false, "name": "userSafe", "type": "address[]" },
+      { "indexed": false, "name": "token", "type": "address[]" },
+      { "indexed": false, "name": "amount", "type": "uint256[]" }
+    ]
+  }
+]

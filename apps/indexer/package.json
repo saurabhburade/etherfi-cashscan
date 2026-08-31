@@ -1,0 +1,33 @@
+{
+  "name": "@etherfi/indexer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm run typecheck",
+    "check": "pnpm run typecheck",
+    "codegen": "envio codegen",
+    "dev": "envio dev",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "start": "envio start",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@etherfi/contracts": "workspace:*",
+    "envio": "3.6.1",
+    "react-dom": "19.2.5",
+    "viem": "2.54.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.0",
+    "typescript": "5.9.2",
+    "vitest": "4.1.11"
+  }
+}

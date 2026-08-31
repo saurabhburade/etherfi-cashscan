@@ -1,0 +1,14 @@
+[
+  {
+    "type": "event",
+    "name": "RampVolume",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "label", "type": "bytes32" },
+      { "indexed": true, "name": "token", "type": "bytes32" },
+      { "indexed": true, "name": "dayTimestamp", "type": "uint64" },
+      { "indexed": false, "name": "value", "type": "uint256" },
+      { "indexed": false, "name": "asOf", "type": "uint64" }
+    ]
+  }
+]

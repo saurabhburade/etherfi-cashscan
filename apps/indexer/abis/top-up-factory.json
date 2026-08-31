@@ -1,0 +1,56 @@
+[
+  {
+    "type": "event",
+    "name": "BeaconProxyDeployed",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": false, "name": "salt", "type": "bytes32" },
+      { "indexed": true, "name": "deployed", "type": "address" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Bridge",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "token", "type": "address" },
+      { "indexed": false, "name": "amount", "type": "uint256" },
+      { "indexed": true, "name": "destChainId", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "RedirectFunds",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "topUp", "type": "address" },
+      { "indexed": true, "name": "tradingSafe", "type": "address" },
+      { "indexed": true, "name": "token", "type": "address" },
+      { "indexed": false, "name": "amount", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "WrapOnRedirect",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "topUp", "type": "address" },
+      { "indexed": true, "name": "wrapper", "type": "address" },
+      { "indexed": true, "name": "underlying", "type": "address" },
+      { "indexed": false, "name": "assets", "type": "uint256" },
+      { "indexed": false, "name": "shares", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "WrapStock",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "topUp", "type": "address" },
+      { "indexed": true, "name": "wrapper", "type": "address" },
+      { "indexed": true, "name": "underlying", "type": "address" },
+      { "indexed": false, "name": "assets", "type": "uint256" },
+      { "indexed": false, "name": "shares", "type": "uint256" }
+    ]
+  }
+]

@@ -1,0 +1,25 @@
+[
+  {
+    "type": "event",
+    "name": "TradingSafeDeployed",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "tradingSafe", "type": "address" },
+      { "indexed": true, "name": "topUp", "type": "address" },
+      { "indexed": false, "name": "owners", "type": "address[]" },
+      { "indexed": false, "name": "modules", "type": "address[]" },
+      { "indexed": false, "name": "threshold", "type": "uint8" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "RedirectFunds",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "tradingSafe", "type": "address" },
+      { "indexed": true, "name": "topUp", "type": "address" },
+      { "indexed": true, "name": "token", "type": "address" },
+      { "indexed": false, "name": "amount", "type": "uint256" }
+    ]
+  }
+]

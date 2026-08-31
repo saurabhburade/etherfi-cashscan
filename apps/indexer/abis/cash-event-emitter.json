@@ -1,0 +1,299 @@
+[
+  {
+    "type": "event",
+    "name": "WithdrawalRequested",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": false, "name": "tokens", "type": "address[]" },
+      { "indexed": false, "name": "amounts", "type": "uint256[]" },
+      { "indexed": true, "name": "recipient", "type": "address" },
+      { "indexed": false, "name": "finalizeTimestamp", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "WithdrawalAmountUpdated",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": true, "name": "token", "type": "address" },
+      { "indexed": false, "name": "amount", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "WithdrawalCancelled",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": false, "name": "tokens", "type": "address[]" },
+      { "indexed": false, "name": "amounts", "type": "uint256[]" },
+      { "indexed": true, "name": "recipient", "type": "address" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "WithdrawalProcessed",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": false, "name": "tokens", "type": "address[]" },
+      { "indexed": false, "name": "amounts", "type": "uint256[]" },
+      { "indexed": true, "name": "recipient", "type": "address" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "RepayDebtManager",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": true, "name": "token", "type": "address" },
+      { "indexed": false, "name": "debtAmount", "type": "uint256" },
+      { "indexed": false, "name": "debtAmountInUsd", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Repay",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": true, "name": "token", "type": "address" },
+      { "indexed": false, "name": "debtAmount", "type": "uint256" },
+      { "indexed": false, "name": "debtAmountInUsd", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "RepayLendTokenAmount",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": true, "name": "token", "type": "address" },
+      { "indexed": false, "name": "debtAmount", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "LendOptOutRequested",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": false, "name": "finalizeTime", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "LendOptOutExecuted",
+    "anonymous": false,
+    "inputs": [{ "indexed": true, "name": "safe", "type": "address" }]
+  },
+  {
+    "type": "event",
+    "name": "LendOptedIn",
+    "anonymous": false,
+    "inputs": [{ "indexed": true, "name": "safe", "type": "address" }]
+  },
+  {
+    "type": "event",
+    "name": "SpendingLimitChanged",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      {
+        "indexed": false,
+        "name": "oldLimit",
+        "type": "tuple",
+        "components": [
+          { "name": "dailyLimit", "type": "uint256" },
+          { "name": "monthlyLimit", "type": "uint256" },
+          { "name": "spentToday", "type": "uint256" },
+          { "name": "spentThisMonth", "type": "uint256" },
+          { "name": "newDailyLimit", "type": "uint256" },
+          { "name": "newMonthlyLimit", "type": "uint256" },
+          { "name": "dailyRenewalTimestamp", "type": "uint64" },
+          { "name": "monthlyRenewalTimestamp", "type": "uint64" },
+          { "name": "dailyLimitChangeActivationTime", "type": "uint64" },
+          { "name": "monthlyLimitChangeActivationTime", "type": "uint64" },
+          { "name": "timezoneOffset", "type": "int256" }
+        ]
+      },
+      {
+        "indexed": false,
+        "name": "newLimit",
+        "type": "tuple",
+        "components": [
+          { "name": "dailyLimit", "type": "uint256" },
+          { "name": "monthlyLimit", "type": "uint256" },
+          { "name": "spentToday", "type": "uint256" },
+          { "name": "spentThisMonth", "type": "uint256" },
+          { "name": "newDailyLimit", "type": "uint256" },
+          { "name": "newMonthlyLimit", "type": "uint256" },
+          { "name": "dailyRenewalTimestamp", "type": "uint64" },
+          { "name": "monthlyRenewalTimestamp", "type": "uint64" },
+          { "name": "dailyLimitChangeActivationTime", "type": "uint64" },
+          { "name": "monthlyLimitChangeActivationTime", "type": "uint64" },
+          { "name": "timezoneOffset", "type": "int256" }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "ModeSet",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": false, "name": "prevMode", "type": "uint8" },
+      { "indexed": false, "name": "newMode", "type": "uint8" },
+      { "indexed": false, "name": "incomingModeStartTime", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Spend",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": true, "name": "txId", "type": "bytes32" },
+      { "indexed": true, "name": "binSponsor", "type": "uint8" },
+      { "indexed": false, "name": "tokens", "type": "address[]" },
+      { "indexed": false, "name": "amounts", "type": "uint256[]" },
+      { "indexed": false, "name": "amountInUsd", "type": "uint256[]" },
+      { "indexed": false, "name": "totalUsdAmt", "type": "uint256" },
+      { "indexed": false, "name": "mode", "type": "uint8" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "CollateralResupplied",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": true, "name": "token", "type": "address" },
+      { "indexed": false, "name": "amount", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "LendSupplyFailed",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": true, "name": "token", "type": "address" },
+      { "indexed": false, "name": "amount", "type": "uint256" },
+      { "indexed": false, "name": "reason", "type": "bytes" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "LendBorrowed",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": true, "name": "token", "type": "address" },
+      { "indexed": false, "name": "amount", "type": "uint256" },
+      { "indexed": false, "name": "amountInUsd", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Cashback",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": false, "name": "spendingInUsd", "type": "uint256" },
+      { "indexed": true, "name": "recipient", "type": "address" },
+      { "indexed": false, "name": "cashbackToken", "type": "address" },
+      { "indexed": false, "name": "cashbackAmountInToken", "type": "uint256" },
+      { "indexed": false, "name": "cashbackInUsd", "type": "uint256" },
+      { "indexed": false, "name": "cashbackType", "type": "uint256" },
+      { "indexed": true, "name": "paid", "type": "bool" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "PendingCashbackCleared",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "recipient", "type": "address" },
+      { "indexed": false, "name": "cashbackToken", "type": "address" },
+      { "indexed": false, "name": "cashbackAmount", "type": "uint256" },
+      { "indexed": false, "name": "cashbackInUsd", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "SafeTiersSet",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": false, "name": "safes", "type": "address[]" },
+      { "indexed": false, "name": "tiers", "type": "uint8[]" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "TierCashbackPercentageSet",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": false, "name": "tiers", "type": "uint8[]" },
+      { "indexed": false, "name": "cashbackPercentages", "type": "uint256[]" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "CashbackSplitToSafeBpsSet",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": false, "name": "oldSplitInBps", "type": "uint256" },
+      { "indexed": false, "name": "newSplitInBps", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "DelaysSet",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": false, "name": "withdrawalDelay", "type": "uint64" },
+      { "indexed": false, "name": "spendingLimitDelay", "type": "uint64" },
+      { "indexed": false, "name": "modeDelay", "type": "uint64" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "SettlementDispatcheUpdated",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": false, "name": "binSponsor", "type": "uint8" },
+      { "indexed": false, "name": "oldDispatcher", "type": "address" },
+      { "indexed": false, "name": "newDispatcher", "type": "address" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "LendGatewaySet",
+    "anonymous": false,
+    "inputs": [{ "indexed": true, "name": "gateway", "type": "address" }]
+  },
+  {
+    "type": "event",
+    "name": "WithdrawTokensConfigured",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": false, "name": "tokens", "type": "address[]" },
+      { "indexed": false, "name": "shouldWhitelist", "type": "bool[]" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "ModulesCanRequestWithdrawConfigured",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": false, "name": "modules", "type": "address[]" },
+      { "indexed": false, "name": "shouldWhitelist", "type": "bool[]" }
+    ]
+  }
+]
