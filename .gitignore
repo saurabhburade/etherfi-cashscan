@@ -1,0 +1,15 @@
+node_modules/
+.pnpm-store/
+.turbo/
+.next/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+!apps/*/.env.example
+apps/indexer/.envio/*
+!apps/indexer/.envio/.gitignore
+!apps/indexer/.envio/types.d.ts
+.DS_Store

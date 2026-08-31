@@ -1,0 +1,31 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build", "codegen"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": [".next/**", "!.next/cache/**", "dist/**", ".envio/**"]
+    },
+    "check": {
+      "dependsOn": ["codegen", "^check"],
+      "outputs": []
+    },
+    "codegen": {
+      "cache": false,
+      "outputs": [".envio/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^lint"],
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["codegen", "^test"],
+      "outputs": []
+    }
+  }
+}
