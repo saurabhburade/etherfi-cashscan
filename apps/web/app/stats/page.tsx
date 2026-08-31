@@ -4,6 +4,8 @@ import { CashAccountAnalytics } from "@/components/parity/cash-account-analytics
 import { CashProductPanels } from "@/components/parity/cash-products";
 import { loadExplorerData, loadTokenAnalytics } from "@/lib/envio";
 
+export const runtime = "edge";
+
 export default async function StatsPage() {
   const [data, tokenAnalytics] = await Promise.all([loadExplorerData(), loadTokenAnalytics()]);
 

@@ -9,6 +9,8 @@ import { TokenIcon } from "@/components/token-icon";
 import { type Activity, loadExplorerData } from "@/lib/envio";
 import { compactUsd, shortAddress } from "@/lib/format";
 
+export const runtime = "edge";
+
 const tokenAmount = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,

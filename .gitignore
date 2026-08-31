@@ -2,6 +2,7 @@ node_modules/
 .pnpm-store/
 .turbo/
 .next/
+.vercel/
 dist/
 coverage/
 *.tsbuildinfo
@@ -13,3 +14,4 @@ apps/indexer/.envio/*
 !apps/indexer/.envio/.gitignore
 !apps/indexer/.envio/types.d.ts
 .DS_Store
+**/next-env.d.ts
