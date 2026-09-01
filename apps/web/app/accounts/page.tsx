@@ -7,7 +7,6 @@ import { EffectiveTierDistribution } from "@/components/parity/cash-account-anal
 import { accountAnalyticsEnabled, loadAccountAnalyticsPage } from "@/lib/account-analytics";
 import { type ExplorerData, loadExplorerData } from "@/lib/envio";
 
-export const runtime = "edge";
 export const metadata: Metadata = {
   title: "Accounts · Ether.fi Cash Scanner",
   description: "Explore Ether.fi Cash Safe balances, deposits, spend, withdrawals, and debt.",

@@ -6,8 +6,6 @@ import { ChartGridSkeleton } from "@/components/dashboard-skeletons";
 import { TokenAnalyticsHeader } from "@/components/token-analytics-header";
 import { loadExplorerData, loadTokenAnalytics, type TokenAnalyticsRow } from "@/lib/envio";
 
-export const runtime = "edge";
-
 export const metadata: Metadata = {
   title: "Tokens · Ether.fi Cash Scanner",
   description: "Explore indexed Ether.fi Cash token reserves, flows, spend, withdrawals, and debt.",

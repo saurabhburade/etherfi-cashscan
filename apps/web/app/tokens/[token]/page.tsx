@@ -16,8 +16,6 @@ import {
 
 const metricSkeletonIds = ["reserve", "spend", "top-ups", "borrowed", "repaid", "withdrawals"];
 
-export const runtime = "edge";
-
 export const metadata: Metadata = {
   title: "Token details · Ether.fi Cash Scanner",
   description: "View cumulative and per-chain Ether.fi Cash token activity.",

@@ -7,7 +7,6 @@ import { TransactionExplorer } from "@/components/transaction-explorer";
 import { loadAccountAnalyticsDetail } from "@/lib/account-analytics";
 import { loadActivityPage, loadExplorerData } from "@/lib/envio";
 
-export const runtime = "edge";
 export const metadata: Metadata = { title: "Account · Ether.fi Cash Scanner" };
 export default async function AccountPage({
   params,

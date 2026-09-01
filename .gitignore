@@ -3,6 +3,8 @@ node_modules/
 .turbo/
 .next/
 .vercel/
+.open-next/
+.wrangler/
 dist/
 coverage/
 *.tsbuildinfo

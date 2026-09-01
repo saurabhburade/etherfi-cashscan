@@ -74,6 +74,33 @@ pnpm lint
 pnpm build
 ```
 
+## Deploy the scanner to Cloudflare
+
+The server-rendered scanner targets Cloudflare Workers through OpenNext. Do not
+use the deprecated `@cloudflare/next-on-pages` Pages build; it duplicates every
+dynamic route inside one Pages Worker and can exceed the 3 MiB compressed limit
+on the Workers Free plan.
+
+For Cloudflare Workers Builds, connect this repository to a Worker named
+`etherfi-cashscan` and use:
+
+- Root directory: `apps/web`
+- Build command: `pnpm run build:cloudflare`
+- Deploy command: `pnpm exec wrangler deploy`
+- Production branch: `main`
+
+Add `ENVIO_GRAPHQL_URL`, `ENVIO_HASURA_ADMIN_SECRET`, and
+`CASH_EXPLORER_SCHEMA_ENABLED` under **Settings → Variables & Secrets** for the
+Worker. These runtime variables are separate from Workers Builds variables.
+
+To validate the generated Worker locally without publishing it:
+
+```bash
+pnpm --filter @etherfi/web build:cloudflare
+cd apps/web
+pnpm exec wrangler deploy --dry-run
+```
+
 ## Indexed topology
 
 | Role | Networks | Main surface |

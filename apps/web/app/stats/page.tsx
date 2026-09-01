@@ -6,8 +6,6 @@ import { CashAccountAnalytics } from "@/components/parity/cash-account-analytics
 import { CashProductPanels } from "@/components/parity/cash-products";
 import { type ExplorerData, loadExplorerData, loadTokenAnalytics, type TokenAnalyticsRow } from "@/lib/envio";
 
-export const runtime = "edge";
-
 export default function StatsPage() {
   const dataPromise = loadExplorerData();
   const tokenAnalyticsPromise = loadTokenAnalytics();

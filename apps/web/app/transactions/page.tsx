@@ -6,8 +6,6 @@ import { ChartGridSkeleton, TransactionTableSkeleton } from "@/components/dashbo
 import { TransactionExplorer, TransactionExplorerHeader } from "@/components/transaction-explorer";
 import { type ExplorerData, loadActivityEventTypes, loadActivityPage, loadExplorerData } from "@/lib/envio";
 
-export const runtime = "edge";
-
 export const metadata: Metadata = {
   title: "Transactions · Ether.fi Cash Scanner",
   description: "Explore the latest indexed Ether.fi Cash protocol transactions.",

@@ -1,8 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { type AccountAnalyticsSort, loadAccountAnalyticsPage } from "@/lib/account-analytics";
 
-export const runtime = "edge";
-
 const sorts = new Set<AccountAnalyticsSort>(["balance", "netWorth", "spend", "deposits", "transactions", "recent"]);
 
 export async function GET(request: NextRequest) {
