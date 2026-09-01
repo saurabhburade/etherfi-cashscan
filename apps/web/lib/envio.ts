@@ -403,6 +403,7 @@ export const TOKEN_ANALYTICS_QUERY = /* GraphQL */ `
   query EtherFiCashTokenAnalytics(
     $tokenWhere: Token_bool_exp!
     $metricWhere: TokenAnalyticsMetric_bool_exp!
+    $priceWhere: TokenPriceCurrent_bool_exp!
   ) {
     Token(limit: 1000, where: $tokenWhere) {
       chainId address name symbol decimals decimalsVerified
@@ -421,6 +422,9 @@ export const TOKEN_ANALYTICS_QUERY = /* GraphQL */ `
       repaidCount repaidAmount repaidUsd
       latestSpendPriceUsdE18 latestSpendPriceStatus latestSpendAt updatedAt
     }
+    TokenPriceCurrent(limit: 1000, where: $priceWhere) {
+      chainId tokenAddress priceUsdE18 priceStatus sourceType updatedAt
+    }
   }
 `;
 
@@ -428,6 +432,7 @@ const TOKEN_ANALYTICS_LEGACY_QUERY = /* GraphQL */ `
   query EtherFiCashTokenAnalytics(
     $tokenWhere: Token_bool_exp!
     $metricWhere: TokenAnalyticsMetric_bool_exp!
+    $priceWhere: TokenPriceCurrent_bool_exp!
   ) {
     Token(limit: 1000, where: $tokenWhere) {
       chainId address name symbol decimals decimalsVerified
@@ -444,6 +449,9 @@ const TOKEN_ANALYTICS_LEGACY_QUERY = /* GraphQL */ `
       borrowedCount borrowedAmount borrowedUsd
       repaidCount repaidAmount repaidUsd
       latestSpendPriceUsdE18 latestSpendPriceStatus latestSpendAt updatedAt
+    }
+    TokenPriceCurrent(limit: 1000, where: $priceWhere) {
+      chainId tokenAddress priceUsdE18 priceStatus sourceType updatedAt
     }
   }
 `;
@@ -632,7 +640,7 @@ type ActivityPageResponse = {
 };
 type SpendDetailsResponse = { Spend: Row[] };
 type TokenResponse = { Token: Row[] };
-type TokenAnalyticsResponse = { Token: Row[]; TokenAnalyticsMetric: Row[] };
+type TokenAnalyticsResponse = { Token: Row[]; TokenAnalyticsMetric: Row[]; TokenPriceCurrent: Row[] };
 type SafeAccountsResponse = { SafeTokenBalance_aggregate?: AggregateResponse; SafeTokenBalance: Row[] };
 type AggregateResponse = {
   aggregate?: {
@@ -1053,7 +1061,7 @@ export async function loadTokenAnalytics(filters: { chainId?: number } = {}): Pr
     process.env.ENVIO_GRAPHQL_URL ?? process.env.NEXT_PUBLIC_ENVIO_GRAPHQL_URL ?? "http://localhost:8080/v1/graphql";
   const adminSecret = process.env.ENVIO_HASURA_ADMIN_SECRET;
   const where = chainWhereFor(filters);
-  const variables = { tokenWhere: where, metricWhere: where };
+  const variables = { tokenWhere: where, metricWhere: where, priceWhere: where };
   let data: TokenAnalyticsResponse;
   if (tokenAnalyticsHasLatestBorrowFields === false) {
     data = await graphqlRequired<TokenAnalyticsResponse>(
@@ -1077,11 +1085,14 @@ export async function loadTokenAnalytics(filters: { chainId?: number } = {}): Pr
       );
     }
   }
-  return tokenAnalyticsRows(data.Token.map(tokenRecord), data.TokenAnalyticsMetric);
+  return tokenAnalyticsRows(data.Token.map(tokenRecord), data.TokenAnalyticsMetric, data.TokenPriceCurrent);
 }
 
-export function tokenAnalyticsRows(tokens: TokenRecord[], metrics: Row[]): TokenAnalyticsRow[] {
+export function tokenAnalyticsRows(tokens: TokenRecord[], metrics: Row[], prices: Row[] = []): TokenAnalyticsRow[] {
   const tokenById = new Map(tokens.map((token) => [tokenAnalyticsId(token.chainId, token.address), token]));
+  const priceById = new Map(
+    prices.map((price) => [tokenAnalyticsId(Number(price.chainId), String(price.tokenAddress).toLowerCase()), price]),
+  );
 
   return metrics
     .filter((metric) => {
@@ -1093,14 +1104,25 @@ export function tokenAnalyticsRows(tokens: TokenRecord[], metrics: Row[]): Token
       const chainId = Number(metric.chainId);
       const tokenAddress = String(metric.tokenAddress).toLowerCase();
       const token = tokenById.get(tokenAnalyticsId(chainId, tokenAddress));
+      const currentPrice = priceById.get(tokenAnalyticsId(chainId, tokenAddress));
+      const currentPriceUsd =
+        BigInt(String(currentPrice?.priceUsdE18 ?? "0")) > 0n
+          ? fixedPoint(String(currentPrice?.priceUsdE18), 18)
+          : null;
       const latestSpendPriceUsd =
         BigInt(String(metric.latestSpendPriceUsdE18 ?? "0")) > 0n
           ? fixedPoint(String(metric.latestSpendPriceUsdE18), 18)
+          : null;
+      const currentAmountUsd = (amount: string) =>
+        token?.decimalsVerified && currentPriceUsd !== null
+          ? fixedPoint(amount, token.decimals) * currentPriceUsd
           : null;
       const derivedAmountUsd = (amount: string) =>
         token?.decimalsVerified && latestSpendPriceUsd !== null
           ? fixedPoint(amount, token.decimals) * latestSpendPriceUsd
           : null;
+      const latestAmountUsd = (amount: string) =>
+        currentAmountUsd(amount) ?? (token ? indexedTokenAmountUsd(amount, token) : null) ?? derivedAmountUsd(amount);
       // `destinationBalance` is only a flow remainder (destination credits minus
       // settled spends), so it can legitimately be negative when the indexer did
       // not observe the original destination funding. The reconstructed Safe
@@ -1110,9 +1132,7 @@ export function tokenAnalyticsRows(tokens: TokenRecord[], metrics: Row[]): Token
       const borrowedAmount = String(metric.borrowedAmount ?? "0");
       const borrowedUsdEventTime = usd(metric.borrowedUsd);
       const persistedBorrowedUsdLatest = metric.borrowedUsdLatest == null ? null : usd(metric.borrowedUsdLatest);
-      const borrowedUsdLatest =
-        persistedBorrowedUsdLatest ??
-        (token ? (indexedTokenAmountUsd(borrowedAmount, token) ?? derivedAmountUsd(borrowedAmount) ?? 0) : 0);
+      const borrowedUsdLatest = persistedBorrowedUsdLatest ?? latestAmountUsd(borrowedAmount) ?? 0;
       const indexedBorrowStatus = String(
         metric.borrowedUsdLatestStatus ?? (borrowedUsdLatest > 0 ? "latest_indexed_price" : "unpriced"),
       );
@@ -1134,14 +1154,14 @@ export function tokenAnalyticsRows(tokens: TokenRecord[], metrics: Row[]): Token
         spendUsd: usd(metric.spendUsd),
         topUpCount: integer(metric.topUpCount),
         topUpAmount,
-        topUpUsd: token ? (indexedTokenAmountUsd(topUpAmount, token) ?? derivedAmountUsd(topUpAmount)) : null,
+        topUpUsd: latestAmountUsd(topUpAmount),
         withdrawalCount: integer(metric.withdrawalCount),
         safeAccountCount: integer(metric.safeAccountCount),
         safeInflow: String(metric.safeInflow ?? "0"),
         safeOutflow: String(metric.safeOutflow ?? "0"),
         destinationCount: integer(metric.destinationCount),
         reserveBalance,
-        reserveUsd: token ? (indexedTokenAmountUsd(reserveBalance, token) ?? derivedAmountUsd(reserveBalance)) : null,
+        reserveUsd: latestAmountUsd(reserveBalance),
         destinationCredits: String(metric.destinationInflow ?? "0"),
         destinationDebits: String(metric.destinationOutflow ?? "0"),
         suppliedCount: integer(metric.suppliedCount),

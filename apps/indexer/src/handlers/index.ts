@@ -1408,12 +1408,14 @@ async function applyExactWalletBalance(
   const metricId = `${event.chainId}:${accountAddress}:${tokenAddress}`;
   const existing = await context.AccountTokenMetric.get(metricId);
   const metric = existing ?? initialAccountTokenMetric(event, accountAddress, tokenAddress);
-  const token = await recordToken(context, event, tokenAddress);
-  const price = await context.TokenPriceCurrent.get(`${event.chainId}:${tokenAddress}`);
-  const nextUsd =
-    price?.priceUsdE18 && price.priceUsdE18 > 0n
-      ? amountAtPrice(nextAmount, price.priceUsdE18, token.decimals)
-      : undefined;
+  if (nextAmount === 0n) await recordToken(context, event, tokenAddress);
+  // A transfer can be the first time a token is observed for a Safe. Resolve
+  // its exact-block price here so transfer-only balances create
+  // TokenPriceCurrent instead of remaining unpriced forever. The resolver
+  // reuses a valid 15-minute observation before invoking the cached RPC effect.
+  const valuation =
+    nextAmount > 0n ? await resolveCanonicalValuation(context, event, tokenAddress, nextAmount) : undefined;
+  const nextUsd = nextAmount === 0n ? 0n : valuation?.amountUsd;
   const previousAmount = metric.currentBalanceAmount ?? 0n;
   const previousUsd = metric.currentBalanceUsd;
   const previousUnpriced = previousAmount > 0n && previousUsd === undefined;
@@ -1422,7 +1424,8 @@ async function applyExactWalletBalance(
     ...metric,
     currentBalanceAmount: nextAmount,
     currentBalanceUsd: nextUsd,
-    currentBalanceValuationStatus: nextUsd === undefined ? "unpriced" : "latest_indexed_price",
+    currentBalanceValuationStatus:
+      nextAmount === 0n ? "zero_balance" : nextUsd === undefined ? "unpriced" : "latest_indexed_price",
     safeBalanceAmount: nextAmount,
     usdStatus: nextUsd === undefined ? "unpriced" : "priced",
     updatedAt: ts(event),

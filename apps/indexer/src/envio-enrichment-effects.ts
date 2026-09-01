@@ -12,6 +12,12 @@ const PRICE_PROVIDER_ADDRESS = "0x44dd2372fe7b97c4b4d6a7d4decf72466485bacb" as c
 const MULTICALL3_ADDRESS = "0xca11bde05977b3631167028862be2a173976ca11" as const;
 
 const priceProviderAbi = parseAbi(["function price(address token) view returns (uint256)"]);
+const PRICE_PROVIDER_DECIMALS = 6;
+
+/** Ether.fi PriceProvider normalizes every USD result to six decimals. */
+export function priceProviderUsdE6ToE18(priceUsdE6: bigint): bigint {
+  return priceUsdE6 * 10n ** BigInt(18 - PRICE_PROVIDER_DECIMALS);
+}
 const spokeAbi = parseAbi([
   "function getUserAccountData(address) view returns (uint256,uint256,uint256,uint256,uint256,uint256,uint256)",
   "function getUserPosition(uint256,address) view returns (uint256,uint256,uint256,uint256,uint32)",
@@ -201,7 +207,7 @@ async function readPrice(
     if (priceUsdE6 <= 0n) return unavailable("PriceProvider returned a zero price");
     return resolved({
       priceUsdE6: priceUsdE6.toString(),
-      priceUsdE18: (priceUsdE6 * 10n ** 12n).toString(),
+      priceUsdE18: priceProviderUsdE6ToE18(priceUsdE6).toString(),
       blockTag: at,
     });
   } catch (error) {

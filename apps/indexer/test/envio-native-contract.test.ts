@@ -248,6 +248,13 @@ describe("Envio-native Cash Explorer acceptance contract", () => {
     expect(handlers).toContain("amountAtPrice(borrowedAmount, borrowedUsdLatestPriceUsdE18, token.decimals)");
   });
 
+  it("creates current token prices for transfer-only Safe balances", () => {
+    expect(handlers).toContain(
+      "nextAmount > 0n ? await resolveCanonicalValuation(context, event, tokenAddress, nextAmount) : undefined",
+    );
+    expect(handlers).toContain("const nextUsd = nextAmount === 0n ? 0n : valuation?.amountUsd");
+  });
+
   it("persists priced borrow, repay, and liquidation debt events", () => {
     const debtPosition = typeSource(schema, "DebtPosition");
     expect(debtPosition).toBeDefined();

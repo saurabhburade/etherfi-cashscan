@@ -128,6 +128,7 @@ describe("token analytics metric contract", () => {
   it("queries compact metric rows with a chain-filterable where variable", () => {
     expect(TOKEN_ANALYTICS_QUERY).toContain("TokenAnalyticsMetric_bool_exp!");
     expect(TOKEN_ANALYTICS_QUERY).toContain("TokenAnalyticsMetric(limit: 1000, where: $metricWhere)");
+    expect(TOKEN_ANALYTICS_QUERY).toContain("TokenPriceCurrent(limit: 1000, where: $priceWhere)");
     expect(TOKEN_ANALYTICS_QUERY).toContain("latestSpendPriceUsdE18");
     for (const historicalAggregate of [
       "SpendTokenValuation_aggregate",
@@ -336,6 +337,37 @@ describe("token analytics metric contract", () => {
     );
 
     expect(rows[0]).toEqual(expect.objectContaining({ topUpUsd: 7000, reserveUsd: 14_000 }));
+  });
+
+  it("uses canonical TokenPriceCurrent for transfer-only Safe balances", () => {
+    const address = "0x01f0a31698c4d065659b9bdc21b3610292a1c506";
+    const rows = tokenAnalyticsRows(
+      [
+        {
+          chainId: 534352,
+          address,
+          name: "Wrapped eETH",
+          symbol: "weETH",
+          decimals: 18,
+          decimalsVerified: true,
+          oracleDecimals: 0,
+          oracleHeartbeat: 0,
+          price: "0",
+          priceUpdatedAt: "0",
+        },
+      ] as TokenRecord[],
+      [{ chainId: 534352, tokenAddress: address, safeAccountCount: "1", safeBalance: "47751182233108977" }],
+      [
+        {
+          chainId: 534352,
+          tokenAddress: address,
+          priceUsdE18: "2342321528000000000000",
+          priceStatus: "oracle_priced",
+        },
+      ],
+    );
+
+    expect(rows[0]?.reserveUsd).toBeCloseTo(111.848622, 6);
   });
 });
 

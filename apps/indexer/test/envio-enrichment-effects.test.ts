@@ -5,6 +5,7 @@ import {
   exactBlockTag,
   fifteenMinuteBucket,
   priceProviderFor,
+  priceProviderUsdE6ToE18,
   rpcUrlsFor,
 } from "../src/envio-enrichment-effects.js";
 
@@ -61,6 +62,10 @@ describe("Envio enrichment effect keys", () => {
     expect(priceProviderFor(10)).toBe("0x44dd2372fe7b97c4b4d6a7d4decf72466485bacb");
     expect(priceProviderFor(534352)).toBe("0x44dd2372fe7b97c4b4d6a7d4decf72466485bacb");
     expect(priceProviderFor(1)).toBeNull();
+  });
+
+  it("normalizes the PriceProvider's six-decimal USD result to E18", () => {
+    expect(priceProviderUsdE6ToE18(2_342_321_528n)).toBe(2_342_321_528_000_000_000_000n);
   });
 
   it("defines timestamp-aligned cross-chain pricing without reusing a source block number", async () => {
