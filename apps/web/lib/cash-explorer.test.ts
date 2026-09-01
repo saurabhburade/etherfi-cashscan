@@ -8,6 +8,7 @@ import {
   cashExplorerActivity,
   cashExplorerCursorWhere,
   cashExplorerEventWhere,
+  cashExplorerUsd,
   decodeCashExplorerCursor,
   encodeCashExplorerCursor,
   exactCashExplorerEventLabel,
@@ -44,6 +45,12 @@ describe("Cash Explorer keyset cursor", () => {
 });
 
 describe("Cash Explorer presentation contract", () => {
+  it("converts indexed six-decimal USD without confusing raw units for dollars", () => {
+    expect(cashExplorerUsd("4210000")).toBe(4.21);
+    expect(cashExplorerUsd("0")).toBe(0);
+    expect(cashExplorerUsd(null)).toBeNull();
+  });
+
   it("preserves canonical event labels", () => {
     expect(exactCashExplorerEventLabel("LendBorrowed")).toBe("LendBorrowed");
     expect(exactCashExplorerEventLabel("repay_debt_manager")).toBe("Repay Debt Manager");
@@ -123,7 +130,7 @@ describe("Cash Explorer server filters", () => {
         { chainId: { _eq: 10 } },
         {
           tokenLegs: {
-            tokenId: { _eq: "10:0x5a7facb970d094b6c7ff1df0ea68d99e6e73cbff" },
+            token: { address: { _eq: "0x5a7facb970d094b6c7ff1df0ea68d99e6e73cbff" } },
           },
         },
       ],
@@ -145,13 +152,21 @@ describe("Cash Explorer server filters", () => {
             {
               _and: [
                 { chainId: { _eq: 10 } },
-                { tokenLegs: { tokenId: { _eq: "10:0x0000000000000000000000000000000000000001" } } },
+                {
+                  tokenLegs: {
+                    token: { address: { _eq: "0x0000000000000000000000000000000000000001" } },
+                  },
+                },
               ],
             },
             {
               _and: [
                 { chainId: { _eq: 534352 } },
-                { tokenLegs: { tokenId: { _eq: "534352:0x0000000000000000000000000000000000000002" } } },
+                {
+                  tokenLegs: {
+                    token: { address: { _eq: "0x0000000000000000000000000000000000000002" } },
+                  },
+                },
               ],
             },
           ],

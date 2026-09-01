@@ -177,18 +177,14 @@ export function cashExplorerEventWhere(filters: {
   if (filters.account) conditions.push({ actorAddress: { _eq: filters.account.toLowerCase() } });
   if (filters.token) {
     const address = filters.token.toLowerCase();
-    conditions.push(
-      filters.chainId
-        ? { tokenLegs: { tokenId: { _eq: `${filters.chainId}:${address}` } } }
-        : { tokenLegs: { token: { address: { _eq: address } } } },
-    );
+    conditions.push({ tokenLegs: { token: { address: { _eq: address } } } });
   }
   if (filters.tokenScopes?.length) {
     conditions.push({
       _or: filters.tokenScopes.map((scope) => ({
         _and: [
           { chainId: { _eq: scope.chainId } },
-          { tokenLegs: { tokenId: { _eq: `${scope.chainId}:${scope.token.toLowerCase()}` } } },
+          { tokenLegs: { token: { address: { _eq: scope.token.toLowerCase() } } } },
         ],
       })),
     });
@@ -240,6 +236,13 @@ function nullableNumber(row: Row, key: string): number | null {
   return value === null || value === undefined ? null : Number(value);
 }
 
+/** Cash emitter and derived scanner USD values use six fixed-point decimals. */
+export function cashExplorerUsd(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed / 1_000_000 : null;
+}
+
 export async function loadCashExplorerPage(
   endpoint: string,
   adminSecret: string | undefined,
@@ -272,7 +275,7 @@ export async function loadCashExplorerPage(
         token: string(token, "address"),
         amount: string(leg, "amount"),
         direction: string(leg, "direction") as CashExplorerTokenLeg["direction"],
-        amountUsd: nullableNumber(leg, "amountUsd"),
+        amountUsd: cashExplorerUsd(leg.amountUsd),
         priceStatus: string(leg, "priceStatus"),
         symbol: string(token, "symbol"),
         name: string(token, "name"),
@@ -289,7 +292,7 @@ export async function loadCashExplorerPage(
       actor: string(row, "actorAddress"),
       timestamp: string(row, "timestamp"),
       transactionHash: string(row, "transactionHash"),
-      amountUsd: nullableNumber(row, "amountUsd"),
+      amountUsd: cashExplorerUsd(row.amountUsd),
       priceStatus: string(row, "priceStatus"),
       tokenLegs,
     } satisfies CashExplorerEvent;

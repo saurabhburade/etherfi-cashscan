@@ -21,7 +21,7 @@ const compact = new Intl.NumberFormat("en-US", {
 export function TokenDetailSummary({ rows }: { rows: TokenAnalyticsRow[] }) {
   const token = rows[0];
   const chainIds = [...new Set(rows.map((row) => row.chainId))];
-  const reserve = tokenMetricSummary(rows, "reserveBalance", "reserveUsd");
+  const safeBalance = tokenMetricSummary(rows, "reserveBalance", "reserveUsd");
   const topUps = tokenMetricSummary(rows, "topUpAmount", "topUpUsd");
   const borrowStatuses = new Set(rows.filter((row) => row.borrowedCount > 0).map((row) => row.borrowedUsdStatus));
   const borrowValuation = borrowStatuses.has("unpriced")
@@ -33,11 +33,11 @@ export function TokenDetailSummary({ rows }: { rows: TokenAnalyticsRow[] }) {
         : "event-time USD";
   const metrics = [
     {
-      label: "Reserve balance",
-      value: reserve.usd === null ? reserve.tokenAmount : money.format(reserve.usd),
+      label: "Safe balance",
+      value: safeBalance.usd === null ? safeBalance.tokenAmount : money.format(safeBalance.usd),
       detail: metricDetail(
-        `${compact.format(rows.reduce((total, row) => total + row.destinationCount, 0))} destinations`,
-        reserve.usd,
+        `${compact.format(rows.reduce((total, row) => total + row.safeAccountCount, 0))} safes`,
+        safeBalance.usd,
       ),
     },
     {

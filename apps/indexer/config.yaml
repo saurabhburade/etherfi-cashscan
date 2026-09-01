@@ -127,7 +127,7 @@ contracts:
 # independently verified contract-specific creation blocks before production.
 chains:
   - id: 10
-    start_block: 115000000
+    start_block: 149021274
     rpc:
       - url: ${OPTIMISM_RPC_URL:-https://optimism-rpc.publicnode.com}
         for: realtime
@@ -156,7 +156,7 @@ chains:
         start_block: 154915790
 
   - id: 534352
-    start_block: 5000000
+    start_block: 11314554
     rpc:
       - url: ${SCROLL_RPC_URL:-https://scroll-rpc.publicnode.com}
         for: realtime

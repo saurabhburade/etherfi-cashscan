@@ -170,6 +170,7 @@ describe("token analytics metric contract", () => {
         topUpAmount: "3000000",
         withdrawalCount: "1",
         safeAccountCount: "4",
+        safeBalance: "9000000",
         safeInflow: "5",
         safeOutflow: "6",
         destinationCount: "7",
@@ -202,8 +203,8 @@ describe("token analytics metric contract", () => {
         token: address,
         spendUsd: 1,
         topUpUsd: 6,
-        reserveBalance: "4000000",
-        reserveUsd: 8,
+        reserveBalance: "9000000",
+        reserveUsd: 18,
         destinationCredits: "8",
         destinationDebits: "9",
         borrowedUsd: 26,
@@ -327,13 +328,14 @@ describe("token analytics metric contract", () => {
           tokenAddress: address,
           topUpCount: "1",
           topUpAmount: "2000000000000000000",
+          safeBalance: "4000000000000000000",
           destinationBalance: "3000000000000000000",
           latestSpendPriceUsdE18: "2000000000000000000000",
         },
       ],
     );
 
-    expect(rows[0]).toEqual(expect.objectContaining({ topUpUsd: 7000, reserveUsd: 10_500 }));
+    expect(rows[0]).toEqual(expect.objectContaining({ topUpUsd: 7000, reserveUsd: 14_000 }));
   });
 });
 

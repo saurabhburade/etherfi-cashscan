@@ -490,7 +490,7 @@ export function TokenAnalyticsCharts({
   showTable?: boolean;
 }) {
   const colorByToken = new Map(data.map((row, index) => [tokenAnalyticsId(row), colors[index % colors.length]]));
-  const reserves = tokenPieData(data, "reserveUsd", colorByToken);
+  const safeBalances = tokenPieData(data, "reserveUsd", colorByToken);
   const spend = tokenPieData(data, "spendUsd", colorByToken);
   const topUps = tokenPieData(data, "topUpUsd", colorByToken);
   const withdrawals = tokenPieData(data, "withdrawalCount", colorByToken);
@@ -503,13 +503,13 @@ export function TokenAnalyticsCharts({
       id="token-analytics"
       subtitle={
         showHeader
-          ? "Event-time USD where indexed. Top-up, reserve, and borrow USD use explicitly labeled latest indexed prices when required; unpriced tokens are excluded."
+          ? "Event-time USD where indexed. Top-up, Safe balance, and borrow USD use explicitly labeled latest indexed prices when required; unpriced tokens are excluded."
           : undefined
       }
       title={showHeader ? "Tokens" : undefined}
     >
       <div className="grid gap-5 lg:grid-cols-2">
-        <TokenPie data={reserves} label="Reserve balances" moneyValues subtitle="by token · latest indexed price" />
+        <TokenPie data={safeBalances} label="Safe balances" moneyValues subtitle="by token · latest indexed price" />
         <TokenPie data={spend} label="Spend volume" moneyValues subtitle="by token" />
         <TokenPie data={topUps} label="Top-up volume" moneyValues subtitle="by token · latest indexed price" />
         <TokenPie
@@ -788,9 +788,10 @@ function TokenFlowTable({ data }: { data: TokenAnalyticsRow[] }) {
     <article className="mt-5 overflow-hidden rounded-2xl border border-border/40 bg-card text-card-foreground">
       <div className="px-5 py-5 sm:px-6">
         <span className="text-sm font-semibold text-muted-foreground">Token flow ledger</span>
-        <h3 className="mt-2 text-xl font-normal tracking-[-.03em]">reserves, deposits, credits, spend and debt</h3>
+        <h3 className="mt-2 text-xl font-normal tracking-[-.03em]">balances, deposits, credits, spend and debt</h3>
         <p className="mt-2 text-xs text-muted-foreground">
-          Reserve is destination credits minus settled spend debits; it is not a card-provider available balance.
+          Safe balance is reconstructed from tracked ERC-20 transfers and valued at the latest indexed token price.
+          Destination credits remain a separate flow metric.
         </p>
       </div>
       {rows.length ? (
@@ -799,7 +800,7 @@ function TokenFlowTable({ data }: { data: TokenAnalyticsRow[] }) {
             <thead className="border-t border-border/40 text-foreground">
               <tr>
                 <th className="px-6 py-4">Token</th>
-                <th className="px-5 py-4 text-right">Reserve</th>
+                <th className="px-5 py-4 text-right">Safe balance</th>
                 <th className="px-5 py-4 text-right">Spend</th>
                 <th className="px-5 py-4 text-right">Top-ups</th>
                 <th className="px-5 py-4 text-right">Safe deposits</th>
@@ -832,7 +833,7 @@ function TokenFlowTable({ data }: { data: TokenAnalyticsRow[] }) {
                   </td>
                   <MetricCell
                     primary={tokenValue(row.reserveBalance, row)}
-                    secondary={row.reserveUsd === null ? "derived balance" : money(row.reserveUsd)}
+                    secondary={row.reserveUsd === null ? "unpriced" : money(row.reserveUsd)}
                   />
                   <MetricCell primary={money(row.spendUsd)} />
                   <MetricCell

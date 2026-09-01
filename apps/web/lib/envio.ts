@@ -1101,7 +1101,11 @@ export function tokenAnalyticsRows(tokens: TokenRecord[], metrics: Row[]): Token
         token?.decimalsVerified && latestSpendPriceUsd !== null
           ? fixedPoint(amount, token.decimals) * latestSpendPriceUsd
           : null;
-      const reserveBalance = String(metric.destinationBalance ?? "0");
+      // `destinationBalance` is only a flow remainder (destination credits minus
+      // settled spends), so it can legitimately be negative when the indexer did
+      // not observe the original destination funding. The reconstructed Safe
+      // balance is the authoritative token balance for portfolio display.
+      const reserveBalance = String(metric.safeBalance ?? "0");
       const topUpAmount = String(metric.topUpAmount ?? "0");
       const borrowedAmount = String(metric.borrowedAmount ?? "0");
       const borrowedUsdEventTime = usd(metric.borrowedUsd);
