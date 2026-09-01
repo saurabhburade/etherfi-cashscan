@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   type AccountAnalyticsMetric,
   accountAnalyticsEnabled,
+  accountPriceUsd,
+  accountUsd,
   aggregateAccountDays,
   aggregateAccountMetrics,
   valueAtCurrentPrice,
@@ -10,6 +12,14 @@ import {
 describe("account analytics feature contract", () => {
   it("is disabled unless the additive explorer schema is explicitly enabled", () => {
     expect(accountAnalyticsEnabled).toBe(process.env.CASH_EXPLORER_SCHEMA_ENABLED === "true");
+  });
+
+  it("decodes Envio account USD-e6 and token price-e18 values at the UI boundary", () => {
+    expect(accountUsd("44771342557293")).toBe(44_771_342.557293);
+    expect(accountUsd("0")).toBe(0);
+    expect(accountUsd(null)).toBeNull();
+    expect(accountPriceUsd("2434844441000000000000")).toBe(2_434.844441);
+    expect(accountPriceUsd(null)).toBeNull();
   });
 
   it("combines the same Safe across chains without hiding incomplete pricing", () => {

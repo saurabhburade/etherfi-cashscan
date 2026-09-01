@@ -1,3 +1,5 @@
+import { fixedPoint } from "./format";
+
 export const accountAnalyticsEnabled = process.env.CASH_EXPLORER_SCHEMA_ENABLED === "true";
 
 export type AccountAnalyticsMetric = {
@@ -120,9 +122,20 @@ export type AccountAnalyticsPage = {
 const ACCOUNT_FIELDS = `id chainId safeAddress tokenCount transactionCount lifetimeDepositedUsd lifetimeSpentUsd lifetimeWithdrawnUsd lifetimeCashbackUsd lifetimeCashbackGeneratedUsd lifetimeCashbackReceivedUsd lifetimeCashbackGeneratedForOthersUsd lifetimeCashbackRegularUsd lifetimeCashbackSpenderUsd lifetimeCashbackPromotionUsd lifetimeCashbackReferralUsd lifetimeCashbackOtherUsd creditSpendUsd debitSpendUsd borrowedUsd repaidUsd eventLedgerOutstandingDebtUsd debtStatus currentBalanceUsd netWorthUsd unpricedPositionCount firstActivityAt lastActivityAt`;
 const ACCOUNT_LIST_QUERY = `query AccountList($limit:Int!,$offset:Int!,$where:AccountMetric_bool_exp!,$orderBy:[AccountMetric_order_by!]!){AccountMetric(limit:$limit,offset:$offset,where:$where,order_by:$orderBy){${ACCOUNT_FIELDS}}}`;
 const ACCOUNT_TIERS_QUERY = `query AccountTiers($where:SafeTierState_bool_exp!,$limit:Int!){SafeTierState(where:$where,limit:$limit,order_by:{updatedAt:desc}){chainId safe tierId}}`;
-const ACCOUNT_DETAIL_QUERY = `query AccountDetail($accountWhere:AccountMetric_bool_exp!,$tokenWhere:AccountTokenMetric_bool_exp!,$dayWhere:AccountDailyMetric_bool_exp!,$eventWhere:AccountTokenEvent_bool_exp!,$priceWhere:TokenPriceCurrent_bool_exp!,$limit:Int!){AccountMetric(where:$accountWhere,limit:10){id chainId safeAddress tokenCount transactionCount lifetimeDepositedUsd lifetimeSpentUsd lifetimeWithdrawnUsd lifetimeCashbackUsd lifetimeCashbackGeneratedUsd lifetimeCashbackReceivedUsd lifetimeCashbackGeneratedForOthersUsd lifetimeCashbackRegularUsd lifetimeCashbackSpenderUsd lifetimeCashbackPromotionUsd lifetimeCashbackReferralUsd lifetimeCashbackOtherUsd creditSpendUsd debitSpendUsd borrowedUsd repaidUsd eventLedgerOutstandingDebtUsd debtStatus currentBalanceUsd netWorthUsd unpricedPositionCount firstActivityAt lastActivityAt} AccountTokenMetric(where:$tokenWhere,limit:300,order_by:[{currentBalanceUsd:desc_nulls_last},{id:asc}]){id chainId currentBalanceAmount currentBalanceUsd currentBalanceValuationStatus safeInflowAmount safeOutflowAmount safeBalanceAmount updatedAt depositedAmount depositedUsd spentAmount spentUsd withdrawnAmount withdrawnUsd cashbackAmount cashbackUsd borrowedUsd repaidUsd outstandingDebtUsd outstandingDebtStatus token{address symbol name decimals}} TokenPriceCurrent(where:$priceWhere,limit:300){tokenId priceUsd priceStatus observedAt expiresAt token{address chainId}} AccountDailyMetric(where:$dayWhere,limit:5000,order_by:{day:desc}){day chainId depositedUsd spentUsd creditSpendUsd debitSpendUsd withdrawnUsd cashbackUsd borrowedUsd repaidUsd closingBalanceUsd closingBalanceStatus transactionCount pricingCoverageRatio} AccountTokenEvent(where:$eventWhere,limit:$limit,order_by:[{timestamp:desc},{chainId:asc},{blockNumber:desc},{logIndex:desc},{legIndex:desc},{id:asc}]){id chainId category direction fundingMode status amountRaw amountUsd valuationStatus valuationSource cashbackType timestamp transactionHash token{address symbol name decimals}}}`;
+const ACCOUNT_DETAIL_QUERY = `query AccountDetail($accountWhere:AccountMetric_bool_exp!,$tokenWhere:AccountTokenMetric_bool_exp!,$dayWhere:AccountDailyMetric_bool_exp!,$eventWhere:AccountTokenEvent_bool_exp!,$priceWhere:TokenPriceCurrent_bool_exp!,$limit:Int!){AccountMetric(where:$accountWhere,limit:10){id chainId safeAddress tokenCount transactionCount lifetimeDepositedUsd lifetimeSpentUsd lifetimeWithdrawnUsd lifetimeCashbackUsd lifetimeCashbackGeneratedUsd lifetimeCashbackReceivedUsd lifetimeCashbackGeneratedForOthersUsd lifetimeCashbackRegularUsd lifetimeCashbackSpenderUsd lifetimeCashbackPromotionUsd lifetimeCashbackReferralUsd lifetimeCashbackOtherUsd creditSpendUsd debitSpendUsd borrowedUsd repaidUsd eventLedgerOutstandingDebtUsd debtStatus currentBalanceUsd netWorthUsd unpricedPositionCount firstActivityAt lastActivityAt} AccountTokenMetric(where:$tokenWhere,limit:300,order_by:[{currentBalanceUsd:desc_nulls_last},{id:asc}]){id chainId currentBalanceAmount currentBalanceUsd currentBalanceValuationStatus safeInflowAmount safeOutflowAmount safeBalanceAmount updatedAt depositedAmount depositedUsd spentAmount spentUsd withdrawnAmount withdrawnUsd cashbackAmount cashbackUsd borrowedUsd repaidUsd outstandingDebtUsd outstandingDebtStatus token{address symbol name decimals}} TokenPriceCurrent(where:$priceWhere,limit:300){tokenId priceUsdE18 priceStatus observedAt token{address chainId}} AccountDailyMetric(where:$dayWhere,limit:5000,order_by:{day:desc}){day chainId depositedUsd spentUsd creditSpendUsd debitSpendUsd withdrawnUsd cashbackUsd borrowedUsd repaidUsd closingBalanceUsd closingBalanceStatus transactionCount pricingCoverageRatio} AccountTokenEvent(where:$eventWhere,limit:$limit,order_by:[{timestamp:desc},{chainId:asc},{blockNumber:desc},{logIndex:desc},{legIndex:desc},{id:asc}]){id chainId category direction fundingMode status amountRaw amountUsd valuationStatus valuationSource cashbackType timestamp transactionHash token{address symbol name decimals}}}`;
 
 const number = (value: unknown): number | null => (value == null ? null : Number(value));
+/** Envio stores every account monetary value as an exact USD-e6 integer. */
+export const accountUsd = (value: unknown): number | null => (value == null ? null : fixedPoint(String(value), 6));
+/** Indexed token prices are exact USD-e18 integers. */
+export const accountPriceUsd = (value: unknown): number | null =>
+  value == null ? null : fixedPoint(String(value), 18);
+const usablePriceStatuses = new Set([
+  "event_priced",
+  "oracle_priced",
+  "cross_chain_event_priced",
+  "cross_chain_oracle_priced",
+]);
 const integer = (value: unknown): number => Number(value ?? 0);
 const string = (value: unknown): string => String(value ?? "");
 const token = (row: Record<string, unknown>) => {
@@ -143,26 +156,26 @@ function account(row: Record<string, unknown>): AccountAnalyticsMetric {
     tierId: row.tierId == null ? null : integer(row.tierId),
     tokenCount: integer(row.tokenCount),
     transactionCount: integer(row.transactionCount),
-    lifetimeDepositedUsd: number(row.lifetimeDepositedUsd),
-    lifetimeSpentUsd: number(row.lifetimeSpentUsd),
-    lifetimeWithdrawnUsd: number(row.lifetimeWithdrawnUsd),
-    lifetimeCashbackUsd: number(row.lifetimeCashbackUsd),
-    lifetimeCashbackGeneratedUsd: number(row.lifetimeCashbackGeneratedUsd),
-    lifetimeCashbackReceivedUsd: number(row.lifetimeCashbackReceivedUsd),
-    lifetimeCashbackGeneratedForOthersUsd: number(row.lifetimeCashbackGeneratedForOthersUsd),
-    lifetimeCashbackRegularUsd: number(row.lifetimeCashbackRegularUsd),
-    lifetimeCashbackSpenderUsd: number(row.lifetimeCashbackSpenderUsd),
-    lifetimeCashbackPromotionUsd: number(row.lifetimeCashbackPromotionUsd),
-    lifetimeCashbackReferralUsd: number(row.lifetimeCashbackReferralUsd),
-    lifetimeCashbackOtherUsd: number(row.lifetimeCashbackOtherUsd),
-    creditSpendUsd: number(row.creditSpendUsd),
-    debitSpendUsd: number(row.debitSpendUsd),
-    borrowedUsd: number(row.borrowedUsd),
-    repaidUsd: number(row.repaidUsd),
-    eventLedgerOutstandingDebtUsd: number(row.eventLedgerOutstandingDebtUsd),
+    lifetimeDepositedUsd: accountUsd(row.lifetimeDepositedUsd),
+    lifetimeSpentUsd: accountUsd(row.lifetimeSpentUsd),
+    lifetimeWithdrawnUsd: accountUsd(row.lifetimeWithdrawnUsd),
+    lifetimeCashbackUsd: accountUsd(row.lifetimeCashbackUsd),
+    lifetimeCashbackGeneratedUsd: accountUsd(row.lifetimeCashbackGeneratedUsd),
+    lifetimeCashbackReceivedUsd: accountUsd(row.lifetimeCashbackReceivedUsd),
+    lifetimeCashbackGeneratedForOthersUsd: accountUsd(row.lifetimeCashbackGeneratedForOthersUsd),
+    lifetimeCashbackRegularUsd: accountUsd(row.lifetimeCashbackRegularUsd),
+    lifetimeCashbackSpenderUsd: accountUsd(row.lifetimeCashbackSpenderUsd),
+    lifetimeCashbackPromotionUsd: accountUsd(row.lifetimeCashbackPromotionUsd),
+    lifetimeCashbackReferralUsd: accountUsd(row.lifetimeCashbackReferralUsd),
+    lifetimeCashbackOtherUsd: accountUsd(row.lifetimeCashbackOtherUsd),
+    creditSpendUsd: accountUsd(row.creditSpendUsd),
+    debitSpendUsd: accountUsd(row.debitSpendUsd),
+    borrowedUsd: accountUsd(row.borrowedUsd),
+    repaidUsd: accountUsd(row.repaidUsd),
+    eventLedgerOutstandingDebtUsd: accountUsd(row.eventLedgerOutstandingDebtUsd),
     debtStatus: string(row.debtStatus),
-    currentBalanceUsd: number(row.currentBalanceUsd),
-    netWorthUsd: number(row.netWorthUsd),
+    currentBalanceUsd: accountUsd(row.currentBalanceUsd),
+    netWorthUsd: accountUsd(row.netWorthUsd),
     unpricedPositionCount: integer(row.unpricedPositionCount),
     firstActivityAt: row.firstActivityAt == null ? null : string(row.firstActivityAt),
     lastActivityAt: row.lastActivityAt == null ? null : string(row.lastActivityAt),
@@ -259,11 +272,10 @@ export async function loadAccountAnalyticsDetail(
   const accounts = await attachAccountTiers(data.AccountMetric.map(account));
   const currentPrices = new Map(
     data.TokenPriceCurrent.map((row) => {
-      const fresh = row.expiresAt != null && Date.parse(string(row.expiresAt)) > Date.now();
       return [
         string(row.tokenId),
         {
-          price: fresh && string(row.priceStatus) === "priced" ? number(row.priceUsd) : null,
+          price: usablePriceStatuses.has(string(row.priceStatus)) ? accountPriceUsd(row.priceUsdE18) : null,
           observedAt: row.observedAt == null ? null : string(row.observedAt),
         },
       ];
@@ -279,7 +291,7 @@ export async function loadAccountAnalyticsDetail(
       id: string(row.id),
       chainId: integer(row.chainId),
       currentBalanceAmount: string(row.currentBalanceAmount),
-      currentBalanceUsd: number(row.currentBalanceUsd),
+      currentBalanceUsd: accountUsd(row.currentBalanceUsd),
       currentBalanceValuationStatus: string(row.currentBalanceValuationStatus),
       safeInflowAmount,
       safeOutflowAmount,
@@ -290,16 +302,16 @@ export async function loadAccountAnalyticsDetail(
       balanceUpdatedAt: row.updatedAt == null ? null : string(row.updatedAt),
       priceObservedAt: currentPrice?.observedAt ?? null,
       depositedAmount: string(row.depositedAmount),
-      depositedUsd: number(row.depositedUsd),
+      depositedUsd: accountUsd(row.depositedUsd),
       spentAmount: string(row.spentAmount),
-      spentUsd: number(row.spentUsd),
+      spentUsd: accountUsd(row.spentUsd),
       withdrawnAmount: string(row.withdrawnAmount),
-      withdrawnUsd: number(row.withdrawnUsd),
+      withdrawnUsd: accountUsd(row.withdrawnUsd),
       cashbackAmount: string(row.cashbackAmount),
-      cashbackUsd: number(row.cashbackUsd),
-      borrowedUsd: number(row.borrowedUsd),
-      repaidUsd: number(row.repaidUsd),
-      outstandingDebtUsd: number(row.outstandingDebtUsd),
+      cashbackUsd: accountUsd(row.cashbackUsd),
+      borrowedUsd: accountUsd(row.borrowedUsd),
+      repaidUsd: accountUsd(row.repaidUsd),
+      outstandingDebtUsd: accountUsd(row.outstandingDebtUsd),
       outstandingDebtStatus: string(row.outstandingDebtStatus),
       token: tokenValue,
     };
@@ -313,15 +325,15 @@ export async function loadAccountAnalyticsDetail(
         day: string(row.day),
         chainId: integer(row.chainId),
         tokenId: null,
-        depositedUsd: number(row.depositedUsd),
-        spentUsd: number(row.spentUsd),
-        creditSpendUsd: number(row.creditSpendUsd),
-        debitSpendUsd: number(row.debitSpendUsd),
-        withdrawnUsd: number(row.withdrawnUsd),
-        cashbackUsd: number(row.cashbackUsd),
-        borrowedUsd: number(row.borrowedUsd),
-        repaidUsd: number(row.repaidUsd),
-        closingBalanceUsd: number(row.closingBalanceUsd),
+        depositedUsd: accountUsd(row.depositedUsd),
+        spentUsd: accountUsd(row.spentUsd),
+        creditSpendUsd: accountUsd(row.creditSpendUsd),
+        debitSpendUsd: accountUsd(row.debitSpendUsd),
+        withdrawnUsd: accountUsd(row.withdrawnUsd),
+        cashbackUsd: accountUsd(row.cashbackUsd),
+        borrowedUsd: accountUsd(row.borrowedUsd),
+        repaidUsd: accountUsd(row.repaidUsd),
+        closingBalanceUsd: accountUsd(row.closingBalanceUsd),
         closingBalanceStatus: string(row.closingBalanceStatus),
         transactionCount: integer(row.transactionCount),
         pricingCoverageRatio: number(row.pricingCoverageRatio) ?? 0,
@@ -335,7 +347,7 @@ export async function loadAccountAnalyticsDetail(
       fundingMode: row.fundingMode == null ? null : string(row.fundingMode),
       status: string(row.status),
       amountRaw: string(row.amountRaw),
-      amountUsd: number(row.amountUsd),
+      amountUsd: accountUsd(row.amountUsd),
       valuationStatus: string(row.valuationStatus),
       valuationSource: row.valuationSource == null ? null : string(row.valuationSource),
       cashbackType: row.cashbackType == null ? null : string(row.cashbackType),
