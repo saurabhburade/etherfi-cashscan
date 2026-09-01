@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyBalanceDelta,
+  balanceChange,
   bytes32Label,
   classifyMovement,
   dailyMetricId,
@@ -8,9 +9,11 @@ import {
   hourFromUnixSeconds,
   impliedUsdPriceE18,
   isEurRampToken,
+  isLaterTokenSpend,
   rampAmountUsd,
   rampKindFromLabel,
   spendBucket,
+  uniqueLowercase,
 } from "../src/logic.js";
 
 describe("indexer identities", () => {
@@ -62,15 +65,34 @@ describe("indexer identities", () => {
     });
   });
 
-  it("derives destination balance from top-up credits and spend debits", () => {
-    const afterTopUp = applyBalanceDelta(0n, 1_000n, 0n);
-    expect(applyBalanceDelta(afterTopUp, 0n, 275n)).toBe(725n);
+  it("merges same-token balance deltas and normalizes distinct token keys", () => {
+    const afterTopUps = applyBalanceDelta(applyBalanceDelta(0n, 1_000n, 0n), 250n, 0n);
+    const afterFirstSpendLeg = applyBalanceDelta(afterTopUps, 0n, 275n);
+    expect(applyBalanceDelta(afterFirstSpendLeg, 0n, 25n)).toBe(950n);
     expect(applyBalanceDelta(0n, 0n, 50n)).toBe(-50n);
+    expect(balanceChange(20n, 0n)).toBe(-20n);
+    expect(balanceChange(20n, 35n)).toBe(15n);
+    expect(uniqueLowercase(["0xAbC", "0xabc", "0xDEF"])).toEqual(["0xabc", "0xdef"]);
   });
 
   it("derives a normalized USD price from a Spend token leg", () => {
     expect(impliedUsdPriceE18(155_160_000n, 155_160_000n, 6)).toBe(10n ** 18n);
     expect(impliedUsdPriceE18(50_000_000n, 100_000_000n, 6)).toBe(2n * 10n ** 18n);
     expect(impliedUsdPriceE18(0n, 100_000_000n, 6)).toBe(0n);
+  });
+
+  it("keeps the latest token valuation deterministic across equal timestamps", () => {
+    const current = { timestamp: 100n, blockNumber: 20n, logIndex: 4, id: "10:0xbbb:4:0" };
+    expect(isLaterTokenSpend({ timestamp: 101n, blockNumber: 1n, logIndex: 0, id: "older-block" }, current)).toBe(true);
+    expect(isLaterTokenSpend({ timestamp: 100n, blockNumber: 21n, logIndex: 0, id: "newer-block" }, current)).toBe(
+      true,
+    );
+    expect(isLaterTokenSpend({ timestamp: 100n, blockNumber: 20n, logIndex: 5, id: "newer-log" }, current)).toBe(true);
+    expect(isLaterTokenSpend({ timestamp: 100n, blockNumber: 20n, logIndex: 4, id: "10:0xaaa:4:0" }, current)).toBe(
+      true,
+    );
+    expect(isLaterTokenSpend({ timestamp: 100n, blockNumber: 20n, logIndex: 4, id: "10:0xccc:4:0" }, current)).toBe(
+      false,
+    );
   });
 });

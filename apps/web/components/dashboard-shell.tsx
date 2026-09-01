@@ -1,19 +1,25 @@
 import Image from "next/image";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { type ReactNode, Suspense } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { ExplorerData } from "@/lib/envio";
 
 const navigation = [
   { id: "overview", href: "/", label: "Overview" },
   { id: "stats", href: "/stats", label: "Stats" },
+  { id: "transactions", href: "/transactions", label: "Transactions" },
 ] as const;
 
 export type DashboardRoute = (typeof navigation)[number]["id"];
 
-type DashboardShellProps = { data: ExplorerData; active: DashboardRoute; children: ReactNode };
+type DashboardShellProps = {
+  data?: ExplorerData;
+  dataPromise?: Promise<ExplorerData>;
+  active: DashboardRoute;
+  children: ReactNode;
+};
 
-export function DashboardShell({ active, children, data }: DashboardShellProps) {
+export function DashboardShell({ active, children, data, dataPromise }: DashboardShellProps) {
   return (
     <div className="min-h-screen bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
       <header className="sticky top-0 z-40 border-b border-border bg-background/92 backdrop-blur-xl">
@@ -58,7 +64,13 @@ export function DashboardShell({ active, children, data }: DashboardShellProps) 
           ))}
         </nav>
       </header>
-      {data.mode !== "live" ? <DataNotice data={data} /> : null}
+      {dataPromise ? (
+        <Suspense fallback={null}>
+          <DeferredDataNotice dataPromise={dataPromise} />
+        </Suspense>
+      ) : data && data.mode !== "live" ? (
+        <DataNotice data={data} />
+      ) : null}
       <div className="mx-auto w-full max-w-[1540px] px-8 sm:px-12 lg:px-24 xl:px-32">{children}</div>
       <footer className="mt-16 border-y border-border">
         <div className="mx-auto flex w-full max-w-[1540px] items-center justify-between gap-4 px-8 py-6 text-xs text-muted-foreground sm:px-12 lg:px-24 xl:px-32">
@@ -79,6 +91,11 @@ export function DashboardShell({ active, children, data }: DashboardShellProps) 
       </footer>
     </div>
   );
+}
+
+async function DeferredDataNotice({ dataPromise }: { dataPromise: Promise<ExplorerData> }) {
+  const data = await dataPromise;
+  return data.mode !== "live" ? <DataNotice data={data} /> : null;
 }
 
 function FooterSocialLink({ children, href, label }: { children: ReactNode; href: string; label: string }) {

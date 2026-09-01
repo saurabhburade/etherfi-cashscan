@@ -1,5 +1,202 @@
 import { describe, expect, it } from "vitest";
-import { deriveCashSafeData } from "./envio";
+import {
+  ACTIVITY_PAGE_QUERY,
+  activityRow,
+  cashHistoryForDisplay,
+  deriveCashSafeData,
+  EVENTS_QUERY,
+  eventWhere,
+  TOKEN_ANALYTICS_QUERY,
+  type TokenRecord,
+  tokenAnalyticsRows,
+} from "./envio";
+
+describe("activity token normalization", () => {
+  it("promotes a single withdrawal token and amount from protocol metadata", () => {
+    const tokenAddress = "0x94b008aa00579c1307b0ef2c499ad98a8ce58e58";
+    const token = {
+      chainId: 10,
+      address: tokenAddress,
+      name: "Tether USD",
+      symbol: "USDT",
+      decimals: 6,
+      decimalsVerified: true,
+      oracleDecimals: 8,
+      oracleHeartbeat: 0,
+      price: "0",
+      priceUpdatedAt: "0",
+      hasSpend: false,
+      hasTopUp: false,
+      hasRepayment: false,
+      hasDebt: false,
+      hasBalance: false,
+      latestSpendPriceUsdE18: "0",
+      latestSpendPriceStatus: "",
+      analyticsUpdatedAt: "",
+    } satisfies TokenRecord;
+
+    const activity = activityRow(
+      {
+        id: "withdrawal",
+        eventType: "withdrawal_processed",
+        chainId: 10,
+        blockNumber: "1",
+        contractAddress: "0x0000000000000000000000000000000000000001",
+        actor: "0x0000000000000000000000000000000000000002",
+        tokenAddress: "0x0000000000000000000000000000000000000000",
+        amount: "0",
+        amountUsd: "0",
+        timestamp: "2026-09-01T00:00:00Z",
+        transactionHash: "0xhash",
+        metadata: JSON.stringify({ tokens: [tokenAddress], amounts: ["187392"] }),
+      },
+      new Map([[`10:${tokenAddress}`, token]]),
+      new Map(),
+    );
+
+    expect(activity).toEqual(
+      expect.objectContaining({
+        token: tokenAddress,
+        amount: "187392",
+        tokenName: "Tether USD",
+        tokenSymbol: "USDT",
+        tokenDecimals: 6,
+        tokenCount: 1,
+      }),
+    );
+  });
+});
+
+describe("event query contract", () => {
+  it("uses lookahead limit and offset pagination without an aggregate count", () => {
+    expect(ACTIVITY_PAGE_QUERY).not.toContain("ProtocolEvent_aggregate");
+    expect(ACTIVITY_PAGE_QUERY).toContain("limit: $limit");
+    expect(ACTIVITY_PAGE_QUERY).toContain("offset: $offset");
+  });
+
+  it("uses the complete deterministic feed order", () => {
+    expect(EVENTS_QUERY).toContain(
+      "order_by: [{ timestamp: desc }, { chainId: asc }, { blockNumber: desc }, { logIndex: desc }, { id: asc }]",
+    );
+  });
+
+  it("uses indexable exact predicates for supported search keys", () => {
+    const hash = "0x" + "AB".repeat(32);
+    const address = "0x" + "CD".repeat(20);
+
+    expect(eventWhere({ query: hash, chainId: 10 })).toEqual({
+      chainId: { _eq: 10 },
+      transactionHash: { _eq: hash.toLowerCase() },
+    });
+    expect(eventWhere({ query: address })).toEqual({
+      _or: ["actor", "contractAddress", "tokenAddress"].map((field) => ({
+        [field]: { _eq: address.toLowerCase() },
+      })),
+    });
+    expect(eventWhere({ query: "123456" })).toEqual({ blockNumber: { _eq: "123456" } });
+    expect(eventWhere({ query: "Spend_Settled" })).toEqual({ eventType: { _eq: "spend_settled" } });
+  });
+
+  it("turns unsupported fuzzy input into an indexed empty lookup", () => {
+    expect(eventWhere({ query: "merchant coffee" })).toEqual({ id: { _eq: "" } });
+  });
+});
+
+describe("cash history completeness", () => {
+  it("withholds bounded history when either result set is incomplete", () => {
+    const history = cashHistoryForDisplay({
+      SafeTierChange_aggregate: { aggregate: { count: 5001 } },
+      SafeTierChange: [{ timestamp: "2026-08-02" }],
+      SafeModeChange_aggregate: { aggregate: { count: 1 } },
+      SafeModeChange: [{ timestamp: "2026-08-02" }],
+    });
+
+    expect(history).toEqual({ complete: false, tierChanges: [], modeChanges: [] });
+  });
+});
+
+describe("token analytics metric contract", () => {
+  it("queries compact metric rows with a chain-filterable where variable", () => {
+    expect(TOKEN_ANALYTICS_QUERY).toContain("TokenAnalyticsMetric_bool_exp!");
+    expect(TOKEN_ANALYTICS_QUERY).toContain("TokenAnalyticsMetric(limit: 1000, where: $metricWhere)");
+    expect(TOKEN_ANALYTICS_QUERY).toContain("latestSpendPriceUsdE18");
+    for (const historicalAggregate of [
+      "SpendTokenValuation_aggregate",
+      "TopUp_aggregate",
+      "WithdrawalEvent_aggregate",
+      "SafeTokenBalance_aggregate",
+      "AccountTokenBalance_aggregate",
+      "DebtEvent_aggregate",
+      "Repayment_aggregate",
+    ]) {
+      expect(TOKEN_ANALYTICS_QUERY).not.toContain(historicalAggregate);
+    }
+  });
+
+  it("joins metrics by chain and token, maps balances, and preserves USD fallbacks", () => {
+    const address = "0x0000000000000000000000000000000000000001";
+    const tokens = [
+      {
+        chainId: 10,
+        address,
+        name: "USDC",
+        symbol: "USDC",
+        decimals: 6,
+        decimalsVerified: true,
+        oracleDecimals: 8,
+        oracleHeartbeat: 0,
+        price: "0",
+        priceUpdatedAt: "0",
+        latestSpendPriceUsdE18: "2000000000000000000",
+        latestSpendPriceStatus: "priced",
+      },
+    ] as TokenRecord[];
+    const rows = tokenAnalyticsRows(tokens, [
+      {
+        chainId: 10,
+        tokenAddress: address.toUpperCase(),
+        spendCount: "2",
+        spendUsd: "1000000",
+        topUpCount: "1",
+        topUpAmount: "3000000",
+        withdrawalCount: "1",
+        safeAccountCount: "4",
+        safeInflow: "5",
+        safeOutflow: "6",
+        destinationCount: "7",
+        destinationBalance: "4000000",
+        destinationInflow: "8",
+        destinationOutflow: "9",
+        suppliedCount: "10",
+        suppliedAmount: "11",
+        borrowedCount: "12",
+        borrowedAmount: "13",
+        borrowedUsd: "14000000",
+        repaidCount: "15",
+        repaidAmount: "16",
+        repaidUsd: "17000000",
+        latestSpendPriceUsdE18: "2000000000000000000",
+      },
+      { chainId: "not-a-chain", tokenAddress: address, spendCount: "999" },
+      { chainId: 10, tokenAddress: "not-an-address", spendCount: "999" },
+    ]);
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        chainId: 10,
+        token: address,
+        spendUsd: 1,
+        topUpUsd: 6,
+        reserveBalance: "4000000",
+        reserveUsd: 8,
+        destinationCredits: "8",
+        destinationDebits: "9",
+        borrowedUsd: 14,
+        repaidUsd: 17,
+      }),
+    ]);
+  });
+});
 
 describe("deriveCashSafeData", () => {
   it("groups bounded tier and mode history rows", () => {

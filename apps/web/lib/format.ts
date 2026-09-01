@@ -23,3 +23,22 @@ export function compactUsd(value: number): string {
 export function shortAddress(value: string): string {
   return value.length > 12 ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;
 }
+
+const relativeTime = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" });
+
+export function timeAgo(timestamp: string): string {
+  const elapsed = new Date(timestamp).getTime() - Date.now();
+  const absoluteElapsed = Math.abs(elapsed);
+  const units = [
+    ["year", 31_536_000_000],
+    ["month", 2_592_000_000],
+    ["day", 86_400_000],
+    ["hour", 3_600_000],
+    ["minute", 60_000],
+    ["second", 1_000],
+  ] as const;
+  const fallback = units[units.length - 1];
+  const [unit, duration] = units.find(([, unitDuration]) => absoluteElapsed >= unitDuration) ?? fallback;
+
+  return relativeTime.format(Math.round(elapsed / duration), unit);
+}

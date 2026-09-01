@@ -1,3 +1,4 @@
+import { CHAIN_IDS } from "@etherfi/contracts";
 import { zeroAddress } from "viem";
 import { fixedPoint } from "./format";
 
@@ -17,6 +18,11 @@ export type Activity = {
   tokenCount: number;
   timestamp: string;
   transactionHash: string;
+};
+
+export type ActivityPage = {
+  activity: Activity[];
+  hasNextPage: boolean;
 };
 
 export type DailyAnalytics = {
@@ -252,9 +258,13 @@ const HOURLY_QUERY = /* GraphQL */ `
   }
 `;
 
-const EVENTS_QUERY = /* GraphQL */ `
+export const EVENTS_QUERY = /* GraphQL */ `
   query EtherFiCashExplorerEvents($eventWhere: ProtocolEvent_bool_exp!) {
-    ProtocolEvent(limit: 50, where: $eventWhere, order_by: { timestamp: desc }) {
+    ProtocolEvent(
+      limit: 50
+      where: $eventWhere
+      order_by: [{ timestamp: desc }, { chainId: asc }, { blockNumber: desc }, { logIndex: desc }, { id: asc }]
+    ) {
       id
       eventType
       chainId
@@ -271,6 +281,55 @@ const EVENTS_QUERY = /* GraphQL */ `
   }
 `;
 
+export const ACTIVITY_PAGE_QUERY = /* GraphQL */ `
+  query EtherFiCashActivityPage(
+    $eventWhere: ProtocolEvent_bool_exp!
+    $tokenWhere: Token_bool_exp!
+    $limit: Int!
+    $offset: Int!
+  ) {
+    ProtocolEvent(
+      limit: $limit
+      offset: $offset
+      where: $eventWhere
+      order_by: [{ timestamp: desc }, { chainId: asc }, { blockNumber: desc }, { logIndex: desc }, { id: asc }]
+    ) {
+      id
+      eventType
+      chainId
+      blockNumber
+      contractAddress
+      actor
+      tokenAddress
+      amount
+      amountUsd
+      timestamp
+      transactionHash
+      metadata
+    }
+    Token(limit: 1000, where: $tokenWhere) {
+      chainId
+      address
+      name
+      symbol
+      decimals
+      decimalsVerified
+      oracleDecimals
+      oracleHeartbeat
+      price
+      priceUpdatedAt
+      hasSpend
+      hasTopUp
+      hasRepayment
+      hasDebt
+      hasBalance
+      latestSpendPriceUsdE18
+      latestSpendPriceStatus
+      analyticsUpdatedAt
+    }
+  }
+`;
+
 const SPEND_DETAILS_QUERY = /* GraphQL */ `
   query EtherFiCashExplorerSpendDetails($ids: [String!]!) {
     Spend(where: { id: { _in: $ids } }) {
@@ -281,7 +340,7 @@ const SPEND_DETAILS_QUERY = /* GraphQL */ `
   }
 `;
 
-const TOKENS_QUERY = /* GraphQL */ `
+export const TOKENS_QUERY = /* GraphQL */ `
   query EtherFiCashExplorerTokens($where: Token_bool_exp!) {
     Token(limit: 1000, where: $where) {
       chainId
@@ -299,48 +358,39 @@ const TOKENS_QUERY = /* GraphQL */ `
       oracleDiscovery
       price
       priceUpdatedAt
+      hasSpend
+      hasTopUp
+      hasRepayment
+      hasDebt
+      hasBalance
+      latestSpendPriceUsdE18
+      latestSpendPriceStatus
+      analyticsUpdatedAt
     }
   }
 `;
 
-const TOKEN_ANALYTICS_KEYS_QUERY = /* GraphQL */ `
-  query EtherFiCashExplorerTokenAnalyticsKeys(
-    $spendWhere: SpendTokenValuation_bool_exp!
-    $topUpWhere: TopUp_bool_exp!
-    $repaymentWhere: Repayment_bool_exp!
-    $debtWhere: DebtEvent_bool_exp!
-    $balanceWhere: AccountTokenBalance_bool_exp!
+export const TOKEN_ANALYTICS_QUERY = /* GraphQL */ `
+  query EtherFiCashTokenAnalytics(
+    $tokenWhere: Token_bool_exp!
+    $metricWhere: TokenAnalyticsMetric_bool_exp!
   ) {
-    spend: SpendTokenValuation(
-      distinct_on: [chainId, tokenAddress]
-      where: $spendWhere
-      order_by: [{ chainId: asc }, { tokenAddress: asc }]
-    ) { chainId tokenAddress }
-    prices: SpendTokenValuation(
-      distinct_on: [chainId, tokenAddress]
-      where: $spendWhere
-      order_by: [{ chainId: asc }, { tokenAddress: asc }, { timestamp: desc }]
-    ) { chainId tokenAddress priceUsdE18 priceStatus }
-    topUps: TopUp(
-      distinct_on: [chainId, tokenAddress]
-      where: $topUpWhere
-      order_by: [{ chainId: asc }, { tokenAddress: asc }]
-    ) { chainId tokenAddress }
-    repayments: Repayment(
-      distinct_on: [chainId, tokenAddress]
-      where: $repaymentWhere
-      order_by: [{ chainId: asc }, { tokenAddress: asc }]
-    ) { chainId tokenAddress }
-    debt: DebtEvent(
-      distinct_on: [chainId, tokenAddress]
-      where: $debtWhere
-      order_by: [{ chainId: asc }, { tokenAddress: asc }]
-    ) { chainId tokenAddress }
-    balances: AccountTokenBalance(
-      distinct_on: [chainId, tokenAddress]
-      where: $balanceWhere
-      order_by: [{ chainId: asc }, { tokenAddress: asc }]
-    ) { chainId tokenAddress }
+    Token(limit: 1000, where: $tokenWhere) {
+      chainId address name symbol decimals decimalsVerified
+      oracleDecimals oracleHeartbeat price priceUpdatedAt
+    }
+    TokenAnalyticsMetric(limit: 1000, where: $metricWhere) {
+      chainId tokenAddress
+      spendCount spendUsd
+      topUpCount topUpAmount
+      withdrawalCount
+      safeAccountCount safeBalance safeInflow safeOutflow
+      destinationCount destinationBalance destinationInflow destinationOutflow
+      suppliedCount suppliedAmount
+      borrowedCount borrowedAmount borrowedUsd
+      repaidCount repaidAmount repaidUsd
+      latestSpendPriceUsdE18 latestSpendPriceStatus latestSpendAt updatedAt
+    }
   }
 `;
 
@@ -380,8 +430,8 @@ const EXTENDED_DAILY_QUERY = /* GraphQL */ `
 `;
 
 const CASHBACK_TOTAL_QUERY = /* GraphQL */ `
-  query EtherFiCashExplorerCashbackTotal($where: Cashback_bool_exp!) {
-    Cashback_aggregate(where: $where) { aggregate { count sum { amountUsd } } }
+  query EtherFiCashExplorerCashbackTotal($where: CashbackReceiverMetric_bool_exp!) {
+    CashbackReceiverMetric_aggregate(where: $where) { aggregate { sum { rewardCount amountUsd } } }
   }
 `;
 
@@ -469,9 +519,11 @@ const CASH_SAFE_STATE_QUERY = /* GraphQL */ `
 `;
 const CASH_HISTORY_QUERY = /* GraphQL */ `
   query EtherFiCashExplorerCashHistory($tierWhere: SafeTierChange_bool_exp!, $modeWhere: SafeModeChange_bool_exp!) {
-    SafeTierChange(where: $tierWhere, order_by: { timestamp: desc }) {
+    SafeTierChange_aggregate(where: $tierWhere) { aggregate { count } }
+    SafeTierChange(limit: 5000, where: $tierWhere, order_by: { timestamp: desc }) {
       previousTierId tierId timestamp
     }
+    SafeModeChange_aggregate(where: $modeWhere) { aggregate { count } }
     SafeModeChange(limit: 5000, where: $modeWhere, order_by: { timestamp: desc }) {
       previousModeId modeId timestamp
     }
@@ -518,36 +570,27 @@ type GlobalActiveSafeResponse = { GlobalActiveSafe_aggregate?: AggregateResponse
 type SpendBucketsResponse = { SpendBucketMetric: Row[] };
 type HourlyResponse = { HourlySpendMetric: Row[] };
 type EventsResponse = { ProtocolEvent: Row[] };
+type ActivityPageResponse = {
+  ProtocolEvent: Row[];
+  Token: Row[];
+};
 type SpendDetailsResponse = { Spend: Row[] };
 type TokenResponse = { Token: Row[] };
-type TokenAnalyticsKeysResponse = {
-  spend: Row[];
-  prices: Row[];
-  topUps: Row[];
-  repayments: Row[];
-  debt: Row[];
-  balances: Row[];
-};
-type TokenAggregateResponse = {
-  aggregate?: {
-    count?: number | string;
-    sum?: Record<string, number | string | null> | null;
-  } | null;
-};
-type TokenAggregateQueryResponse = Record<string, TokenAggregateResponse>;
+type TokenAnalyticsResponse = { Token: Row[]; TokenAnalyticsMetric: Row[] };
 type SafeAccountsResponse = { SafeTokenBalance_aggregate?: AggregateResponse; SafeTokenBalance: Row[] };
 type AggregateResponse = {
   aggregate?: {
     count?: number | string;
     sum?: {
       amountUsd?: number | string;
+      rewardCount?: number | string;
       borrowedUsd?: number | string;
       repaidUsd?: number | string;
       outstandingUsd?: number | string;
     } | null;
   } | null;
 };
-type CashbackTotalResponse = { Cashback_aggregate?: AggregateResponse };
+type CashbackTotalResponse = { CashbackReceiverMetric_aggregate?: AggregateResponse };
 type TopUpRecipientsResponse = { TopUpRecipientMetric: Row[] };
 type CashbackReceiversResponse = { CashbackReceiverMetric: Row[] };
 type RepaymentTotalResponse = { Repayment_aggregate?: AggregateResponse };
@@ -568,7 +611,12 @@ type CashSafeStateResponse = {
   PendingWithdrawalState: Row[];
   PendingCashbackBalance: Row[];
 };
-type CashHistoryResponse = { SafeTierChange: Row[]; SafeModeChange: Row[] };
+type CashHistoryResponse = {
+  SafeTierChange_aggregate?: AggregateResponse;
+  SafeTierChange: Row[];
+  SafeModeChange_aggregate?: AggregateResponse;
+  SafeModeChange: Row[];
+};
 type CashOperationResponse = {
   CollateralResupply_aggregate?: AggregateResponse;
   LendSupplyFailure_aggregate?: AggregateResponse;
@@ -582,7 +630,7 @@ type CashConfigurationResponse = {
   WithdrawalTokenWhitelist: Row[];
   WithdrawalModuleWhitelist: Row[];
 };
-type TokenRecord = {
+export type TokenRecord = {
   chainId: number;
   address: string;
   name: string;
@@ -593,6 +641,14 @@ type TokenRecord = {
   oracleHeartbeat: number;
   price: string;
   priceUpdatedAt: string;
+  hasSpend: boolean;
+  hasTopUp: boolean;
+  hasRepayment: boolean;
+  hasDebt: boolean;
+  hasBalance: boolean;
+  latestSpendPriceUsdE18: string;
+  latestSpendPriceStatus: string;
+  analyticsUpdatedAt: string;
 };
 
 export async function loadExplorerData(filters: { query?: string; chainId?: number } = {}): Promise<ExplorerData> {
@@ -703,8 +759,8 @@ export async function loadExplorerData(filters: { query?: string; chainId?: numb
     const activeCardCount = integer(
       globalActiveSafes?.GlobalActiveSafe_aggregate?.aggregate?.count ?? core.ActiveSafe_aggregate?.aggregate?.count,
     );
-    const cashbackCount = integer(cashbackTotal?.Cashback_aggregate?.aggregate?.count);
-    const cashbackUsd = usd(cashbackTotal?.Cashback_aggregate?.aggregate?.sum?.amountUsd);
+    const cashbackCount = integer(cashbackTotal?.CashbackReceiverMetric_aggregate?.aggregate?.sum?.rewardCount);
+    const cashbackUsd = usd(cashbackTotal?.CashbackReceiverMetric_aggregate?.aggregate?.sum?.amountUsd);
     const indexedRepaidUsd = usd(repaymentTotal?.Repayment_aggregate?.aggregate?.sum?.amountUsd);
     const debtTotals = debtMetrics?.DebtPosition_aggregate?.aggregate;
     const debtPositions = debtMetrics?.DebtPosition ?? [];
@@ -765,6 +821,7 @@ export async function loadExplorerData(filters: { query?: string; chainId?: numb
         amountUsd: token ? indexedTokenAmountUsd(String(row.amount), token) : null,
       };
     });
+    const history = cashHistoryForDisplay(cashHistory);
     const cash = deriveCashSafeData({
       tierStates: cashSafeState?.SafeTierState ?? [],
       lendStates: cashSafeState?.SafeLendState ?? [],
@@ -777,8 +834,8 @@ export async function loadExplorerData(filters: { query?: string; chainId?: numb
       spendingLimitStates: cashSafeState?.SafeSpendingLimitState ?? [],
       pendingWithdrawals: cashSafeState?.PendingWithdrawalState ?? [],
       pendingCashbackBalances: cashSafeState?.PendingCashbackBalance ?? [],
-      tierChanges: cashHistory?.SafeTierChange ?? [],
-      modeChanges: cashHistory?.SafeModeChange ?? [],
+      tierChanges: history.tierChanges,
+      modeChanges: history.modeChanges,
       collateralResupplyCount: integer(cashOperations?.CollateralResupply_aggregate?.aggregate?.count),
       lendSupplyFailureCount: integer(cashOperations?.LendSupplyFailure_aggregate?.aggregate?.count),
       tierCashbackPercentages: cashConfiguration?.TierCashbackPercentage ?? [],
@@ -833,6 +890,7 @@ export async function loadExplorerData(filters: { query?: string; chainId?: numb
         cashback: cashbackTotal !== null,
         ramps: rampSnapshotsComplete && rampSnapshots.length > 0 && rampAnalytics.fxComplete,
         debt: debtUsdComplete,
+        cashHistory: history.complete,
       }),
       updatedAt: new Date().toISOString(),
     };
@@ -841,172 +899,118 @@ export async function loadExplorerData(filters: { query?: string; chainId?: numb
   }
 }
 
+export async function loadActivityPage(
+  filters: { query?: string; chainId?: number; eventType?: string; page?: number; pageSize?: number } = {},
+): Promise<ActivityPage> {
+  const endpoint =
+    process.env.ENVIO_GRAPHQL_URL ?? process.env.NEXT_PUBLIC_ENVIO_GRAPHQL_URL ?? "http://localhost:8080/v1/graphql";
+  const adminSecret = process.env.ENVIO_HASURA_ADMIN_SECRET;
+  const page = Math.max(1, Math.trunc(filters.page ?? 1));
+  const pageSize = Math.min(100, Math.max(1, Math.trunc(filters.pageSize ?? 10)));
+  const baseWhere = eventWhere(filters);
+  const conditions: Record<string, unknown>[] = [
+    baseWhere,
+    {
+      _or: [{ chainId: { _neq: CHAIN_IDS.optimism } }, { eventType: { _neq: "debt_interest_index_updated" } }],
+    },
+  ];
+  if (filters.eventType && filters.eventType !== "all") {
+    conditions.push({ eventType: { _eq: filters.eventType } });
+  }
+  const eventFilter = { _and: conditions };
+  const data = await graphqlRequired<ActivityPageResponse>(
+    endpoint,
+    ACTIVITY_PAGE_QUERY,
+    {
+      eventWhere: eventFilter,
+      tokenWhere: chainWhereFor(filters),
+      limit: pageSize + 1,
+      offset: (page - 1) * pageSize,
+    },
+    adminSecret,
+  );
+  const pageRows = data.ProtocolEvent.slice(0, pageSize);
+  const tokens = data.Token.map(tokenRecord);
+  const tokenById = new Map(tokens.map((token) => [`${token.chainId}:${token.address}`, token]));
+  const spendEventIds = pageRows
+    .filter((row) => String(row.eventType).startsWith("spend"))
+    .map((row) => String(row.id));
+  const spendDetails = spendEventIds.length
+    ? await graphqlOptional<SpendDetailsResponse>(endpoint, SPEND_DETAILS_QUERY, { ids: spendEventIds }, adminSecret)
+    : null;
+  const spendById = new Map((spendDetails?.Spend ?? []).map((row) => [String(row.id), row]));
+
+  return {
+    activity: pageRows.map((row) => activityRow(row, tokenById, spendById)),
+    hasNextPage: data.ProtocolEvent.length > pageSize,
+  };
+}
+
 export async function loadTokenAnalytics(filters: { chainId?: number } = {}): Promise<TokenAnalyticsRow[]> {
   const endpoint =
     process.env.ENVIO_GRAPHQL_URL ?? process.env.NEXT_PUBLIC_ENVIO_GRAPHQL_URL ?? "http://localhost:8080/v1/graphql";
   const adminSecret = process.env.ENVIO_HASURA_ADMIN_SECRET;
   const where = chainWhereFor(filters);
-
-  const [keys, tokenData] = await Promise.all([
-    graphqlOptional<TokenAnalyticsKeysResponse>(
-      endpoint,
-      TOKEN_ANALYTICS_KEYS_QUERY,
-      {
-        spendWhere: where,
-        topUpWhere: where,
-        repaymentWhere: where,
-        debtWhere: where,
-        balanceWhere: where,
-      },
-      adminSecret,
-    ),
-    graphqlOptional<TokenResponse>(endpoint, TOKENS_QUERY, { where }, adminSecret),
-  ]);
-  if (!keys) return [];
-
-  const keyed = {
-    spend: tokenKeys(keys.spend),
-    topUps: tokenKeys(keys.topUps),
-    repayments: tokenKeys(keys.repayments),
-    debt: tokenKeys(keys.debt),
-    balances: tokenKeys(keys.balances),
-  };
-  const allKeys = uniqueTokenKeys([
-    ...keyed.spend,
-    ...keyed.topUps,
-    ...keyed.repayments,
-    ...keyed.debt,
-    ...keyed.balances,
-  ]);
-  const tokenById = new Map(
-    (tokenData?.Token ?? []).map(tokenRecord).map((token) => [`${token.chainId}:${token.address}`, token]),
+  const data = await graphqlRequired<TokenAnalyticsResponse>(
+    endpoint,
+    TOKEN_ANALYTICS_QUERY,
+    { tokenWhere: where, metricWhere: where },
+    adminSecret,
   );
-  const latestSpendPriceById = new Map(
-    keys.prices
-      .filter((row) => BigInt(String(row.priceUsdE18 ?? "0")) > 0n)
-      .map((row) => [
-        `${Number(row.chainId)}:${String(row.tokenAddress).toLowerCase()}`,
-        fixedPoint(String(row.priceUsdE18), 18),
-      ]),
-  );
+  return tokenAnalyticsRows(data.Token.map(tokenRecord), data.TokenAnalyticsMetric);
+}
 
-  const [spend, topUps, withdrawals, safeTransfers, balances, supplied, borrowed, debtRepaid, repayments] =
-    await Promise.all([
-      tokenAggregate(
-        endpoint,
-        adminSecret,
-        keyed.spend,
-        (key, alias) =>
-          `${alias}: SpendTokenValuation_aggregate(where: ${tokenWhere(key)}) { aggregate { count sum { amountUsd } } }`,
-      ),
-      tokenAggregate(
-        endpoint,
-        adminSecret,
-        keyed.topUps,
-        (key, alias) => `${alias}: TopUp_aggregate(where: ${tokenWhere(key)}) { aggregate { count sum { amount } } }`,
-      ),
-      tokenAggregate(
-        endpoint,
-        adminSecret,
-        allKeys,
-        (key, alias) =>
-          `${alias}: WithdrawalEvent_aggregate(where: { chainId: { _eq: ${key.chainId} }, status: { _eq: "requested" }, tokens: { _like: "%${key.token}%" } }) { aggregate { count } }`,
-      ),
-      tokenAggregate(
-        endpoint,
-        adminSecret,
-        allKeys,
-        (key, alias) =>
-          `${alias}: SafeTokenBalance_aggregate(where: ${tokenWhere(key)}) { aggregate { count sum { inflow outflow } } }`,
-      ),
-      tokenAggregate(
-        endpoint,
-        adminSecret,
-        keyed.balances,
-        (key, alias) =>
-          `${alias}: AccountTokenBalance_aggregate(where: ${tokenWhere(key)}) { aggregate { count sum { amount inflow outflow } } }`,
-      ),
-      tokenAggregate(
-        endpoint,
-        adminSecret,
-        keyed.debt,
-        (key, alias) =>
-          `${alias}: DebtEvent_aggregate(where: { _and: [${tokenWhere(key)}, { eventType: { _eq: "supplied" } }] }) { aggregate { count sum { amount } } }`,
-      ),
-      tokenAggregate(
-        endpoint,
-        adminSecret,
-        keyed.debt,
-        (key, alias) =>
-          `${alias}: DebtEvent_aggregate(where: { _and: [${tokenWhere(key)}, { eventType: { _in: ["borrowed", "lend_borrowed"] } }] }) { aggregate { count sum { amount amountUsd } } }`,
-      ),
-      tokenAggregate(
-        endpoint,
-        adminSecret,
-        keyed.debt,
-        (key, alias) =>
-          `${alias}: DebtEvent_aggregate(where: { _and: [${tokenWhere(key)}, { eventType: { _eq: "repaid" } }] }) { aggregate { count sum { amount amountUsd } } }`,
-      ),
-      tokenAggregate(
-        endpoint,
-        adminSecret,
-        keyed.repayments,
-        (key, alias) =>
-          `${alias}: Repayment_aggregate(where: ${tokenWhere(key)}) { aggregate { count sum { amount amountUsd } } }`,
-      ),
-    ]);
+export function tokenAnalyticsRows(tokens: TokenRecord[], metrics: Row[]): TokenAnalyticsRow[] {
+  const tokenById = new Map(tokens.map((token) => [tokenAnalyticsId(token.chainId, token.address), token]));
 
-  return allKeys
-    .map((key) => {
-      const id = tokenKeyId(key);
-      const token = tokenById.get(id);
-      const spendAggregate = tokenAggregateValue(spend, keyed.spend, id);
-      const topUpAggregate = tokenAggregateValue(topUps, keyed.topUps, id);
-      const withdrawalAggregate = tokenAggregateValue(withdrawals, allKeys, id);
-      const safeAggregate = tokenAggregateValue(safeTransfers, allKeys, id);
-      const balanceAggregate = tokenAggregateValue(balances, keyed.balances, id);
-      const suppliedAggregate = tokenAggregateValue(supplied, keyed.debt, id);
-      const borrowedAggregate = tokenAggregateValue(borrowed, keyed.debt, id);
-      const debtRepaidAggregate = tokenAggregateValue(debtRepaid, keyed.debt, id);
-      const repaymentAggregate = tokenAggregateValue(repayments, keyed.repayments, id);
-      const reserveBalance = aggregateSum(balanceAggregate, "amount");
-      const topUpAmount = aggregateSum(topUpAggregate, "amount");
-      const latestSpendPriceUsd = latestSpendPriceById.get(id) ?? null;
+  return metrics
+    .filter((metric) => {
+      const chainId = Number(metric.chainId);
+      const tokenAddress = String(metric.tokenAddress).toLowerCase();
+      return Number.isInteger(chainId) && chainId >= 0 && /^0x[0-9a-f]{40}$/.test(tokenAddress);
+    })
+    .map((metric) => {
+      const chainId = Number(metric.chainId);
+      const tokenAddress = String(metric.tokenAddress).toLowerCase();
+      const token = tokenById.get(tokenAnalyticsId(chainId, tokenAddress));
+      const latestSpendPriceUsd =
+        BigInt(String(metric.latestSpendPriceUsdE18 ?? "0")) > 0n
+          ? fixedPoint(String(metric.latestSpendPriceUsdE18), 18)
+          : null;
       const derivedAmountUsd = (amount: string) =>
         token?.decimalsVerified && latestSpendPriceUsd !== null
           ? fixedPoint(amount, token.decimals) * latestSpendPriceUsd
           : null;
+      const reserveBalance = String(metric.destinationBalance ?? "0");
+
       return {
-        chainId: key.chainId,
-        token: key.token,
+        chainId,
+        token: tokenAddress,
         name: token?.name ?? "",
         symbol: token?.symbol ?? "",
         decimals: token?.decimalsVerified ? token.decimals : null,
-        spendCount: aggregateCount(spendAggregate),
-        spendUsd: aggregateUsd(spendAggregate, "amountUsd"),
-        topUpCount: aggregateCount(topUpAggregate),
-        topUpAmount,
-        topUpUsd: derivedAmountUsd(topUpAmount),
-        withdrawalCount: aggregateCount(withdrawalAggregate),
-        safeAccountCount: aggregateCount(safeAggregate),
-        safeInflow: aggregateSum(safeAggregate, "inflow"),
-        safeOutflow: aggregateSum(safeAggregate, "outflow"),
-        destinationCount: aggregateCount(balanceAggregate),
+        spendCount: integer(metric.spendCount),
+        spendUsd: usd(metric.spendUsd),
+        topUpCount: integer(metric.topUpCount),
+        topUpAmount: String(metric.topUpAmount ?? "0"),
+        topUpUsd: derivedAmountUsd(String(metric.topUpAmount ?? "0")),
+        withdrawalCount: integer(metric.withdrawalCount),
+        safeAccountCount: integer(metric.safeAccountCount),
+        safeInflow: String(metric.safeInflow ?? "0"),
+        safeOutflow: String(metric.safeOutflow ?? "0"),
+        destinationCount: integer(metric.destinationCount),
         reserveBalance,
         reserveUsd: token ? (indexedTokenAmountUsd(reserveBalance, token) ?? derivedAmountUsd(reserveBalance)) : null,
-        destinationCredits: aggregateSum(balanceAggregate, "inflow"),
-        destinationDebits: aggregateSum(balanceAggregate, "outflow"),
-        suppliedCount: aggregateCount(suppliedAggregate),
-        suppliedAmount: aggregateSum(suppliedAggregate, "amount"),
-        borrowedCount: aggregateCount(borrowedAggregate),
-        borrowedAmount: aggregateSum(borrowedAggregate, "amount"),
-        borrowedUsd: aggregateUsd(borrowedAggregate, "amountUsd"),
-        repaidCount: aggregateCount(debtRepaidAggregate) + aggregateCount(repaymentAggregate),
-        repaidAmount: addIntegerStrings(
-          aggregateSum(debtRepaidAggregate, "amount"),
-          aggregateSum(repaymentAggregate, "amount"),
-        ),
-        repaidUsd: aggregateUsd(debtRepaidAggregate, "amountUsd") + aggregateUsd(repaymentAggregate, "amountUsd"),
+        destinationCredits: String(metric.destinationInflow ?? "0"),
+        destinationDebits: String(metric.destinationOutflow ?? "0"),
+        suppliedCount: integer(metric.suppliedCount),
+        suppliedAmount: String(metric.suppliedAmount ?? "0"),
+        borrowedCount: integer(metric.borrowedCount),
+        borrowedAmount: String(metric.borrowedAmount ?? "0"),
+        borrowedUsd: usd(metric.borrowedUsd),
+        repaidCount: integer(metric.repaidCount),
+        repaidAmount: String(metric.repaidAmount ?? "0"),
+        repaidUsd: usd(metric.repaidUsd),
       } satisfies TokenAnalyticsRow;
     })
     .filter(
@@ -1026,6 +1030,10 @@ export async function loadTokenAnalytics(filters: { chainId?: number } = {}): Pr
         a.chainId - b.chainId ||
         a.token.localeCompare(b.token),
     );
+}
+
+function tokenAnalyticsId(chainId: number, token: string) {
+  return `${chainId}:${token.toLowerCase()}`;
 }
 
 export async function loadSafeAccounts(filters: { query?: string; chainId?: number } = {}): Promise<SafeAccountsData> {
@@ -1132,71 +1140,6 @@ async function graphqlOptional<T>(
   } catch {
     return null;
   }
-}
-
-type TokenKey = { chainId: number; token: string };
-
-function tokenKeys(rows: Row[]): TokenKey[] {
-  return rows.flatMap((row) => {
-    const chainId = Number(row.chainId);
-    const token = String(row.tokenAddress).toLowerCase();
-    return Number.isInteger(chainId) && /^0x[0-9a-f]{40}$/.test(token) ? [{ chainId, token }] : [];
-  });
-}
-
-function tokenKeyId(key: TokenKey) {
-  return `${key.chainId}:${key.token}`;
-}
-
-function uniqueTokenKeys(keys: TokenKey[]): TokenKey[] {
-  return [...new Map(keys.map((key) => [tokenKeyId(key), key])).values()].sort(
-    (a, b) => a.chainId - b.chainId || a.token.localeCompare(b.token),
-  );
-}
-
-function tokenWhere(key: TokenKey) {
-  return `{ chainId: { _eq: ${key.chainId} }, tokenAddress: { _eq: "${key.token}" } }`;
-}
-
-async function tokenAggregate(
-  endpoint: string,
-  adminSecret: string | undefined,
-  keys: TokenKey[],
-  field: (key: TokenKey, alias: string) => string,
-): Promise<TokenAggregateQueryResponse | null> {
-  if (!keys.length) return {};
-  const fields = keys.map((key, index) => field(key, `t${index}`)).join("\n");
-  return graphqlOptional<TokenAggregateQueryResponse>(
-    endpoint,
-    `query EtherFiCashExplorerTokenAggregates { ${fields} }`,
-    {},
-    adminSecret,
-  );
-}
-
-function tokenAggregateValue(
-  response: TokenAggregateQueryResponse | null,
-  keys: TokenKey[],
-  id: string,
-): TokenAggregateResponse | undefined {
-  const index = keys.findIndex((key) => tokenKeyId(key) === id);
-  return index < 0 ? undefined : response?.[`t${index}`];
-}
-
-function aggregateCount(response: TokenAggregateResponse | undefined) {
-  return integer(response?.aggregate?.count);
-}
-
-function aggregateSum(response: TokenAggregateResponse | undefined, field: string) {
-  return String(response?.aggregate?.sum?.[field] ?? "0");
-}
-
-function aggregateUsd(response: TokenAggregateResponse | undefined, field: string) {
-  return usd(response?.aggregate?.sum?.[field]);
-}
-
-function addIntegerStrings(left: string, right: string) {
-  return (BigInt(left || "0") + BigInt(right || "0")).toString();
 }
 
 function sumDailyMetrics(rows: Row[]) {
@@ -1692,7 +1635,13 @@ function nullableUsd(value: unknown): number | null {
   return value === null || value === undefined ? null : usd(value);
 }
 
-function buildCoverage(available: { cards: boolean; cashback: boolean; ramps: boolean; debt: boolean }): Coverage[] {
+function buildCoverage(available: {
+  cards: boolean;
+  cashback: boolean;
+  ramps: boolean;
+  debt: boolean;
+  cashHistory: boolean;
+}): Coverage[] {
   return [
     {
       key: "settled-spend",
@@ -1734,6 +1683,15 @@ function buildCoverage(available: { cards: boolean; cashback: boolean; ramps: bo
         : "Raw debt, liquidation and interest events are indexed; exact historical USD and accrued per-user debt remain pending.",
     },
     {
+      key: "cash-state-history",
+      label: "Cash state history",
+      status: available.cashHistory ? "derived" : "pending",
+      source: "Envio / SafeTierChange + SafeModeChange",
+      note: available.cashHistory
+        ? "Complete indexed tier and funding-mode transition history."
+        : "History is intentionally omitted when it exceeds the bounded 5,000-row query limit.",
+    },
+    {
       key: "usersafe-aum",
       label: "UserSafe USD / ETH balances",
       status: "pending",
@@ -1762,22 +1720,34 @@ function tokenRecord(row: Row): TokenRecord {
     oracleHeartbeat: Number(row.oracleHeartbeat),
     price: String(row.price),
     priceUpdatedAt: String(row.priceUpdatedAt),
+    hasSpend: Boolean(row.hasSpend),
+    hasTopUp: Boolean(row.hasTopUp),
+    hasRepayment: Boolean(row.hasRepayment),
+    hasDebt: Boolean(row.hasDebt),
+    hasBalance: Boolean(row.hasBalance),
+    latestSpendPriceUsdE18: String(row.latestSpendPriceUsdE18 ?? "0"),
+    latestSpendPriceStatus: String(row.latestSpendPriceStatus ?? ""),
+    analyticsUpdatedAt: String(row.analyticsUpdatedAt ?? ""),
   };
 }
 
-function activityRow(row: Row, tokenById: Map<string, TokenRecord>, spendById: Map<string, Row>): Activity {
+export function activityRow(row: Row, tokenById: Map<string, TokenRecord>, spendById: Map<string, Row>): Activity {
   const chainId = Number(row.chainId);
   const spend = spendById.get(String(row.id));
+  const metadata = parseMetadata(row.metadata);
   const spendTokens = jsonStringArray(spend?.tokens).map((value) => value.toLowerCase());
   const spendAmounts = jsonStringArray(spend?.amounts);
+  const metadataTokens = stringArray(metadata.tokens).map((value) => value.toLowerCase());
+  const metadataAmounts = stringArray(metadata.amounts);
+  const eventTokens = spendTokens.length ? spendTokens : metadataTokens;
+  const eventAmounts = spendAmounts.length ? spendAmounts : metadataAmounts;
   const indexedTokenAddress = String(row.tokenAddress).toLowerCase();
   const tokenAddress =
-    indexedTokenAddress === zeroAddress && spendTokens.length === 1 ? spendTokens[0] : indexedTokenAddress;
+    indexedTokenAddress === zeroAddress && eventTokens.length === 1 ? eventTokens[0] : indexedTokenAddress;
   const token = tokenById.get(`${chainId}:${tokenAddress}`);
   const indexedUsd = usd(row.amountUsd);
-  const amount = String(row.amount) === "0" && spendAmounts.length === 1 ? spendAmounts[0] : String(row.amount);
+  const amount = String(row.amount) === "0" && eventAmounts.length === 1 ? eventAmounts[0] : String(row.amount);
   const pricedUsd = token ? (indexedTokenAmountUsd(amount, token) ?? 0) : 0;
-  const metadata = parseMetadata(row.metadata);
   return {
     id: String(row.id),
     type: String(row.eventType),
@@ -1791,10 +1761,14 @@ function activityRow(row: Row, tokenById: Map<string, TokenRecord>, spendById: M
     tokenName: token?.name ?? "",
     tokenSymbol: token?.symbol ?? "",
     tokenDecimals: token?.decimals ?? null,
-    tokenCount: Number(metadata.tokenCount ?? spendTokens.length),
+    tokenCount: Number(metadata.tokenCount ?? eventTokens.length),
     timestamp: String(row.timestamp),
     transactionHash: String(row.transactionHash),
   };
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(String) : jsonStringArray(value);
 }
 
 function jsonStringArray(value: unknown): string[] {
@@ -1862,7 +1836,7 @@ function unavailableData(errorMessage: string): ExplorerData {
     rampTokens: [],
     debtTokens: [],
     ...deriveCashSafeData({}),
-    coverage: buildCoverage({ cards: false, cashback: false, ramps: false, debt: false }),
+    coverage: buildCoverage({ cards: false, cashback: false, ramps: false, debt: false, cashHistory: false }),
     updatedAt: new Date().toISOString(),
   };
 }
@@ -1879,14 +1853,39 @@ function chainWhereFor(filters: { chainId?: number }) {
   return filters.chainId ? { chainId: { _eq: filters.chainId } } : {};
 }
 
-function eventWhere(filters: { query?: string; chainId?: number }) {
+export function eventWhere(filters: { query?: string; chainId?: number }) {
   const where: Record<string, unknown> = chainWhereFor(filters);
   const query = filters.query?.trim();
-  if (query) {
-    const pattern = `%${query}%`;
-    where._or = ["transactionHash", "actor", "contractAddress", "tokenAddress", "eventType"].map((field) => ({
-      [field]: { _ilike: pattern },
-    }));
+  if (!query) return where;
+
+  const normalized = query.toLowerCase();
+  if (/^0x[0-9a-f]{64}$/.test(normalized)) {
+    where.transactionHash = { _eq: normalized };
+  } else if (/^0x[0-9a-f]{40}$/.test(normalized)) {
+    where._or = ["actor", "contractAddress", "tokenAddress"].map((field) => ({ [field]: { _eq: normalized } }));
+  } else if (/^(0|[1-9]\d*)$/.test(query)) {
+    where.blockNumber = { _eq: query };
+  } else if (/^[a-z][a-z0-9_]{0,63}$/.test(normalized)) {
+    where.eventType = { _eq: normalized };
+  } else {
+    // A primary-key miss is index-backed and avoids turning arbitrary text
+    // into an unbounded scan of the protocol-event table.
+    where.id = { _eq: "" };
   }
   return where;
+}
+
+export function cashHistoryForDisplay(history: CashHistoryResponse | null) {
+  const tierChanges = history?.SafeTierChange ?? [];
+  const modeChanges = history?.SafeModeChange ?? [];
+  const complete =
+    history !== null &&
+    integer(history.SafeTierChange_aggregate?.aggregate?.count) <= tierChanges.length &&
+    integer(history.SafeModeChange_aggregate?.aggregate?.count) <= modeChanges.length;
+
+  return {
+    complete,
+    tierChanges: complete ? tierChanges : [],
+    modeChanges: complete ? modeChanges : [],
+  };
 }

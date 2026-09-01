@@ -1,13 +1,15 @@
 import { INDEXED_CHAIN_BY_ID } from "@etherfi/contracts";
 import { FileText } from "lucide-react";
+import { Suspense } from "react";
 import { formatUnits, zeroAddress } from "viem";
 
 import { SpendOverviewCharts } from "@/components/analytics-charts";
 import { ChainBadge } from "@/components/chain-badge";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { ActivityGridSkeleton, ChartGridSkeleton } from "@/components/dashboard-skeletons";
 import { TokenIcon } from "@/components/token-icon";
-import { type Activity, loadExplorerData } from "@/lib/envio";
-import { compactUsd, shortAddress } from "@/lib/format";
+import { type Activity, type ExplorerData, loadExplorerData } from "@/lib/envio";
+import { compactUsd, shortAddress, timeAgo } from "@/lib/format";
 
 export const runtime = "edge";
 
@@ -15,7 +17,6 @@ const tokenAmount = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
-const relativeTime = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" });
 
 function activityValue(activity: Activity) {
   const normalizedType = activity.type.toLowerCase();
@@ -55,22 +56,6 @@ function activityLabel(type: string) {
   return type.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-function timeAgo(timestamp: string) {
-  const elapsed = new Date(timestamp).getTime() - Date.now();
-  const absoluteElapsed = Math.abs(elapsed);
-  const units = [
-    ["year", 31_536_000_000],
-    ["month", 2_592_000_000],
-    ["day", 86_400_000],
-    ["hour", 3_600_000],
-    ["minute", 60_000],
-    ["second", 1_000],
-  ] as const;
-  const [unit, duration] = units.find(([, unitDuration]) => absoluteElapsed >= unitDuration) ?? units.at(-1)!;
-
-  return relativeTime.format(Math.round(elapsed / duration), unit);
-}
-
 function activityHref(activity: Activity) {
   const chain = INDEXED_CHAIN_BY_ID.get(activity.chainId);
 
@@ -80,11 +65,12 @@ function activityHref(activity: Activity) {
 function ActivityRow({ activity }: { activity: Activity }) {
   const href = activityHref(activity);
   const hasToken = activity.token !== zeroAddress;
+  const hasValue = activity.amount !== "0" || activity.amountUsd !== 0;
   const iconSymbol =
     activity.tokenSymbol || (hasToken ? shortAddress(activity.token) : activity.amountUsd ? "USD" : "TX");
 
   return (
-    <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-3 bg-card px-4 py-4 transition-colors hover:bg-muted/50 sm:px-5">
+    <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-3 bg-card px-4 py-4 text-sm font-medium transition-colors hover:bg-muted/50 sm:px-5">
       <span className="relative inline-flex size-11">
         {!hasToken && iconSymbol === "TX" ? (
           <span
@@ -105,14 +91,17 @@ function ActivityRow({ activity }: { activity: Activity }) {
         <ChainBadge className="absolute -bottom-0.5 -right-0.5" chainId={activity.chainId} />
       </span>
       <div className="min-w-0">
-        <span className="block truncate text-sm font-semibold text-zinc-100">{activityLabel(activity.type)}</span>
-        <span className="mt-1 block truncate text-xs font-medium text-zinc-400">{activityValue(activity)}</span>
+        <span className="block truncate text-zinc-100">{activityLabel(activity.type)}</span>
+        <time className="mt-1 block truncate text-zinc-400" dateTime={activity.timestamp}>
+          {timeAgo(activity.timestamp)}
+        </time>
       </div>
 
       <div className="min-w-0 text-right">
+        {hasValue ? <span className="block max-w-48 truncate text-zinc-300">{activityValue(activity)}</span> : null}
         {href ? (
           <a
-            className="block max-w-28 truncate font-mono text-xs text-zinc-500 underline decoration-zinc-700 underline-offset-4 transition hover:text-zinc-100 sm:max-w-none"
+            className={`${hasValue ? "mt-1" : ""} block max-w-28 truncate font-mono text-zinc-500 underline decoration-zinc-700 underline-offset-4 transition hover:text-zinc-100 sm:max-w-none`}
             href={href}
             target="_blank"
             rel="noreferrer"
@@ -121,13 +110,10 @@ function ActivityRow({ activity }: { activity: Activity }) {
             {shortAddress(activity.transactionHash)}
           </a>
         ) : (
-          <span className="block max-w-28 truncate font-mono text-xs text-zinc-600">
+          <span className={`${hasValue ? "mt-1" : ""} block max-w-28 truncate font-mono text-zinc-600`}>
             {shortAddress(activity.transactionHash)}
           </span>
         )}
-        <time className="mt-1 block text-xs text-zinc-500" dateTime={activity.timestamp}>
-          {timeAgo(activity.timestamp)}
-        </time>
       </div>
     </div>
   );
@@ -155,21 +141,36 @@ function ActivityPanel({ title, activities }: { title: string; activities: Activ
   );
 }
 
-export default async function HomePage() {
-  const data = await loadExplorerData();
+export default function HomePage() {
+  const dataPromise = loadExplorerData();
+
+  return (
+    <DashboardShell active="overview" dataPromise={dataPromise}>
+      <main className="pb-20">
+        <Suspense fallback={<ChartGridSkeleton cards={2} topLevel />}>
+          <OverviewCharts dataPromise={dataPromise} />
+        </Suspense>
+        <Suspense fallback={<ActivityGridSkeleton />}>
+          <OverviewActivity dataPromise={dataPromise} />
+        </Suspense>
+      </main>
+    </DashboardShell>
+  );
+}
+
+async function OverviewCharts({ dataPromise }: { dataPromise: Promise<ExplorerData> }) {
+  return <SpendOverviewCharts data={await dataPromise} sections={["spend", "cards"]} />;
+}
+
+async function OverviewActivity({ dataPromise }: { dataPromise: Promise<ExplorerData> }) {
+  const data = await dataPromise;
   const spends = data.activity.filter((activity) => activity.type.toLowerCase().startsWith("spend")).slice(0, 10);
   const cashbacks = data.activity.filter((activity) => activity.type.toLowerCase().includes("cashback")).slice(0, 10);
 
   return (
-    <DashboardShell active="overview" data={data}>
-      <main className="pb-20">
-        <SpendOverviewCharts data={data} sections={["spend", "cards"]} />
-
-        <div className="mt-5 grid gap-5 xl:grid-cols-2">
-          <ActivityPanel title="Latest Spends" activities={spends} />
-          <ActivityPanel title="Latest Cashbacks" activities={cashbacks} />
-        </div>
-      </main>
-    </DashboardShell>
+    <div className="mt-5 grid gap-5 xl:grid-cols-2">
+      <ActivityPanel title="Latest Spends" activities={spends} />
+      <ActivityPanel title="Latest Cashbacks" activities={cashbacks} />
+    </div>
   );
 }

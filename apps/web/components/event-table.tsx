@@ -5,29 +5,37 @@ import { ChainBadge } from "@/components/chain-badge";
 import { TokenIcon } from "@/components/token-icon";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Activity } from "@/lib/envio";
-import { compactUsd, shortAddress } from "@/lib/format";
+import { compactUsd, shortAddress, timeAgo } from "@/lib/format";
 
 const tokenAmount = new Intl.NumberFormat("en-US", { maximumFractionDigits: 6 });
+export const eventTableClassName =
+  "min-w-[760px] table-fixed text-sm font-medium text-foreground [&_td]:py-3 [&_td]:text-foreground [&_td:first-child]:pl-5 [&_td:last-child]:pr-5 [&_th]:py-4 [&_th]:text-foreground [&_th:first-child]:pl-5 [&_th:last-child]:pr-5 sm:[&_td:first-child]:pl-6 sm:[&_td:last-child]:pr-6 sm:[&_th:first-child]:pl-6 sm:[&_th:last-child]:pr-6";
+
+export function EventTableColumnGroup() {
+  return (
+    <colgroup>
+      <col className="w-[34%]" />
+      <col className="w-[15%]" />
+      <col className="w-[15%]" />
+      <col className="w-[19%]" />
+      <col className="w-[17%]" />
+    </colgroup>
+  );
+}
 
 /** A compact, explorer-linked ledger for indexed protocol events. */
 export function EventTable({ activity }: { activity: Activity[] }) {
   return (
     <div className="overflow-x-auto rounded-2xl border border-white/[.075] bg-[#181818]">
-      <Table
-        aria-label="Latest protocol events"
-        className="min-w-[840px] [&_td]:py-3 [&_td:first-child]:pl-5 [&_td:last-child]:pr-5 [&_th:first-child]:pl-5 [&_th:last-child]:pr-5 sm:[&_td:first-child]:pl-6 sm:[&_td:last-child]:pr-6 sm:[&_th:first-child]:pl-6 sm:[&_th:last-child]:pr-6"
-      >
+      <Table aria-label="Latest protocol events" className={eventTableClassName}>
+        <EventTableColumnGroup />
         <TableHeader>
           <TableRow className="border-white/[.07] bg-transparent hover:bg-transparent">
             <TableHead>Event</TableHead>
-            <TableHead>Network</TableHead>
             <TableHead>Account</TableHead>
             <TableHead>Contract</TableHead>
             <TableHead>Value</TableHead>
-            <TableHead>Time</TableHead>
-            <TableHead className="w-12">
-              <span className="sr-only">Transaction</span>
-            </TableHead>
+            <TableHead>Transaction</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -62,41 +70,32 @@ export function EventTable({ activity }: { activity: Activity[] }) {
                         <ChainBadge className="absolute -bottom-0.5 -right-0.5" chainId={item.chainId} />
                       </span>
                       <span className="min-w-0">
-                        <span className="block truncate font-semibold capitalize text-foreground">
+                        <span className="block truncate capitalize text-foreground">
                           {item.type.replaceAll("_", " ")}
                         </span>
-                        <span className="mt-1 block truncate text-xs font-medium text-muted-foreground">
-                          {eventTokenLabel(item)}
-                        </span>
+                        <time className="mt-1 block truncate text-muted-foreground" dateTime={item.timestamp}>
+                          {timeAgo(item.timestamp)}
+                        </time>
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <span className="text-xs text-zinc-500">{chain?.name ?? item.chainId}</span>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-zinc-500">{shortAddress(item.actor)}</TableCell>
-                  <TableCell className="font-mono text-xs text-zinc-600">
-                    {shortAddress(item.contractAddress)}
-                  </TableCell>
-                  <TableCell className="font-medium text-zinc-200">{eventValue(item)}</TableCell>
-                  <TableCell className="text-xs text-zinc-600">
-                    <time dateTime={item.timestamp}>
-                      {new Date(item.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
-                    </time>
-                  </TableCell>
+                  <TableCell>{shortAddress(item.actor)}</TableCell>
+                  <TableCell>{shortAddress(item.contractAddress)}</TableCell>
+                  <TableCell>{eventValue(item)}</TableCell>
                   <TableCell>
                     {transactionUrl ? (
                       <a
                         aria-label={`Open transaction ${shortAddress(item.transactionHash)} in ${chain?.name ?? "the block explorer"}`}
-                        className="text-zinc-600 hover:text-zinc-200"
+                        className="inline-flex items-center gap-1.5 underline decoration-foreground/40 underline-offset-4 transition hover:opacity-70"
                         href={transactionUrl}
                         rel="noreferrer"
                         target="_blank"
                       >
-                        <ExternalLink className="size-4" />
+                        {shortAddress(item.transactionHash)}
+                        <ExternalLink aria-hidden="true" className="size-3" />
                       </a>
                     ) : (
-                      "—"
+                      shortAddress(item.transactionHash)
                     )}
                   </TableCell>
                 </TableRow>
@@ -104,7 +103,7 @@ export function EventTable({ activity }: { activity: Activity[] }) {
             })
           ) : (
             <TableRow>
-              <TableCell className="h-36 text-center text-sm text-zinc-600" colSpan={7}>
+              <TableCell className="h-36 text-center text-sm" colSpan={5}>
                 No indexed events match these filters.
               </TableCell>
             </TableRow>
@@ -147,7 +146,14 @@ function eventValue(item: Activity) {
     try {
       const amount = tokenAmount.format(Number(formatUnits(BigInt(item.amount), item.tokenDecimals)));
       const label = `${amount} ${item.tokenSymbol || tokenLabel(item.token)}`;
-      return item.amountUsd ? `${label} · ${compactUsd(item.amountUsd)}` : label;
+      return item.amountUsd ? (
+        <span>
+          <span className="block">{label}</span>
+          <span className="mt-1 block text-muted-foreground">{compactUsd(item.amountUsd)}</span>
+        </span>
+      ) : (
+        label
+      );
     } catch {
       /* show the indexed fallback below */
     }
@@ -165,11 +171,4 @@ function eventValue(item: Activity) {
 
 function tokenLabel(token: string) {
   return token.startsWith("0x") ? shortAddress(token) : token || "—";
-}
-
-function eventTokenLabel(item: Activity) {
-  if (item.tokenName && item.tokenSymbol) return `${item.tokenName} (${item.tokenSymbol})`;
-  if (item.tokenName) return item.tokenName;
-  if (item.tokenSymbol) return item.tokenSymbol;
-  return item.token === zeroAddress ? "Protocol event" : shortAddress(item.token);
 }

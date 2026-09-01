@@ -84,6 +84,61 @@ type Token {
   priceUpdatedAt: BigInt!
   discoveredAt: Timestamp!
   discoveredBlock: BigInt!
+  # Compact materialized key state retained for existing consumers;
+  # TokenAnalyticsMetric stores the cumulative totals.
+  hasSpend: Boolean!
+  hasTopUp: Boolean!
+  hasRepayment: Boolean!
+  hasDebt: Boolean!
+  hasBalance: Boolean!
+  latestSpendPriceUsdE18: BigInt!
+  latestSpendPriceStatus: String!
+  latestSpendAt: Timestamp!
+  latestSpendBlockNumber: BigInt!
+  latestSpendLogIndex: Int!
+  latestSpendValuationId: String!
+  analyticsUpdatedAt: Timestamp!
+}
+
+# Deterministic, replay-safe cumulative token analytics keyed by
+# `${chainId}:${lowercase(tokenAddress)}`. Detailed event ledgers remain the
+# canonical history; this row makes summary reads constant-size.
+type TokenAnalyticsMetric {
+  id: ID!
+  chainId: Int! @index
+  tokenAddress: String! @index
+  spendCount: BigInt!
+  spendAmount: BigInt!
+  spendUsd: BigInt!
+  topUpCount: BigInt!
+  topUpAmount: BigInt!
+  withdrawalCount: BigInt!
+  safeAccountCount: BigInt!
+  safeBalance: BigInt!
+  safeInflow: BigInt!
+  safeOutflow: BigInt!
+  destinationCount: BigInt!
+  destinationBalance: BigInt!
+  destinationInflow: BigInt!
+  destinationOutflow: BigInt!
+  suppliedCount: BigInt!
+  suppliedAmount: BigInt!
+  borrowedCount: BigInt!
+  borrowedAmount: BigInt!
+  borrowedUsd: BigInt!
+  repaidCount: BigInt!
+  repaidAmount: BigInt!
+  repaidUsd: BigInt!
+  latestSpendPriceUsdE18: BigInt!
+  latestSpendPriceStatus: String!
+  latestSpendAt: Timestamp!
+  latestSpendBlockNumber: BigInt!
+  latestSpendLogIndex: Int!
+  latestSpendValuationId: String!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+  updatedTransactionHash: String!
+  updatedLogIndex: Int!
 }
 
 type TopUp {
@@ -106,7 +161,11 @@ type TopUp {
 
 # Ranking by destination top-up frequency. The destination event does not
 # expose a trustworthy cross-token USD value or necessarily the source wallet.
-type TopUpRecipientMetric {
+# Rankings are exposed both across all chains and within one chain.
+type TopUpRecipientMetric
+  @index(fields: [["topUpCount", "DESC"], ["recipient", "ASC"]])
+  @index(fields: [["chainId", "ASC"], ["topUpCount", "DESC"], ["recipient", "ASC"]])
+{
   id: ID!
   chainId: Int! @index
   recipient: String! @index
@@ -135,7 +194,20 @@ type Spend {
 }
 
 # One deterministic USD valuation observation for each token leg in Spend.
-type SpendTokenValuation {
+# The token-analytics query needs the newest valuation for every chain/token
+# pair. Keep the same deterministic event tie-breakers as the event feed.
+type SpendTokenValuation
+  @index(
+    fields: [
+      ["chainId", "ASC"]
+      ["tokenAddress", "ASC"]
+      ["timestamp", "DESC"]
+      ["blockNumber", "DESC"]
+      ["logIndex", "DESC"]
+      ["id", "ASC"]
+    ]
+  )
+{
   id: ID!
   chainId: Int! @index
   spendId: String! @index
@@ -186,7 +258,11 @@ type Cashback {
 
 # Cashback actually received: paid Cashback events plus later
 # PendingCashbackCleared settlements, without counting pending issuance twice.
-type CashbackReceiverMetric {
+# Rankings are exposed both across all chains and within one chain.
+type CashbackReceiverMetric
+  @index(fields: [["amountUsd", "DESC"], ["recipient", "ASC"]])
+  @index(fields: [["chainId", "ASC"], ["amountUsd", "DESC"], ["recipient", "ASC"]])
+{
   id: ID!
   chainId: Int! @index
   recipient: String! @index
@@ -237,7 +313,12 @@ type SafeTierState {
   updatedAt: Timestamp!
   updatedBlock: BigInt!
 }
-type SafeTierChange {
+# The UI reads this per-chain history newest first.
+type SafeTierChange
+  @index(
+    fields: [["chainId", "ASC"], ["timestamp", "DESC"], ["blockNumber", "DESC"], ["logIndex", "DESC"], ["id", "ASC"]]
+  )
+{
   id: ID!
   chainId: Int!
   safe: String! @index
@@ -289,7 +370,12 @@ type SafeModeState {
   updatedAt: Timestamp!
   updatedBlock: BigInt!
 }
-type SafeModeChange {
+# The UI reads this per-chain history newest first.
+type SafeModeChange
+  @index(
+    fields: [["chainId", "ASC"], ["timestamp", "DESC"], ["blockNumber", "DESC"], ["logIndex", "DESC"], ["id", "ASC"]]
+  )
+{
   id: ID!
   chainId: Int!
   safe: String! @index
@@ -611,18 +697,49 @@ type HourlySpendMetric {
   spendUsd: BigInt!
 }
 
-type ProtocolEvent {
+# The activity feed has two access paths: global and one-chain. Its canonical
+# order is timestamp DESC, chainId ASC, blockNumber DESC, logIndex DESC, id ASC.
+type ProtocolEvent
+  @index(
+    fields: [["timestamp", "DESC"], ["chainId", "ASC"], ["blockNumber", "DESC"], ["logIndex", "DESC"], ["id", "ASC"]]
+  )
+  @index(
+    fields: [["chainId", "ASC"], ["timestamp", "DESC"], ["blockNumber", "DESC"], ["logIndex", "DESC"], ["id", "ASC"]]
+  )
+  @index(
+    fields: [
+      ["eventType", "ASC"]
+      ["timestamp", "DESC"]
+      ["chainId", "ASC"]
+      ["blockNumber", "DESC"]
+      ["logIndex", "DESC"]
+      ["id", "ASC"]
+    ]
+  )
+  @index(
+    fields: [
+      ["chainId", "ASC"]
+      ["eventType", "ASC"]
+      ["timestamp", "DESC"]
+      ["blockNumber", "DESC"]
+      ["logIndex", "DESC"]
+      ["id", "ASC"]
+    ]
+  )
+{
   id: ID!
   chainId: Int!
-  contractAddress: String!
+  # Exact explorer filters use compact single-column indexes. The address
+  # predicates are combined with OR, so independent btrees enable BitmapOr.
+  contractAddress: String! @index
   eventType: String!
-  actor: String!
-  tokenAddress: String!
+  actor: String! @index
+  tokenAddress: String! @index
   amount: BigInt!
   amountUsd: BigInt!
-  blockNumber: BigInt!
+  blockNumber: BigInt! @index
   timestamp: Timestamp!
-  transactionHash: String!
+  transactionHash: String! @index
   logIndex: Int!
   metadata: String!
 }

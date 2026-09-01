@@ -22,6 +22,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { ExplorerData, TokenAnalyticsRow } from "@/lib/envio";
 
 const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 });
+const wholeNumber = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const chartRangeEasing = "cubic-bezier(0.22, 1, 0.36, 1)";
 const chartRangeMotionEasing = [0.22, 1, 0.36, 1] as const;
 const colors = [
@@ -250,14 +251,18 @@ export function SpendOverviewCharts({
                   {
                     color: "var(--chart-1)",
                     label: "Cumulative cards",
-                    value: compact.format(Number(point.cumulativeCards ?? 0)),
+                    value: wholeNumber.format(Number(point.cumulativeCards ?? 0)),
                   },
                   {
                     color: "var(--chart-2)",
                     label: "Daily Active cards",
-                    value: compact.format(Number(point.activeCards ?? 0)),
+                    value: wholeNumber.format(Number(point.activeCards ?? 0)),
                   },
-                  { color: "var(--chart-4)", label: "New cards", value: compact.format(Number(point.newCards ?? 0)) },
+                  {
+                    color: "var(--chart-4)",
+                    label: "New cards",
+                    value: wholeNumber.format(Number(point.newCards ?? 0)),
+                  },
                 ]}
               />
             </AreaChart>
@@ -334,10 +339,12 @@ export function AnalyticsCharts({
   data,
   flushTop = false,
   sections = ["profiles", "balances", "active-hours"],
+  showProfileHeader = true,
 }: {
   data: ExplorerData;
   flushTop?: boolean;
   sections?: AnalyticsSectionName[];
+  showProfileHeader?: boolean;
 }) {
   const hourly = data.hourly.map((row) => ({
     ...row,
@@ -361,8 +368,8 @@ export function AnalyticsCharts({
         <AnalyticsSection
           flushTop={flushTop}
           id="profiles"
-          subtitle="Seven USD brackets derived from indexed settled Spend events"
-          title="Transaction profiles"
+          subtitle={showProfileHeader ? "Seven USD brackets derived from indexed settled Spend events" : undefined}
+          title={showProfileHeader ? "Transaction profiles" : undefined}
         >
           <div className="grid gap-5 lg:grid-cols-2">
             <ProfilePie data={countPie} label="Transaction share" totalLabel={compact.format(data.spendCount)} />
@@ -490,12 +497,14 @@ function AnalyticsSection({
   subtitle?: string;
   title?: string;
 }) {
-  const isTopLevel = id === "spend-analytics" || flushTop;
+  const sectionClass =
+    id === "spend-analytics"
+      ? "scroll-mt-24 py-8 sm:py-10"
+      : flushTop
+        ? "scroll-mt-24 py-2"
+        : "mt-16 scroll-mt-24 border-t border-border pt-16";
   return (
-    <section
-      className={isTopLevel ? "scroll-mt-24 py-8 sm:py-10" : "mt-16 scroll-mt-24 border-t border-border pt-16"}
-      id={id}
-    >
+    <section className={sectionClass} id={id}>
       {title ? (
         <>
           <h2 className="text-2xl font-normal tracking-[-.03em] text-foreground">{title}</h2>

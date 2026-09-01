@@ -83,9 +83,32 @@ export function applyBalanceDelta(current: bigint, inflow: bigint, outflow: bigi
   return current + inflow - outflow;
 }
 
+export function balanceChange(current: bigint, next: bigint): bigint {
+  return next - current;
+}
+
+export function uniqueLowercase(values: readonly string[]): string[] {
+  return [...new Set(values.map((value) => value.toLowerCase()))];
+}
+
 export function impliedUsdPriceE18(amount: bigint, amountUsd: bigint, tokenDecimals: number, usdDecimals = 6): bigint {
   if (amount <= 0n || amountUsd < 0n) return 0n;
   const tokenScale = 10n ** BigInt(tokenDecimals);
   const usdScale = 10n ** BigInt(usdDecimals);
   return (amountUsd * tokenScale * 10n ** 18n) / (amount * usdScale);
+}
+
+export function isLaterTokenSpend(
+  candidate: { timestamp: number | bigint; blockNumber: number | bigint; logIndex: number; id: string },
+  current: { timestamp: number | bigint; blockNumber: number | bigint; logIndex: number; id: string },
+): boolean {
+  const candidateTimestamp = BigInt(candidate.timestamp);
+  const currentTimestamp = BigInt(current.timestamp);
+  if (candidateTimestamp !== currentTimestamp) return candidateTimestamp > currentTimestamp;
+  const candidateBlock = BigInt(candidate.blockNumber);
+  const currentBlock = BigInt(current.blockNumber);
+  if (candidateBlock !== currentBlock) return candidateBlock > currentBlock;
+  if (candidate.logIndex !== current.logIndex) return candidate.logIndex > current.logIndex;
+  // The feed's final tie-breaker is id ASC, so the lexically smaller id wins.
+  return candidate.id < current.id;
 }

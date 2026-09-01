@@ -4,15 +4,18 @@ import {
   accountId,
   applyBalanceDelta,
   asBigInt,
+  balanceChange,
   bytes32Label,
   dailyMetricId,
   dayFromUnixSeconds,
   eventId,
   hourFromUnixSeconds,
   impliedUsdPriceE18,
+  isLaterTokenSpend,
   rampAmountUsd,
   rampKindFromLabel,
   spendBucket,
+  uniqueLowercase,
   ZERO_ADDRESS,
 } from "../logic.js";
 import { tokenFromRegistry } from "../token-enrichment.js";
@@ -48,6 +51,52 @@ const ts = (event: BlockEvent) => new Date(Number(event.block.timestamp) * 1000)
 const lower = (value: string) => value.toLowerCase();
 const jsonBigInts = (values: readonly (bigint | number | string)[]) => JSON.stringify(values.map(String));
 
+const tokenMetricDefaults = {
+  spendCount: 0n,
+  spendAmount: 0n,
+  spendUsd: 0n,
+  topUpCount: 0n,
+  topUpAmount: 0n,
+  withdrawalCount: 0n,
+  safeAccountCount: 0n,
+  safeBalance: 0n,
+  safeInflow: 0n,
+  safeOutflow: 0n,
+  destinationCount: 0n,
+  destinationBalance: 0n,
+  destinationInflow: 0n,
+  destinationOutflow: 0n,
+  suppliedCount: 0n,
+  suppliedAmount: 0n,
+  borrowedCount: 0n,
+  borrowedAmount: 0n,
+  borrowedUsd: 0n,
+  repaidCount: 0n,
+  repaidAmount: 0n,
+  repaidUsd: 0n,
+  latestSpendPriceUsdE18: 0n,
+  latestSpendPriceStatus: "unavailable",
+  latestSpendAt: new Date(0),
+  latestSpendBlockNumber: 0n,
+  latestSpendLogIndex: 0,
+  latestSpendValuationId: "",
+};
+
+const tokenAnalyticsDefaults = {
+  hasSpend: false,
+  hasTopUp: false,
+  hasRepayment: false,
+  hasDebt: false,
+  hasBalance: false,
+  latestSpendPriceUsdE18: 0n,
+  latestSpendPriceStatus: "unavailable",
+  latestSpendAt: new Date(0),
+  latestSpendBlockNumber: 0n,
+  latestSpendLogIndex: 0,
+  latestSpendValuationId: "",
+  analyticsUpdatedAt: new Date(0),
+};
+
 async function recordToken(context: any, event: BlockEvent, tokenAddress: string) {
   const address = lower(tokenAddress);
   const id = `${event.chainId}:${address}`;
@@ -58,7 +107,7 @@ async function recordToken(context: any, event: BlockEvent, tokenAddress: string
     registered.metadataStatus === "static_verified"
       ? registered
       : await context.effect(erc20MetadataEffect, { address });
-  context.Token.set({
+  const token = {
     id,
     chainId: event.chainId,
     address,
@@ -70,13 +119,78 @@ async function recordToken(context: any, event: BlockEvent, tokenAddress: string
     metadataStatus: metadata.metadataStatus,
     discoveredAt: ts(event),
     discoveredBlock: asBigInt(event.block.number),
-  });
-  return metadata;
+    ...tokenAnalyticsDefaults,
+  };
+  context.Token.set(token);
+  return token;
 }
 
-async function recordTokens(context: any, event: BlockEvent, tokenAddresses: readonly string[]) {
-  const tokens = [...new Set(tokenAddresses.map(lower))];
-  await Promise.all(tokens.map((token) => recordToken(context, event, token)));
+async function markTokenAnalytics(
+  context: any,
+  event: BlockEvent,
+  tokenAddress: string,
+  update: Record<string, unknown>,
+) {
+  const token = await recordToken(context, event, tokenAddress);
+  context.Token.set({ ...token, ...update, analyticsUpdatedAt: ts(event) });
+}
+
+type TokenAnalyticsDelta = Partial<typeof tokenMetricDefaults>;
+
+async function updateTokenAnalytics(context: any, event: BlockEvent, tokenAddress: string, delta: TokenAnalyticsDelta) {
+  const address = lower(tokenAddress);
+  await recordToken(context, event, address);
+  const id = `${event.chainId}:${address}`;
+  const current = (await context.TokenAnalyticsMetric.get(id)) ?? {
+    id,
+    chainId: event.chainId,
+    tokenAddress: address,
+    ...tokenMetricDefaults,
+    updatedAt: new Date(0),
+    updatedBlock: 0n,
+    updatedTransactionHash: "",
+    updatedLogIndex: 0,
+  };
+  const latest = delta.latestSpendValuationId
+    ? {
+        latestSpendPriceUsdE18: delta.latestSpendPriceUsdE18 ?? current.latestSpendPriceUsdE18,
+        latestSpendPriceStatus: delta.latestSpendPriceStatus ?? current.latestSpendPriceStatus,
+        latestSpendAt: delta.latestSpendAt ?? current.latestSpendAt,
+        latestSpendBlockNumber: delta.latestSpendBlockNumber ?? current.latestSpendBlockNumber,
+        latestSpendLogIndex: delta.latestSpendLogIndex ?? current.latestSpendLogIndex,
+        latestSpendValuationId: delta.latestSpendValuationId,
+      }
+    : {};
+  context.TokenAnalyticsMetric.set({
+    ...current,
+    spendCount: current.spendCount + (delta.spendCount ?? 0n),
+    spendAmount: current.spendAmount + (delta.spendAmount ?? 0n),
+    spendUsd: current.spendUsd + (delta.spendUsd ?? 0n),
+    topUpCount: current.topUpCount + (delta.topUpCount ?? 0n),
+    topUpAmount: current.topUpAmount + (delta.topUpAmount ?? 0n),
+    withdrawalCount: current.withdrawalCount + (delta.withdrawalCount ?? 0n),
+    safeAccountCount: current.safeAccountCount + (delta.safeAccountCount ?? 0n),
+    safeBalance: current.safeBalance + (delta.safeBalance ?? 0n),
+    safeInflow: current.safeInflow + (delta.safeInflow ?? 0n),
+    safeOutflow: current.safeOutflow + (delta.safeOutflow ?? 0n),
+    destinationCount: current.destinationCount + (delta.destinationCount ?? 0n),
+    destinationBalance: current.destinationBalance + (delta.destinationBalance ?? 0n),
+    destinationInflow: current.destinationInflow + (delta.destinationInflow ?? 0n),
+    destinationOutflow: current.destinationOutflow + (delta.destinationOutflow ?? 0n),
+    suppliedCount: current.suppliedCount + (delta.suppliedCount ?? 0n),
+    suppliedAmount: current.suppliedAmount + (delta.suppliedAmount ?? 0n),
+    borrowedCount: current.borrowedCount + (delta.borrowedCount ?? 0n),
+    borrowedAmount: current.borrowedAmount + (delta.borrowedAmount ?? 0n),
+    borrowedUsd: current.borrowedUsd + (delta.borrowedUsd ?? 0n),
+    repaidCount: current.repaidCount + (delta.repaidCount ?? 0n),
+    repaidAmount: current.repaidAmount + (delta.repaidAmount ?? 0n),
+    repaidUsd: current.repaidUsd + (delta.repaidUsd ?? 0n),
+    ...latest,
+    updatedAt: ts(event),
+    updatedBlock: asBigInt(event.block.number),
+    updatedTransactionHash: lower(event.transaction.hash),
+    updatedLogIndex: event.logIndex,
+  });
 }
 
 async function recordSpendTokenValuations(
@@ -96,8 +210,12 @@ async function recordSpendTokenValuations(
     const tokenAddress = lower(rawAddress);
     const token = await recordToken(context, event, tokenAddress);
     const verifiedDecimals = token.decimalsVerified;
+    const id = `${spendId}:${tokenIndex}`;
+    const priceUsdE18 = verifiedDecimals ? impliedUsdPriceE18(amount, amountUsd, token.decimals) : 0n;
+    const priceStatus =
+      amount === 0n ? "zero_amount" : verifiedDecimals ? "spend_implied" : "unavailable_unverified_decimals";
     context.SpendTokenValuation.set({
-      id: `${spendId}:${tokenIndex}`,
+      id,
       chainId: event.chainId,
       spendId,
       tokenAddress,
@@ -106,13 +224,60 @@ async function recordSpendTokenValuations(
       amountUsd,
       tokenDecimals: token.decimals,
       usdDecimals: 6,
-      priceUsdE18: verifiedDecimals ? impliedUsdPriceE18(amount, amountUsd, token.decimals) : 0n,
-      priceStatus:
-        amount === 0n ? "zero_amount" : verifiedDecimals ? "spend_implied" : "unavailable_unverified_decimals",
+      priceUsdE18,
+      priceStatus,
       blockNumber: asBigInt(event.block.number),
       timestamp: ts(event),
       transactionHash: lower(event.transaction.hash),
       logIndex: event.logIndex,
+    });
+    const candidate = {
+      timestamp: event.block.timestamp,
+      blockNumber: event.block.number,
+      logIndex: event.logIndex,
+      id,
+    };
+    const metric = await context.TokenAnalyticsMetric.get(`${event.chainId}:${tokenAddress}`);
+    const metricCurrent = {
+      timestamp: metric ? metric.latestSpendAt.getTime() / 1000 : 0,
+      blockNumber: metric?.latestSpendBlockNumber ?? 0n,
+      logIndex: metric?.latestSpendLogIndex ?? 0,
+      id: metric?.latestSpendValuationId ?? "",
+    };
+    await updateTokenAnalytics(context, event, tokenAddress, {
+      spendCount: 1n,
+      spendAmount: amount,
+      spendUsd: amountUsd,
+      ...(isLaterTokenSpend(candidate, metricCurrent)
+        ? {
+            latestSpendPriceUsdE18: priceUsdE18,
+            latestSpendPriceStatus: priceStatus,
+            latestSpendAt: ts(event),
+            latestSpendBlockNumber: asBigInt(event.block.number),
+            latestSpendLogIndex: event.logIndex,
+            latestSpendValuationId: id,
+          }
+        : {}),
+    });
+    const tokenCurrent = {
+      timestamp: token.latestSpendAt.getTime() / 1000,
+      blockNumber: token.latestSpendBlockNumber,
+      logIndex: token.latestSpendLogIndex,
+      id: token.latestSpendValuationId,
+    };
+    await markTokenAnalytics(context, event, tokenAddress, {
+      hasSpend: true,
+      hasBalance: true,
+      ...(isLaterTokenSpend(candidate, tokenCurrent)
+        ? {
+            latestSpendPriceUsdE18: priceUsdE18,
+            latestSpendPriceStatus: priceStatus,
+            latestSpendAt: ts(event),
+            latestSpendBlockNumber: asBigInt(event.block.number),
+            latestSpendLogIndex: event.logIndex,
+            latestSpendValuationId: id,
+          }
+        : {}),
     });
   }
 }
@@ -260,11 +425,13 @@ async function bumpDestinationBalance(
   token: string,
   inflow: bigint,
   outflow: bigint,
+  analyticsDelta: TokenAnalyticsDelta = {},
 ) {
   const normalizedSafe = lower(safe);
   const normalizedToken = lower(token);
   const id = `${event.chainId}:${normalizedSafe}:${normalizedToken}`;
-  const current = (await context.AccountTokenBalance.get(id)) ?? {
+  const existing = await context.AccountTokenBalance.get(id);
+  const current = existing ?? {
     id,
     chainId: event.chainId,
     accountAddress: normalizedSafe,
@@ -277,14 +444,22 @@ async function bumpDestinationBalance(
     updatedBlock: asBigInt(event.block.number),
     transactionHash: lower(event.transaction.hash),
   };
+  const nextAmount = applyBalanceDelta(current.amount, inflow, outflow);
   context.AccountTokenBalance.set({
     ...current,
-    amount: applyBalanceDelta(current.amount, inflow, outflow),
+    amount: nextAmount,
     inflow: current.inflow + inflow,
     outflow: current.outflow + outflow,
     updatedAt: ts(event),
     updatedBlock: asBigInt(event.block.number),
     transactionHash: lower(event.transaction.hash),
+  });
+  await updateTokenAnalytics(context, event, normalizedToken, {
+    destinationCount: existing ? 0n : 1n,
+    destinationBalance: balanceChange(current.amount, nextAmount),
+    destinationInflow: inflow,
+    destinationOutflow: outflow,
+    ...analyticsDelta,
   });
 }
 
@@ -450,11 +625,14 @@ indexer.onEvent({ contract: "TopUpDest", event: "TopUp" }, async ({ event, conte
       }),
     }),
   );
+  await bumpDestinationBalance(context, base, event.params.user, event.params.token, event.params.amount, 0n, {
+    topUpCount: 1n,
+    topUpAmount: event.params.amount,
+  });
+  await markTokenAnalytics(context, base, event.params.token, { hasTopUp: true, hasBalance: true });
   await Promise.all([
-    bumpDestinationBalance(context, base, event.params.user, event.params.token, event.params.amount, 0n),
     bumpDaily(context, base, { topUpCount: 1n }),
     bumpTopUpRecipient(context, base, event.params.user),
-    recordToken(context, base, event.params.token),
   ]);
 });
 
@@ -485,11 +663,14 @@ indexer.onEvent({ contract: "LegacyTopUpDest", event: "TopUp" }, async ({ event,
       metadata: JSON.stringify({ txId: event.params.txId, sourceChainId: String(event.params.chainId) }),
     }),
   );
+  await bumpDestinationBalance(context, base, event.params.userSafe, event.params.token, event.params.amount, 0n, {
+    topUpCount: 1n,
+    topUpAmount: event.params.amount,
+  });
+  await markTokenAnalytics(context, base, event.params.token, { hasTopUp: true, hasBalance: true });
   await Promise.all([
-    bumpDestinationBalance(context, base, event.params.userSafe, event.params.token, event.params.amount, 0n),
     bumpDaily(context, base, { topUpCount: 1n }),
     bumpTopUpRecipient(context, base, event.params.userSafe),
-    recordToken(context, base, event.params.token),
   ]);
 });
 
@@ -537,11 +718,9 @@ indexer.onEvent({ contract: "LegacyTopUpDest", event: "TopUpBatch" }, async ({ e
         metadata: JSON.stringify({ txId, sourceChainId: String(sourceChainId), batchIndex: index }),
       }),
     );
-    await Promise.all([
-      bumpDestinationBalance(context, base, user, token, amount, 0n),
-      bumpTopUpRecipient(context, base, user),
-      recordToken(context, base, token),
-    ]);
+    await bumpDestinationBalance(context, base, user, token, amount, 0n, { topUpCount: 1n, topUpAmount: amount });
+    await markTokenAnalytics(context, base, token, { hasTopUp: true, hasBalance: true });
+    await bumpTopUpRecipient(context, base, user);
   }
   await bumpDaily(context, base, { topUpCount: validCount });
 });
@@ -584,19 +763,18 @@ async function handleCurrentSpend(event: any, context: any) {
       }),
     }),
   );
-  await Promise.all([
-    debitSpendBalances(context, base, event.params.safe, event.params.tokens, event.params.amounts),
-    recordSpendMetrics(context, base, event.params.safe, event.params.totalUsdAmt, Number(event.params.mode)),
-    recordTokens(context, base, event.params.tokens),
-    recordSpendTokenValuations(
-      context,
-      base,
-      spendId,
-      event.params.tokens,
-      event.params.amounts,
-      event.params.amountInUsd,
-    ),
-  ]);
+  // Balance and spend-leg updates can target the same metric row. Sequence
+  // them so Envio get/set writes cannot overwrite a sibling delta.
+  await debitSpendBalances(context, base, event.params.safe, event.params.tokens, event.params.amounts);
+  await recordSpendTokenValuations(
+    context,
+    base,
+    spendId,
+    event.params.tokens,
+    event.params.amounts,
+    event.params.amountInUsd,
+  );
+  await recordSpendMetrics(context, base, event.params.safe, event.params.totalUsdAmt, Number(event.params.mode));
 }
 
 indexer.onEvent({ contract: "CashEventEmitter", event: "Spend" }, async ({ event, context }) => {
@@ -628,10 +806,13 @@ async function handleRepayment(event: any, context: any, repaymentType: string) 
       amountUsd: event.params.debtAmountInUsd,
     }),
   );
-  await Promise.all([
-    recordToken(context, base, token),
-    bumpDaily(context, base, { repaidUsd: event.params.debtAmountInUsd }),
-  ]);
+  await markTokenAnalytics(context, base, token, { hasRepayment: true });
+  await updateTokenAnalytics(context, base, token, {
+    repaidCount: 1n,
+    repaidAmount: event.params.debtAmount,
+    repaidUsd: event.params.debtAmountInUsd,
+  });
+  await bumpDaily(context, base, { repaidUsd: event.params.debtAmountInUsd });
 }
 
 indexer.onEvent({ contract: "CashEventEmitter", event: "RepayDebtManager" }, async ({ event, context }) => {
@@ -671,7 +852,8 @@ indexer.onEvent({ contract: "CashEventEmitter", event: "RepayLendTokenAmount" },
       metadata: JSON.stringify({ usdStatus: "unpriced_event_only" }),
     }),
   );
-  await recordToken(context, base, token);
+  await markTokenAnalytics(context, base, token, { hasDebt: true });
+  await updateTokenAnalytics(context, base, token, { repaidCount: 1n, repaidAmount: event.params.debtAmount });
 });
 
 indexer.onEvent({ contract: "CashEventEmitter", event: "LendBorrowed" }, async ({ event, context }) => {
@@ -703,10 +885,13 @@ indexer.onEvent({ contract: "CashEventEmitter", event: "LendBorrowed" }, async (
       amountUsd: event.params.amountInUsd,
     }),
   );
-  await Promise.all([
-    recordToken(context, base, token),
-    bumpDaily(context, base, { borrowedUsd: event.params.amountInUsd }),
-  ]);
+  await markTokenAnalytics(context, base, token, { hasDebt: true });
+  await updateTokenAnalytics(context, base, token, {
+    borrowedCount: 1n,
+    borrowedAmount: event.params.amount,
+    borrowedUsd: event.params.amountInUsd,
+  });
+  await bumpDaily(context, base, { borrowedUsd: event.params.amountInUsd });
 });
 
 indexer.onEvent({ contract: "CashEventEmitter", event: "Cashback" }, async ({ event, context }) => {
@@ -815,7 +1000,10 @@ async function handleWithdrawal(event: any, context: any, status: string) {
       }),
     }),
   );
-  await recordTokens(context, base, tokens);
+  for (const token of uniqueLowercase(tokens)) {
+    await recordToken(context, base, token);
+    if (status === "requested") await updateTokenAnalytics(context, base, token, { withdrawalCount: 1n });
+  }
   const stateId = accountId(event.chainId, safe);
   const previous = await context.PendingWithdrawalState.get(stateId);
   context.PendingWithdrawalState.set({
@@ -1316,19 +1504,16 @@ indexer.onEvent({ contract: "ScrollCashEmitter", event: "LegacySpend" }, async (
       metadata: JSON.stringify({ mode: Number(event.params.mode), legacy: true }),
     }),
   );
-  await Promise.all([
-    bumpDestinationBalance(context, base, event.params.userSafe, event.params.token, 0n, event.params.amount),
-    recordSpendMetrics(context, base, event.params.userSafe, event.params.amountInUsd, Number(event.params.mode)),
-    recordToken(context, base, event.params.token),
-    recordSpendTokenValuations(
-      context,
-      base,
-      spendId,
-      [event.params.token],
-      [event.params.amount],
-      [event.params.amountInUsd],
-    ),
-  ]);
+  await bumpDestinationBalance(context, base, event.params.userSafe, event.params.token, 0n, event.params.amount);
+  await recordSpendTokenValuations(
+    context,
+    base,
+    spendId,
+    [event.params.token],
+    [event.params.amount],
+    [event.params.amountInUsd],
+  );
+  await recordSpendMetrics(context, base, event.params.userSafe, event.params.amountInUsd, Number(event.params.mode));
 });
 
 async function recordDebtEvent(
@@ -1364,7 +1549,8 @@ async function recordDebtEvent(
   });
   if (eventType === "supplied") {
     context.ProtocolEvent.set(protocolEvent(base, "debt_supplied", { actor: user, tokenAddress: token, amount }));
-    await recordToken(context, base, token);
+    await markTokenAnalytics(context, base, token, { hasDebt: true });
+    await updateTokenAnalytics(context, base, token, { suppliedCount: 1n, suppliedAmount: amount });
     return;
   }
 
@@ -1404,12 +1590,18 @@ async function recordDebtEvent(
       metadata: eventType === "repaid" ? JSON.stringify({ payer }) : "{}",
     }),
   );
-  await Promise.all([
-    recordToken(context, base, token),
-    // Creates an explicit zero-USD daily row when this is the only activity;
-    // the raw token event remains the canonical debt amount.
-    bumpDaily(context, base, eventType === "borrowed" ? { borrowedUsd: 0n } : { repaidUsd: 0n }),
-  ]);
+  await markTokenAnalytics(context, base, token, { hasDebt: true });
+  await updateTokenAnalytics(
+    context,
+    base,
+    token,
+    eventType === "borrowed"
+      ? { borrowedCount: 1n, borrowedAmount: amount }
+      : { repaidCount: 1n, repaidAmount: amount },
+  );
+  // Creates an explicit zero-USD daily row when this is the only activity;
+  // the raw token event remains the canonical debt amount.
+  await bumpDaily(context, base, eventType === "borrowed" ? { borrowedUsd: 0n } : { repaidUsd: 0n });
 }
 
 for (const [contract, managerVersion] of [
@@ -1492,7 +1684,7 @@ for (const [contract, managerVersion] of [
         }),
       }),
     );
-    await recordToken(context, base, token);
+    await markTokenAnalytics(context, base, token, { hasDebt: true });
   });
   indexer.onEvent({ contract, event: "InterestIndexUpdated" }, async ({ event, context }) => {
     const base = event as unknown as BlockEvent;
@@ -1665,7 +1857,8 @@ async function bumpSafeTransferBalance(
   const safe = lower(safeAddress);
   const token = lower(tokenAddress);
   const id = `${event.chainId}:${safe}:${token}`;
-  const current = (await context.SafeTokenBalance.get(id)) ?? {
+  const existing = await context.SafeTokenBalance.get(id);
+  const current = existing ?? {
     id,
     chainId: event.chainId,
     safeAddress: safe,
@@ -1677,14 +1870,21 @@ async function bumpSafeTransferBalance(
     updatedBlock: asBigInt(event.block.number),
     transactionHash: lower(event.transaction.hash),
   };
+  const nextAmount = applyBalanceDelta(current.amount, inflow, outflow);
   context.SafeTokenBalance.set({
     ...current,
-    amount: applyBalanceDelta(current.amount, inflow, outflow),
+    amount: nextAmount,
     inflow: current.inflow + inflow,
     outflow: current.outflow + outflow,
     updatedAt: ts(event),
     updatedBlock: asBigInt(event.block.number),
     transactionHash: lower(event.transaction.hash),
+  });
+  await updateTokenAnalytics(context, event, token, {
+    safeAccountCount: existing ? 0n : 1n,
+    safeBalance: balanceChange(current.amount, nextAmount),
+    safeInflow: inflow,
+    safeOutflow: outflow,
   });
 }
 
