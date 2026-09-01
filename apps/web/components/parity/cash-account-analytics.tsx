@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { Area, AreaChart } from "@/components/charts/area-chart";
 import { Bar } from "@/components/charts/bar";
@@ -13,6 +14,7 @@ import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
 import { XAxis } from "@/components/charts/x-axis";
 import type { ExplorerData } from "@/lib/envio";
 import { shortAddress } from "@/lib/format";
+import { effectiveTierCounts } from "@/lib/safe-tier";
 
 const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 });
 const money = (value: number) => `$${compact.format(value)}`;
@@ -71,15 +73,17 @@ export function CashAccountAnalytics({
   const modeSeries = dailyModeSeries(modeChanges);
   const tierSeries = dailyTierSeries(transitions);
   const tierTransitionCount = tierSeries.reduce((total, row) => total + row.upgrades + row.segments, 0);
-  const tierDistribution = [...tiers]
-    .sort(
-      (a, b) =>
-        numeric(value(a, "tier", "tierId", "effectiveTier")) - numeric(value(b, "tier", "tierId", "effectiveTier")),
-    )
-    .map((row, index) => ({
-      color: chartColors[index % chartColors.length],
-      label: tier(value(row, "tier", "tierId", "effectiveTier")),
-      value: numeric(value(row, "count", "safeCount")),
+  const tierDistribution = effectiveTierCounts(
+    tiers.map((row) => ({
+      tierId: numeric(value(row, "tier", "tierId", "effectiveTier")),
+      safeCount: numeric(value(row, "count", "safeCount")),
+    })),
+    data.activeCardCount,
+  )
+    .map((row) => ({
+      color: chartColors[row.tierId % chartColors.length],
+      label: tier(row.tierId),
+      value: row.safeCount,
     }))
     .filter((row) => row.value > 0);
   const creditSpendUsd = data.creditSpendUsd;
@@ -312,6 +316,24 @@ export function CashAccountAnalytics({
   );
 }
 
+export function EffectiveTierDistribution({
+  data,
+  totalSafeCount,
+}: {
+  data: ExplorerData["tierDistribution"];
+  totalSafeCount: number;
+}) {
+  const distribution = effectiveTierCounts(data, totalSafeCount)
+    .map((row) => ({
+      color: chartColors[row.tierId % chartColors.length],
+      label: tier(row.tierId),
+      value: row.safeCount,
+    }))
+    .filter((row) => row.value > 0);
+
+  return <TierDistribution data={distribution} />;
+}
+
 function isSegmentChange(row: Record<string, unknown>) {
   const from = value(row, "fromTierId", "fromTier", "previousTier");
   const to = value(row, "toTierId", "toTier", "nextTier", "tier");
@@ -335,8 +357,8 @@ function dailyModeSeries(rows: Record<string, unknown>[]) {
     const modeId = numeric(value(row, "newModeId", "modeId", "mode"));
     const point = points.get(dateKey) ?? { date: new Date(`${dateKey}T00:00:00Z`), credit: 0, debit: 0, changes: 0 };
     point.changes += count;
-    if (modeId === 1) point.credit += count;
-    if (modeId === 0) point.debit += count;
+    if (modeId === 0) point.credit += count;
+    if (modeId === 1) point.debit += count;
     points.set(dateKey, point);
   }
   return [...points.values()].sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -533,7 +555,16 @@ function StateTable({ rows }: { rows: Record<string, unknown>[] }) {
               return (
                 <tr className="border-b border-border last:border-0" key={`${account}-${index}`}>
                   <td className="px-6 py-4 font-mono text-foreground">
-                    {account.startsWith("0x") ? shortAddress(account) : account}
+                    {account.startsWith("0x") ? (
+                      <Link
+                        className="underline decoration-foreground/40 underline-offset-4 transition hover:opacity-70"
+                        href={`/accounts/${account}`}
+                      >
+                        {shortAddress(account)}
+                      </Link>
+                    ) : (
+                      account
+                    )}
                   </td>
                   <td className="px-6 py-4 text-foreground">{tier(value(row, "tier", "tierId", "effectiveTier"))}</td>
                   <td className="px-6 py-4 text-foreground">

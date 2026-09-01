@@ -1,0 +1,34 @@
+{
+  "name": "@etherfi/enrichment",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm run typecheck",
+    "check": "pnpm run typecheck",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "backfill": "tsx src/cli.ts backfill",
+    "worker": "tsx src/cli.ts worker",
+    "migration:apply": "node scripts/apply-migration.mjs",
+    "hasura:apply": "node scripts/apply-hasura-metadata.mjs",
+    "migration:validate": "node scripts/validate-contract.mjs",
+    "benchmark:queries": "node scripts/benchmark-queries.mjs",
+    "audit:prices": "tsx src/price-audit-cli.ts",
+    "prices:backfill": "tsx src/cli.ts price-backfill",
+    "prices:refresh": "tsx src/cli.ts price-refresh"
+  },
+  "dependencies": {
+    "postgres": "3.4.8",
+    "viem": "2.54.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.0",
+    "tsx": "4.21.0",
+    "typescript": "5.9.2",
+    "vitest": "4.1.11"
+  }
+}

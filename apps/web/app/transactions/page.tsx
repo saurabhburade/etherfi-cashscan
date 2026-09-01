@@ -4,7 +4,7 @@ import { AnalyticsCharts } from "@/components/analytics-charts";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { ChartGridSkeleton, TransactionTableSkeleton } from "@/components/dashboard-skeletons";
 import { TransactionExplorer, TransactionExplorerHeader } from "@/components/transaction-explorer";
-import { type ExplorerData, loadActivityPage, loadExplorerData } from "@/lib/envio";
+import { type ExplorerData, loadActivityEventTypes, loadActivityPage, loadExplorerData } from "@/lib/envio";
 
 export const runtime = "edge";
 
@@ -16,6 +16,7 @@ export const metadata: Metadata = {
 export default function TransactionsPage() {
   const dataPromise = loadExplorerData();
   const activityPromise = loadActivityPage({ page: 1, pageSize: 10 });
+  const eventTypesPromise = loadActivityEventTypes();
 
   return (
     <DashboardShell active="transactions" dataPromise={dataPromise}>
@@ -27,7 +28,7 @@ export default function TransactionsPage() {
           <TransactionProfiles dataPromise={dataPromise} />
         </Suspense>
         <Suspense fallback={<TransactionTableSkeleton />}>
-          <TransactionActivity activityPromise={activityPromise} />
+          <TransactionActivity activityPromise={activityPromise} eventTypesPromise={eventTypesPromise} />
         </Suspense>
       </main>
     </DashboardShell>
@@ -38,6 +39,13 @@ async function TransactionProfiles({ dataPromise }: { dataPromise: Promise<Explo
   return <AnalyticsCharts data={await dataPromise} flushTop sections={["profiles"]} showProfileHeader={false} />;
 }
 
-async function TransactionActivity({ activityPromise }: { activityPromise: ReturnType<typeof loadActivityPage> }) {
-  return <TransactionExplorer initialPage={await activityPromise} showHeader={false} />;
+async function TransactionActivity({
+  activityPromise,
+  eventTypesPromise,
+}: {
+  activityPromise: ReturnType<typeof loadActivityPage>;
+  eventTypesPromise: ReturnType<typeof loadActivityEventTypes>;
+}) {
+  const [initialPage, availableEventTypes] = await Promise.all([activityPromise, eventTypesPromise]);
+  return <TransactionExplorer availableEventTypes={availableEventTypes} initialPage={initialPage} showHeader={false} />;
 }

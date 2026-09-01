@@ -1,5 +1,11 @@
-import { CHAIN_IDS } from "@etherfi/contracts";
 import { zeroAddress } from "viem";
+import {
+  type CashExplorerTokenLeg,
+  cashExplorerActivity,
+  cashExplorerEventWhere,
+  cashExplorerSchemaEnabled,
+  loadCashExplorerPage,
+} from "./cash-explorer";
 import { fixedPoint } from "./format";
 
 export type Activity = {
@@ -11,11 +17,14 @@ export type Activity = {
   actor: string;
   token: string;
   amount: string;
-  amountUsd: number;
+  amountUsd: number | null;
+  /** Empty / unpriced statuses are intentionally not rendered as a USD zero. */
+  amountUsdStatus?: string;
   tokenName: string;
   tokenSymbol: string;
   tokenDecimals: number | null;
   tokenCount: number;
+  tokenLegs?: CashExplorerTokenLeg[];
   timestamp: string;
   transactionHash: string;
 };
@@ -23,7 +32,11 @@ export type Activity = {
 export type ActivityPage = {
   activity: Activity[];
   hasNextPage: boolean;
+  /** Opaque keyset cursor emitted only by the additive Cash Explorer schema. */
+  nextCursor?: string;
 };
+
+export type ActivityTokenScope = { chainId: number; token: string };
 
 export type DailyAnalytics = {
   day: string;
@@ -326,6 +339,14 @@ export const ACTIVITY_PAGE_QUERY = /* GraphQL */ `
       latestSpendPriceUsdE18
       latestSpendPriceStatus
       analyticsUpdatedAt
+    }
+  }
+`;
+
+export const ACTIVITY_EVENT_TYPES_QUERY = /* GraphQL */ `
+  query EtherFiCashActivityEventTypes($where: ScannerEvent_bool_exp!) {
+    ScannerEvent(distinct_on: [eventType], order_by: [{ eventType: asc }], where: $where) {
+      eventType
     }
   }
 `;
@@ -900,20 +921,48 @@ export async function loadExplorerData(filters: { query?: string; chainId?: numb
 }
 
 export async function loadActivityPage(
-  filters: { query?: string; chainId?: number; eventType?: string; page?: number; pageSize?: number } = {},
+  filters: {
+    query?: string;
+    account?: string;
+    token?: string;
+    tokenScopes?: ActivityTokenScope[];
+    chainId?: number;
+    eventType?: string;
+    page?: number;
+    pageSize?: number;
+    cursor?: string;
+    /** Use the complete ProtocolEvent history until the additive scanner backfill reaches this filter. */
+    legacyFallback?: boolean;
+    /** Read the complete original event history while the additive scanner is still backfilling. */
+    legacyOnly?: boolean;
+  } = {},
 ): Promise<ActivityPage> {
   const endpoint =
     process.env.ENVIO_GRAPHQL_URL ?? process.env.NEXT_PUBLIC_ENVIO_GRAPHQL_URL ?? "http://localhost:8080/v1/graphql";
   const adminSecret = process.env.ENVIO_HASURA_ADMIN_SECRET;
+  if (cashExplorerSchemaEnabled && !filters.legacyOnly) {
+    const page = await loadCashExplorerPage(endpoint, adminSecret, filters);
+    if (page.events.length || !filters.legacyFallback) {
+      return {
+        activity: page.events.map(cashExplorerActivity),
+        hasNextPage: Boolean(page.nextCursor),
+        nextCursor: page.nextCursor,
+      };
+    }
+  }
   const page = Math.max(1, Math.trunc(filters.page ?? 1));
   const pageSize = Math.min(100, Math.max(1, Math.trunc(filters.pageSize ?? 10)));
   const baseWhere = eventWhere(filters);
-  const conditions: Record<string, unknown>[] = [
-    baseWhere,
-    {
-      _or: [{ chainId: { _neq: CHAIN_IDS.optimism } }, { eventType: { _neq: "debt_interest_index_updated" } }],
-    },
-  ];
+  const conditions: Record<string, unknown>[] = [baseWhere];
+  if (filters.account) conditions.push({ actor: { _eq: filters.account.toLowerCase() } });
+  if (filters.token) conditions.push({ tokenAddress: { _eq: filters.token.toLowerCase() } });
+  if (filters.tokenScopes?.length) {
+    conditions.push({
+      _or: filters.tokenScopes.map((scope) => ({
+        _and: [{ chainId: { _eq: scope.chainId } }, { tokenAddress: { _eq: scope.token.toLowerCase() } }],
+      })),
+    });
+  }
   if (filters.eventType && filters.eventType !== "all") {
     conditions.push({ eventType: { _eq: filters.eventType } });
   }
@@ -944,6 +993,24 @@ export async function loadActivityPage(
     activity: pageRows.map((row) => activityRow(row, tokenById, spendById)),
     hasNextPage: data.ProtocolEvent.length > pageSize,
   };
+}
+
+/** All indexed event names, independently of the currently visible activity page. */
+export async function loadActivityEventTypes(filters: { tokenScopes?: ActivityTokenScope[] } = {}): Promise<string[]> {
+  if (!cashExplorerSchemaEnabled) return [];
+  const endpoint =
+    process.env.ENVIO_GRAPHQL_URL ?? process.env.NEXT_PUBLIC_ENVIO_GRAPHQL_URL ?? "http://localhost:8080/v1/graphql";
+  const adminSecret = process.env.ENVIO_HASURA_ADMIN_SECRET;
+  const data = await graphqlOptional<{ ScannerEvent: Array<{ eventType: string }> }>(
+    endpoint,
+    ACTIVITY_EVENT_TYPES_QUERY,
+    { where: cashExplorerEventWhere(filters) },
+    adminSecret,
+  );
+
+  return [...new Set((data?.ScannerEvent ?? []).map((row) => row.eventType).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b),
+  );
 }
 
 export async function loadTokenAnalytics(filters: { chainId?: number } = {}): Promise<TokenAnalyticsRow[]> {
@@ -982,6 +1049,7 @@ export function tokenAnalyticsRows(tokens: TokenRecord[], metrics: Row[]): Token
           ? fixedPoint(amount, token.decimals) * latestSpendPriceUsd
           : null;
       const reserveBalance = String(metric.destinationBalance ?? "0");
+      const topUpAmount = String(metric.topUpAmount ?? "0");
 
       return {
         chainId,
@@ -992,8 +1060,8 @@ export function tokenAnalyticsRows(tokens: TokenRecord[], metrics: Row[]): Token
         spendCount: integer(metric.spendCount),
         spendUsd: usd(metric.spendUsd),
         topUpCount: integer(metric.topUpCount),
-        topUpAmount: String(metric.topUpAmount ?? "0"),
-        topUpUsd: derivedAmountUsd(String(metric.topUpAmount ?? "0")),
+        topUpAmount,
+        topUpUsd: token ? (indexedTokenAmountUsd(topUpAmount, token) ?? derivedAmountUsd(topUpAmount)) : null,
         withdrawalCount: integer(metric.withdrawalCount),
         safeAccountCount: integer(metric.safeAccountCount),
         safeInflow: String(metric.safeInflow ?? "0"),
@@ -1545,26 +1613,29 @@ function buildSafeCashStates(
   for (const row of rows.spendingLimitStates ?? []) add("limit", row);
   for (const row of rows.pendingWithdrawals ?? []) if (isPendingWithdrawal(row)) add("withdrawal", row);
   return [...states.values()]
-    .map((state) => {
-      const base = state.tier ?? state.lend ?? state.mode ?? state.limit ?? state.withdrawal!;
+    .flatMap((state) => {
+      const base = state.tier ?? state.lend ?? state.mode ?? state.limit ?? state.withdrawal;
+      if (!base) return [];
       const mode = state.mode;
       const limit = state.limit;
       const pendingMode = mode && hasPendingMode(mode, now);
-      return {
-        chainId: Number(base.chainId),
-        safe: String(base.safe),
-        tierId: nullableNumber(state.tier?.tierId),
-        currentModeId: mode ? effectiveModeId(mode, now) : null,
-        pendingModeId: pendingMode ? nullableNumber(mode?.pendingModeId) : null,
-        modeActivationTime: String(mode?.activationTime ?? ""),
-        lendStatus: state.lend ? effectiveLendStatus(state.lend, now) : "",
-        lendFinalizeTime: String(state.lend?.finalizeTime ?? ""),
-        dailyLimitUsd: nullableUsd(limit?.dailyLimit),
-        monthlyLimitUsd: nullableUsd(limit?.monthlyLimit),
-        spentTodayUsd: nullableUsd(limit?.spentToday),
-        spentThisMonthUsd: nullableUsd(limit?.spentThisMonth),
-        pendingWithdrawal: Boolean(state.withdrawal),
-      };
+      return [
+        {
+          chainId: Number(base.chainId),
+          safe: String(base.safe),
+          tierId: nullableNumber(state.tier?.tierId),
+          currentModeId: mode ? effectiveModeId(mode, now) : null,
+          pendingModeId: pendingMode ? nullableNumber(mode?.pendingModeId) : null,
+          modeActivationTime: String(mode?.activationTime ?? ""),
+          lendStatus: state.lend ? effectiveLendStatus(state.lend, now) : "",
+          lendFinalizeTime: String(state.lend?.finalizeTime ?? ""),
+          dailyLimitUsd: nullableUsd(limit?.dailyLimit),
+          monthlyLimitUsd: nullableUsd(limit?.monthlyLimit),
+          spentTodayUsd: nullableUsd(limit?.spentToday),
+          spentThisMonthUsd: nullableUsd(limit?.spentThisMonth),
+          pendingWithdrawal: Boolean(state.withdrawal),
+        },
+      ];
     })
     .sort((a, b) => a.chainId - b.chainId || a.safe.localeCompare(b.safe));
 }
@@ -1618,13 +1689,6 @@ function groupRows(rows: Row[], keyFor: (row: Row) => string): Row[] {
     grouped.set(key, current ? { ...current, count: integer(current.count) + integer(row.count) } : row);
   }
   return [...grouped.values()];
-}
-
-function sumFields<T extends string>(rows: Row[], keys: T[], usdKeys: T[] = []): Record<T, number> {
-  const totals = Object.fromEntries(keys.map((key) => [key, 0])) as Record<T, number>;
-  for (const row of rows)
-    for (const key of keys) totals[key] += usdKeys.includes(key) ? usd(row[key]) : integer(row[key]);
-  return totals;
 }
 
 function nullableNumber(value: unknown): number | null {

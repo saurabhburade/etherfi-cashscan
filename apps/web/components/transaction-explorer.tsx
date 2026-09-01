@@ -6,34 +6,45 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { TransactionTableSkeleton } from "@/components/dashboard-skeletons";
 import { EventTable } from "@/components/event-table";
 import { Button } from "@/components/ui/button";
-import type { ActivityPage } from "@/lib/envio";
+import { exactCashExplorerEventLabel } from "@/lib/cash-explorer";
+import type { ActivityPage, ActivityTokenScope } from "@/lib/envio";
 
 const pageSize = 10;
 
 export function TransactionExplorer({
   initialPage,
+  availableEventTypes,
+  account,
+  tokenScopes,
   showHeader = true,
 }: {
   initialPage: ActivityPage;
+  availableEventTypes?: string[];
+  account?: string;
+  tokenScopes?: ActivityTokenScope[];
   showHeader?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [chainId, setChainId] = useState(0);
   const [eventType, setEventType] = useState("all");
   const [page, setPage] = useState(1);
+  const [cursor, setCursor] = useState<string | undefined>();
+  const [cursorHistory, setCursorHistory] = useState<Array<string | undefined>>([]);
   const [result, setResult] = useState(initialPage);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const firstRequest = useRef(true);
   const deferredQuery = useDeferredValue(query);
+  const tokenScopeParam = tokenScopes?.map((scope) => `${scope.chainId}:${scope.token.toLowerCase()}`).join(",");
 
-  const eventTypes = useMemo(
+  const pageEventTypes = useMemo(
     () =>
       [...new Set(initialPage.activity.map((item) => item.type))].sort((a, b) =>
         labelEvent(a).localeCompare(labelEvent(b)),
       ),
     [initialPage.activity],
   );
+  const eventTypes = availableEventTypes?.length ? availableEventTypes : pageEventTypes;
   const currentPage = page;
   const firstItem = result.activity.length ? (currentPage - 1) * pageSize + 1 : 0;
   const lastItem = firstItem ? firstItem + result.activity.length - 1 : 0;
@@ -47,6 +58,11 @@ export function TransactionExplorer({
 
     const controller = new AbortController();
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    if (account) params.set("account", account);
+    if (tokenScopeParam) {
+      params.set("tokenScopes", tokenScopeParam);
+    }
+    if (cursor) params.set("cursor", cursor);
     if (deferredQuery.trim()) params.set("query", deferredQuery.trim());
     if (chainId) params.set("chainId", String(chainId));
     if (eventType !== "all") params.set("eventType", eventType);
@@ -69,13 +85,15 @@ export function TransactionExplorer({
       });
 
     return () => controller.abort();
-  }, [chainId, deferredQuery, eventType, page]);
+  }, [account, chainId, cursor, deferredQuery, eventType, page, tokenScopeParam]);
 
   function clearFilters() {
     setQuery("");
     setChainId(0);
     setEventType("all");
     setPage(1);
+    setCursor(undefined);
+    setCursorHistory([]);
   }
 
   return (
@@ -96,6 +114,8 @@ export function TransactionExplorer({
             onChange={(event) => {
               setQuery(event.target.value);
               setPage(1);
+              setCursor(undefined);
+              setCursorHistory([]);
             }}
             placeholder="Search address, token, event or transaction hash"
             type="search"
@@ -108,6 +128,8 @@ export function TransactionExplorer({
               onClick={() => {
                 setQuery("");
                 setPage(1);
+                setCursor(undefined);
+                setCursorHistory([]);
               }}
               type="button"
             >
@@ -123,6 +145,8 @@ export function TransactionExplorer({
             onChange={(event) => {
               setChainId(Number(event.target.value));
               setPage(1);
+              setCursor(undefined);
+              setCursorHistory([]);
             }}
             value={chainId}
           >
@@ -142,6 +166,8 @@ export function TransactionExplorer({
             onChange={(event) => {
               setEventType(event.target.value);
               setPage(1);
+              setCursor(undefined);
+              setCursorHistory([]);
             }}
             value={eventType}
           >
@@ -161,7 +187,7 @@ export function TransactionExplorer({
         ) : null}
       </div>
 
-      <div className="mt-2">
+      <div className="mt-6">
         {loading ? <TransactionTableSkeleton /> : <EventTable activity={result.activity} />}
         {error ? <p className="mt-3 text-sm font-medium text-destructive">{error}</p> : null}
         {currentPage > 1 || result.hasNextPage ? (
@@ -173,7 +199,11 @@ export function TransactionExplorer({
               <Button
                 aria-label="Previous page"
                 disabled={currentPage === 1 || loading}
-                onClick={() => setPage(currentPage - 1)}
+                onClick={() => {
+                  setCursor(cursorHistory.at(-1));
+                  setCursorHistory((history) => history.slice(0, -1));
+                  setPage(currentPage - 1);
+                }}
                 size="icon"
                 variant="outline"
               >
@@ -183,7 +213,11 @@ export function TransactionExplorer({
               <Button
                 aria-label="Next page"
                 disabled={!result.hasNextPage || loading}
-                onClick={() => setPage(currentPage + 1)}
+                onClick={() => {
+                  setCursorHistory((history) => [...history, cursor]);
+                  setCursor(result.nextCursor);
+                  setPage(currentPage + 1);
+                }}
                 size="icon"
                 variant="outline"
               >
@@ -209,5 +243,5 @@ export function TransactionExplorerHeader() {
 }
 
 function labelEvent(type: string) {
-  return type.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
+  return exactCashExplorerEventLabel(type);
 }

@@ -7,6 +7,9 @@ const EXPORT_CARD_INSET = 24;
 const EXPORT_CARD_RADIUS = 6;
 const EXPORT_CROP = { top: 16, right: 8, bottom: 12, left: 12 } as const;
 const EXPORT_FONT_FAMILY = "Inter, Arial, Helvetica, sans-serif";
+const PIE_EXPORT_PADDING = 32;
+const PIE_EXPORT_LEGEND_ROW_HEIGHT = 27;
+const PIE_EXPORT_LEGEND_OPTICAL_OFFSET = 16;
 
 export interface ChartSvgExportOptions {
   title?: string;
@@ -35,7 +38,7 @@ export function serializeChartSvg(container: HTMLElement, options: ChartSvgExpor
   svg.setAttribute("xmlns", SVG_NAMESPACE);
   svg.setAttribute("font-family", EXPORT_FONT_FAMILY);
   setRenderedDimensions(source, svg);
-  if (isPie) preparePieExport(source, svg, container);
+  if (isPie) preparePieExport(source, svg, container, options.value?.trim());
   if (options.title?.trim()) {
     compactExportAxisTypography(svg);
     alignExportLegend(svg, legendOffset);
@@ -266,16 +269,37 @@ function serializedSvgSize(markup: string): { width: number; height: number } | 
   return width && height ? { width, height } : undefined;
 }
 
-function preparePieExport(source: SVGSVGElement, svg: SVGSVGElement, container: HTMLElement): void {
+function preparePieExport(
+  source: SVGSVGElement,
+  svg: SVGSVGElement,
+  container: HTMLElement,
+  exportValue?: string,
+): void {
   const sourceViewBox = parseViewBox(source.getAttribute("viewBox"));
   const bounds = source.getBoundingClientRect();
+  const sourceX = sourceViewBox?.[0] ?? 0;
+  const sourceY = sourceViewBox?.[1] ?? 0;
   const sourceWidth = sourceViewBox?.[2] ?? bounds.width;
   const sourceHeight = sourceViewBox?.[3] ?? bounds.height;
   if (!sourceWidth || !sourceHeight) return;
 
   const legendRows = [...container.querySelectorAll<HTMLElement>("[data-chart-legend-label]")];
-  const exportWidth = legendRows.length ? Math.max(520, sourceWidth * 2.35) : sourceWidth;
-  const exportHeight = Math.max(sourceHeight, legendRows.length * 27 + 48);
+  const total = container.querySelector<HTMLElement>("[data-chart-legend-total]")?.dataset.chartLegendTotal;
+  const exportWidth = legendRows.length
+    ? Math.max(520, sourceWidth * 2.35 + PIE_EXPORT_PADDING)
+    : sourceWidth + PIE_EXPORT_PADDING * 2;
+  const totalHeight = total && legendRows.length ? 31 : 0;
+  const legendHeight = legendRows.length * PIE_EXPORT_LEGEND_ROW_HEIGHT + totalHeight;
+  const exportHeight = Math.max(sourceHeight + PIE_EXPORT_PADDING * 2, legendHeight + PIE_EXPORT_PADDING * 2);
+  const chartX = PIE_EXPORT_PADDING;
+  const chartY = (exportHeight - sourceHeight) / 2;
+  const legendY = (exportHeight - legendHeight) / 2 + PIE_EXPORT_LEGEND_OPTICAL_OFFSET;
+
+  const chart = document.createElementNS(SVG_NAMESPACE, "g");
+  chart.setAttribute("data-export-pie-chart", "true");
+  chart.setAttribute("transform", `translate(${chartX - sourceX} ${chartY - sourceY})`);
+  while (svg.firstChild) chart.appendChild(svg.firstChild);
+  svg.appendChild(chart);
   svg.setAttribute("viewBox", `0 0 ${exportWidth} ${exportHeight}`);
   svg.setAttribute("width", String(exportWidth));
   svg.setAttribute("height", String(exportHeight));
@@ -290,16 +314,15 @@ function preparePieExport(source: SVGSVGElement, svg: SVGSVGElement, container: 
 
   const centerLines = [
     ...new Set(
-      (container.querySelector<HTMLElement>(".chart-pie-center")?.innerText ?? "")
-        .split(/\n+/)
-        .map((line) => line.trim())
-        .filter(Boolean),
+      [exportValue, ...(container.querySelector<HTMLElement>(".chart-pie-center")?.innerText ?? "").split(/\n+/)]
+        .map((line) => line?.trim())
+        .filter((line): line is string => Boolean(line)),
     ),
   ].slice(0, 2);
   centerLines.forEach((line, index) => {
     const text = document.createElementNS(SVG_NAMESPACE, "text");
-    text.setAttribute("x", String(sourceWidth / 2));
-    text.setAttribute("y", String(sourceHeight / 2 + (index === 0 ? -2 : 18)));
+    text.setAttribute("x", String(chartX + sourceWidth / 2));
+    text.setAttribute("y", String(chartY + sourceHeight / 2 + (index === 0 ? -2 : 18)));
     text.setAttribute("fill", index === 0 ? foreground : secondary);
     text.setAttribute("font-size", index === 0 ? "16" : "10");
     text.setAttribute("font-weight", index === 0 ? "500" : "400");
@@ -308,10 +331,10 @@ function preparePieExport(source: SVGSVGElement, svg: SVGSVGElement, container: 
     annotations.appendChild(text);
   });
 
-  const legendX = sourceWidth + 42;
-  const legendValueX = exportWidth - 24;
+  const legendX = chartX + sourceWidth + 42;
+  const legendValueX = exportWidth - PIE_EXPORT_PADDING;
   legendRows.forEach((row, index) => {
-    const y = 34 + index * 27;
+    const y = legendY + index * PIE_EXPORT_LEGEND_ROW_HEIGHT;
     const swatch = document.createElementNS(SVG_NAMESPACE, "circle");
     swatch.setAttribute("cx", String(legendX));
     swatch.setAttribute("cy", String(y - 3));
@@ -338,9 +361,8 @@ function preparePieExport(source: SVGSVGElement, svg: SVGSVGElement, container: 
     annotations.appendChild(value);
   });
 
-  const total = container.querySelector<HTMLElement>("[data-chart-legend-total]")?.dataset.chartLegendTotal;
   if (total && legendRows.length) {
-    const y = 34 + legendRows.length * 27;
+    const y = legendY + legendRows.length * PIE_EXPORT_LEGEND_ROW_HEIGHT;
     const divider = document.createElementNS(SVG_NAMESPACE, "line");
     divider.setAttribute("x1", String(legendX));
     divider.setAttribute("x2", String(legendValueX));

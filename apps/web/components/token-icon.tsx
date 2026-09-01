@@ -13,15 +13,15 @@ type TokenIconProps = {
 };
 
 export function TokenIcon({ address, chainId, className, symbol }: TokenIconProps) {
-  const sources = tokenAssetIconUrls(chainId, address);
+  const sources = tokenAssetIconUrls(chainId, address, symbol);
   const sourcesKey = sources.join("|");
-  const [sourceIndex, setSourceIndex] = useState(0);
+  const [sourceState, setSourceState] = useState({ index: 0, key: sourcesKey });
   const [isHydrated, setIsHydrated] = useState(false);
+  const sourceIndex = sourceState.key === sourcesKey ? sourceState.index : 0;
   const source = sources[sourceIndex] ?? null;
   const label = symbol || "Unknown";
 
   useEffect(() => setIsHydrated(true), []);
-  useEffect(() => setSourceIndex(0), [sourcesKey]);
 
   return (
     <span
@@ -43,7 +43,7 @@ export function TokenIcon({ address, chainId, className, symbol }: TokenIconProp
           loading="eager"
           onError={(event) => {
             event.currentTarget.hidden = true;
-            setSourceIndex((current) => current + 1);
+            setSourceState({ index: sourceIndex + 1, key: sourcesKey });
           }}
           referrerPolicy="no-referrer"
           src={source}

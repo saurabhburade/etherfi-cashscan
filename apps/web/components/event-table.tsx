@@ -1,9 +1,11 @@
-import { CHAIN_IDS, INDEXED_CHAIN_BY_ID } from "@etherfi/contracts";
+import { INDEXED_CHAIN_BY_ID } from "@etherfi/contracts";
 import { ExternalLink, FileText } from "lucide-react";
-import { formatUnits, zeroAddress } from "viem";
+import Link from "next/link";
+import { formatUnits, isAddress, zeroAddress } from "viem";
 import { ChainBadge } from "@/components/chain-badge";
 import { TokenIcon } from "@/components/token-icon";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { exactCashExplorerEventLabel } from "@/lib/cash-explorer";
 import type { Activity } from "@/lib/envio";
 import { compactUsd, shortAddress, timeAgo } from "@/lib/format";
 
@@ -71,7 +73,7 @@ export function EventTable({ activity }: { activity: Activity[] }) {
                       </span>
                       <span className="min-w-0">
                         <span className="block truncate capitalize text-foreground">
-                          {item.type.replaceAll("_", " ")}
+                          {exactCashExplorerEventLabel(item.type)}
                         </span>
                         <time className="mt-1 block truncate text-muted-foreground" dateTime={item.timestamp}>
                           {timeAgo(item.timestamp)}
@@ -79,7 +81,18 @@ export function EventTable({ activity }: { activity: Activity[] }) {
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell>{shortAddress(item.actor)}</TableCell>
+                  <TableCell>
+                    {isAddress(item.actor) ? (
+                      <Link
+                        className="underline decoration-foreground/40 underline-offset-4 transition hover:opacity-70"
+                        href={`/accounts/${item.actor}`}
+                      >
+                        {shortAddress(item.actor)}
+                      </Link>
+                    ) : (
+                      shortAddress(item.actor)
+                    )}
+                  </TableCell>
                   <TableCell>{shortAddress(item.contractAddress)}</TableCell>
                   <TableCell>{eventValue(item)}</TableCell>
                   <TableCell>
@@ -116,11 +129,8 @@ export function EventTable({ activity }: { activity: Activity[] }) {
 
 export function filterActivity(activity: Activity[], query: string, chainId: number) {
   const needle = query.toLowerCase();
-  return activity.filter((item) => {
-    const isNoisyOptimismInterestUpdate =
-      item.chainId === CHAIN_IDS.optimism && item.type === "debt_interest_index_updated";
-    return (
-      !isNoisyOptimismInterestUpdate &&
+  return activity.filter(
+    (item) =>
       (!chainId || item.chainId === chainId) &&
       (!needle ||
         [
@@ -131,12 +141,33 @@ export function filterActivity(activity: Activity[], query: string, chainId: num
           item.tokenName,
           item.tokenSymbol,
           item.transactionHash,
-        ].some((value) => value.toLowerCase().includes(needle)))
-    );
-  });
+        ].some((value) => value.toLowerCase().includes(needle))),
+  );
 }
 
 function eventValue(item: Activity) {
+  if (item.tokenLegs?.length) {
+    return (
+      <div className="space-y-1">
+        {item.tokenLegs.slice(0, 3).map((leg, index) => (
+          <div key={`${leg.token}:${index}`}>
+            {leg.amount !== "0" && leg.decimals !== null
+              ? `${tokenAmount.format(Number(formatUnits(BigInt(leg.amount), leg.decimals)))} `
+              : null}
+            <TokenDetailLink label={leg.symbol || tokenLabel(leg.token)} token={leg.token} />
+            {leg.amountUsd !== null ? (
+              <span className="ml-1 text-muted-foreground">· {compactUsd(leg.amountUsd)}</span>
+            ) : (
+              <UnpricedBadge />
+            )}
+          </div>
+        ))}
+        {item.tokenLegs.length > 3 ? (
+          <span className="text-muted-foreground">+{item.tokenLegs.length - 3} tokens</span>
+        ) : null}
+      </div>
+    );
+  }
   if (item.type.startsWith("spend") && item.token === zeroAddress && item.amountUsd) {
     const scope =
       item.tokenCount > 1 ? `${item.tokenCount} tokens` : item.tokenCount === 1 ? "1 token" : "Settled spend";
@@ -145,7 +176,11 @@ function eventValue(item: Activity) {
   if (item.amount !== "0" && item.tokenDecimals !== null) {
     try {
       const amount = tokenAmount.format(Number(formatUnits(BigInt(item.amount), item.tokenDecimals)));
-      const label = `${amount} ${item.tokenSymbol || tokenLabel(item.token)}`;
+      const label = (
+        <>
+          {amount} <TokenDetailLink label={item.tokenSymbol || tokenLabel(item.token)} token={item.token} />
+        </>
+      );
       return item.amountUsd ? (
         <span>
           <span className="block">{label}</span>
@@ -159,6 +194,7 @@ function eventValue(item: Activity) {
     }
   }
   if (item.amountUsd) return compactUsd(item.amountUsd);
+  if (item.amountUsdStatus?.toLowerCase() === "unpriced") return <UnpricedBadge />;
   if (item.amount !== "0") {
     try {
       return `${BigInt(item.amount).toLocaleString("en-US")} raw`;
@@ -166,7 +202,27 @@ function eventValue(item: Activity) {
       return item.amount;
     }
   }
-  return item.tokenSymbol || tokenLabel(item.token);
+  return <TokenDetailLink label={item.tokenSymbol || tokenLabel(item.token)} token={item.token} />;
+}
+
+function TokenDetailLink({ label, token }: { label: string; token: string }) {
+  if (!isAddress(token) || token === zeroAddress) return label;
+  return (
+    <Link
+      className="underline decoration-foreground/40 underline-offset-4 transition hover:opacity-70"
+      href={`/tokens/${token}`}
+    >
+      {label}
+    </Link>
+  );
+}
+
+function UnpricedBadge() {
+  return (
+    <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+      Unpriced
+    </span>
+  );
 }
 
 function tokenLabel(token: string) {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ACTIVITY_EVENT_TYPES_QUERY,
   ACTIVITY_PAGE_QUERY,
   activityRow,
   cashHistoryForDisplay,
@@ -68,6 +69,14 @@ describe("activity token normalization", () => {
 });
 
 describe("event query contract", () => {
+  it("loads every distinct event type independently of paginated activity", () => {
+    expect(ACTIVITY_EVENT_TYPES_QUERY).toContain("ScannerEvent(");
+    expect(ACTIVITY_EVENT_TYPES_QUERY).toContain("distinct_on: [eventType]");
+    expect(ACTIVITY_EVENT_TYPES_QUERY).toContain("order_by: [{ eventType: asc }]");
+    expect(ACTIVITY_EVENT_TYPES_QUERY).toContain("where: $where");
+    expect(ACTIVITY_EVENT_TYPES_QUERY).not.toContain("limit:");
+  });
+
   it("uses lookahead limit and offset pagination without an aggregate count", () => {
     expect(ACTIVITY_PAGE_QUERY).not.toContain("ProtocolEvent_aggregate");
     expect(ACTIVITY_PAGE_QUERY).toContain("limit: $limit");
@@ -81,8 +90,8 @@ describe("event query contract", () => {
   });
 
   it("uses indexable exact predicates for supported search keys", () => {
-    const hash = "0x" + "AB".repeat(32);
-    const address = "0x" + "CD".repeat(20);
+    const hash = `0x${"AB".repeat(32)}`;
+    const address = `0x${"CD".repeat(20)}`;
 
     expect(eventWhere({ query: hash, chainId: 10 })).toEqual({
       chainId: { _eq: 10 },
@@ -195,6 +204,38 @@ describe("token analytics metric contract", () => {
         repaidUsd: 17,
       }),
     ]);
+  });
+
+  it("prefers a fresh indexed oracle price over a spend-implied price", () => {
+    const address = "0x0000000000000000000000000000000000000001";
+    const rows = tokenAnalyticsRows(
+      [
+        {
+          chainId: 10,
+          address,
+          name: "Wrapped eETH",
+          symbol: "weETH",
+          decimals: 18,
+          decimalsVerified: true,
+          oracleDecimals: 8,
+          oracleHeartbeat: 3600,
+          price: "350000000000",
+          priceUpdatedAt: String(Math.floor(Date.now() / 1000)),
+        },
+      ] as TokenRecord[],
+      [
+        {
+          chainId: 10,
+          tokenAddress: address,
+          topUpCount: "1",
+          topUpAmount: "2000000000000000000",
+          destinationBalance: "3000000000000000000",
+          latestSpendPriceUsdE18: "2000000000000000000000",
+        },
+      ],
+    );
+
+    expect(rows[0]).toEqual(expect.objectContaining({ topUpUsd: 7000, reserveUsd: 10_500 }));
   });
 });
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { INDEXED_CHAIN_BY_ID } from "@etherfi/contracts";
+import Link from "next/link";
 import { type ReactNode, useRef } from "react";
 import { ChartExportActions } from "@/components/chart-export-actions";
 import { Area, AreaChart } from "@/components/charts/area-chart";
@@ -625,7 +626,12 @@ function LeaderboardCard({
             >
               <span className="font-mono text-xs text-muted-foreground">{String(index + 1).padStart(2, "0")}</span>
               <div className="min-w-0">
-                <p className="truncate font-mono text-sm text-foreground">{shortAddress(row.account)}</p>
+                <Link
+                  className="block truncate font-mono text-sm text-foreground underline decoration-foreground/40 underline-offset-4 transition hover:opacity-70"
+                  href={`/accounts/${row.account}`}
+                >
+                  {shortAddress(row.account)}
+                </Link>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {INDEXED_CHAIN_BY_ID.get(row.chainId)?.name ?? row.chainId}
                 </p>
@@ -686,7 +692,14 @@ function TokenTable({
                       {(row as ExplorerData["rampTokens"][number]).label}
                     </td>
                   ) : null}
-                  <td className="px-6 py-4 font-mono text-foreground">{row.tokenSymbol || row.token}</td>
+                  <td className="px-6 py-4 font-mono text-foreground">
+                    <Link
+                      className="underline decoration-foreground/40 underline-offset-4 transition hover:opacity-70"
+                      href={`/tokens/${row.token}`}
+                    >
+                      {row.tokenSymbol || row.token}
+                    </Link>
+                  </td>
                   {kind === "ramp" ? (
                     <td className="px-6 py-4 text-right font-mono text-foreground">
                       {currency((row as ExplorerData["rampTokens"][number]).amountUsd)}

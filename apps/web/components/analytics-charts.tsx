@@ -2,6 +2,7 @@
 
 import { INDEXED_CHAIN_BY_ID } from "@etherfi/contracts";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import Link from "next/link";
 import { type ReactNode, useRef, useState } from "react";
 import { formatUnits } from "viem";
 import { ChainBadge } from "@/components/chain-badge";
@@ -48,12 +49,18 @@ const OVERVIEW_RANGE_BY_VALUE = new Map(overviewRanges.map((option) => [option.v
 
 export function SpendOverviewCharts({
   data,
+  embedded = false,
+  flushBottom = false,
   sections = ["spend", "cards"],
+  showRangeControls = true,
   subtitle,
   title,
 }: {
   data: ExplorerData;
+  embedded?: boolean;
+  flushBottom?: boolean;
   sections?: OverviewChartSection[];
+  showRangeControls?: boolean;
   subtitle?: string;
   title?: string;
 }) {
@@ -79,29 +86,31 @@ export function SpendOverviewCharts({
     color: colors[index],
   }));
 
-  return (
-    <AnalyticsSection id="spend-analytics" subtitle={subtitle} title={title}>
-      <Tabs
-        className="mb-4 overflow-x-auto pb-1 sm:items-end"
-        onValueChange={(value) => {
-          setAnimateRangeChanges(true);
-          setRange(value as OverviewRange);
-        }}
-        value={range}
-      >
-        <TabsList aria-label="Chart duration" className="shrink-0 border border-secondary bg-background">
-          {overviewRanges.map((option) => (
-            <TabsTrigger
-              className="flex-none px-3 font-sans text-xs! font-medium tracking-normal text-muted-foreground data-active:bg-secondary data-active:text-foreground dark:data-active:border-transparent dark:data-active:bg-secondary dark:data-active:text-foreground"
-              key={option.value}
-              value={option.value}
-            >
-              {option.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-      <div className={`grid gap-5 ${sections.length > 1 ? "lg:grid-cols-2" : ""}`}>
+  const content = (
+    <>
+      {showRangeControls ? (
+        <Tabs
+          className="mb-4 overflow-x-auto pb-1 sm:items-end"
+          onValueChange={(value) => {
+            setAnimateRangeChanges(true);
+            setRange(value as OverviewRange);
+          }}
+          value={range}
+        >
+          <TabsList aria-label="Chart duration" className="shrink-0 border border-secondary bg-background">
+            {overviewRanges.map((option) => (
+              <TabsTrigger
+                className="flex-none px-3 font-sans text-xs! font-medium tracking-normal text-muted-foreground data-active:bg-secondary data-active:text-foreground dark:data-active:border-transparent dark:data-active:bg-secondary dark:data-active:text-foreground"
+                key={option.value}
+                value={option.value}
+              >
+                {option.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      ) : null}
+      <div className={`grid h-full gap-5 ${sections.length > 1 ? "lg:grid-cols-2" : ""}`}>
         {sections.includes("spend") ? (
           <TimeSeriesCard
             duration={selectedRange?.label ?? range}
@@ -331,6 +340,13 @@ export function SpendOverviewCharts({
           />
         ) : null}
       </div>
+    </>
+  );
+
+  if (embedded) return content;
+  return (
+    <AnalyticsSection flushBottom={flushBottom} id="spend-analytics" subtitle={subtitle} title={title}>
+      {content}
     </AnalyticsSection>
   );
 }
@@ -408,12 +424,24 @@ export function AnalyticsCharts({
                   <tbody>
                     {data.balances.slice(0, 8).map((row) => (
                       <tr className="border-t border-white/[.05]" key={`${row.chainId}:${row.account}:${row.token}`}>
-                        <td className="px-6 py-4 font-mono text-zinc-300">{short(row.account)}</td>
+                        <td className="px-6 py-4 font-mono text-zinc-300">
+                          <Link
+                            className="underline decoration-zinc-500/50 underline-offset-4 transition hover:opacity-70"
+                            href={`/accounts/${row.account}`}
+                          >
+                            {short(row.account)}
+                          </Link>
+                        </td>
                         <td className="px-6 py-4 text-zinc-500">{row.accountKind.replaceAll("_", " ")}</td>
                         <td className="px-6 py-4 font-mono text-zinc-500">
                           <span className="inline-flex items-center gap-2.5">
                             <TokenIcon address={row.token} chainId={row.chainId} symbol={row.symbol} />
-                            <span>{row.symbol || short(row.token)}</span>
+                            <Link
+                              className="underline decoration-zinc-500/50 underline-offset-4 transition hover:opacity-70"
+                              href={`/tokens/${row.token}`}
+                            >
+                              {row.symbol || short(row.token)}
+                            </Link>
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right font-mono text-zinc-200">{balanceValue(row)}</td>
@@ -450,7 +478,17 @@ export function AnalyticsCharts({
   );
 }
 
-export function TokenAnalyticsCharts({ data, showTable = true }: { data: TokenAnalyticsRow[]; showTable?: boolean }) {
+export function TokenAnalyticsCharts({
+  data,
+  flushTop = false,
+  showHeader = true,
+  showTable = true,
+}: {
+  data: TokenAnalyticsRow[];
+  flushTop?: boolean;
+  showHeader?: boolean;
+  showTable?: boolean;
+}) {
   const colorByToken = new Map(data.map((row, index) => [tokenAnalyticsId(row), colors[index % colors.length]]));
   const reserves = tokenPieData(data, "reserveUsd", colorByToken);
   const spend = tokenPieData(data, "spendUsd", colorByToken);
@@ -461,9 +499,14 @@ export function TokenAnalyticsCharts({ data, showTable = true }: { data: TokenAn
 
   return (
     <AnalyticsSection
+      flushTop={flushTop}
       id="token-analytics"
-      subtitle="Event-time USD where indexed. Top-up and reserve USD use the latest indexed Spend price; unpriced tokens are excluded from those doughnuts."
-      title="Tokens"
+      subtitle={
+        showHeader
+          ? "Event-time USD where indexed. Top-up and reserve USD use the latest indexed Spend price; unpriced tokens are excluded from those doughnuts."
+          : undefined
+      }
+      title={showHeader ? "Tokens" : undefined}
     >
       <div className="grid gap-5 lg:grid-cols-2">
         <TokenPie data={reserves} label="Reserve balances" moneyValues subtitle="by token · latest indexed price" />
@@ -486,12 +529,14 @@ export function TokenAnalyticsCharts({ data, showTable = true }: { data: TokenAn
 
 function AnalyticsSection({
   children,
+  flushBottom = false,
   flushTop = false,
   id,
   subtitle,
   title,
 }: {
   children: ReactNode;
+  flushBottom?: boolean;
   flushTop?: boolean;
   id: string;
   subtitle?: string;
@@ -499,9 +544,11 @@ function AnalyticsSection({
 }) {
   const sectionClass =
     id === "spend-analytics"
-      ? "scroll-mt-24 py-8 sm:py-10"
+      ? flushBottom
+        ? "scroll-mt-24 pt-8 sm:pt-10"
+        : "scroll-mt-24 py-8 sm:py-10"
       : flushTop
-        ? "scroll-mt-24 py-2"
+        ? "scroll-mt-24 pt-6 pb-8"
         : "mt-16 scroll-mt-24 border-t border-border pt-16";
   return (
     <section className={sectionClass} id={id}>
@@ -743,67 +790,61 @@ function TokenFlowTable({ data }: { data: TokenAnalyticsRow[] }) {
       </div>
       {rows.length ? (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1660px] text-left text-xs">
-            <thead className="border-t border-border/40 text-muted-foreground">
+          <table className="w-full min-w-[1660px] text-left text-sm font-medium text-foreground">
+            <thead className="border-t border-border/40 text-foreground">
               <tr>
-                <th className="px-6 py-4 font-normal">Token</th>
-                <th className="px-5 py-4 text-right font-normal">Reserve</th>
-                <th className="px-5 py-4 text-right font-normal">Spend</th>
-                <th className="px-5 py-4 text-right font-normal">Top-ups</th>
-                <th className="px-5 py-4 text-right font-normal">Withdrawals</th>
-                <th className="px-5 py-4 text-right font-normal">Safe deposits</th>
-                <th className="px-5 py-4 text-right font-normal">Destination credits</th>
-                <th className="px-5 py-4 text-right font-normal">Supplied</th>
-                <th className="px-5 py-4 text-right font-normal">Borrowed</th>
-                <th className="px-6 py-4 text-right font-normal">Repaid</th>
+                <th className="px-6 py-4">Token</th>
+                <th className="px-5 py-4 text-right">Reserve</th>
+                <th className="px-5 py-4 text-right">Spend</th>
+                <th className="px-5 py-4 text-right">Top-ups</th>
+                <th className="px-5 py-4 text-right">Safe deposits</th>
+                <th className="px-5 py-4 text-right">Destination credits</th>
+                <th className="px-5 py-4 text-right">Supplied</th>
+                <th className="px-5 py-4 text-right">Borrowed</th>
+                <th className="px-6 py-4 text-right">Repaid</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
                 <tr className="border-t border-border/40" key={tokenAnalyticsId(row)}>
                   <td className="px-6 py-4">
-                    <span className="inline-flex items-center gap-3">
+                    <Link
+                      aria-label={`View ${row.symbol || short(row.token)} token details on ${chainLabel(row.chainId)}`}
+                      className="inline-flex items-center gap-3 rounded-lg outline-none transition-opacity hover:opacity-75 focus-visible:ring-2 focus-visible:ring-ring"
+                      href={`/tokens/${row.token}`}
+                    >
                       <span className="relative">
                         <TokenIcon address={row.token} chainId={row.chainId} symbol={row.symbol} />
                         <ChainBadge chainId={row.chainId} className="absolute -bottom-1 -right-1 size-3.5 ring-card" />
                       </span>
                       <span>
                         <span className="block font-medium text-foreground">{row.symbol || short(row.token)}</span>
-                        <span className="mt-0.5 block text-[10px] text-muted-foreground">
-                          {chainLabel(row.chainId)}
-                        </span>
+                        {row.name ? (
+                          <span className="mt-1 block text-sm font-medium text-muted-foreground">{row.name}</span>
+                        ) : null}
                       </span>
-                    </span>
+                    </Link>
                   </td>
                   <MetricCell
                     primary={tokenValue(row.reserveBalance, row)}
                     secondary={row.reserveUsd === null ? "derived balance" : money(row.reserveUsd)}
                   />
-                  <MetricCell primary={money(row.spendUsd)} secondary={`${compact.format(row.spendCount)} events`} />
+                  <MetricCell primary={money(row.spendUsd)} />
                   <MetricCell
                     primary={row.topUpUsd === null ? tokenValue(row.topUpAmount, row) : money(row.topUpUsd)}
-                    secondary={`${tokenValue(row.topUpAmount, row)} · ${compact.format(row.topUpCount)} events`}
+                    secondary={tokenValue(row.topUpAmount, row)}
                   />
-                  <MetricCell primary={compact.format(row.withdrawalCount)} secondary="requests" />
                   <MetricCell
                     primary={tokenValue(row.safeInflow, row)}
                     secondary={`${compact.format(row.safeAccountCount)} safes`}
                   />
-                  <MetricCell
-                    primary={tokenValue(row.destinationCredits, row)}
-                    secondary={`${compact.format(row.destinationCount)} destinations`}
-                  />
-                  <MetricCell
-                    primary={tokenValue(row.suppliedAmount, row)}
-                    secondary={`${compact.format(row.suppliedCount)} events`}
-                  />
+                  <MetricCell primary={tokenValue(row.destinationCredits, row)} />
+                  <MetricCell primary={tokenValue(row.suppliedAmount, row)} />
                   <MetricCell
                     primary={row.borrowedUsd > 0 ? money(row.borrowedUsd) : tokenValue(row.borrowedAmount, row)}
-                    secondary={`${compact.format(row.borrowedCount)} events`}
                   />
                   <MetricCell
                     primary={row.repaidUsd > 0 ? money(row.repaidUsd) : tokenValue(row.repaidAmount, row)}
-                    secondary={`${compact.format(row.repaidCount)} events`}
                     trailing
                   />
                 </tr>
@@ -824,13 +865,15 @@ function MetricCell({
   trailing = false,
 }: {
   primary: string;
-  secondary: string;
+  secondary?: string;
   trailing?: boolean;
 }) {
   return (
     <td className={`${trailing ? "px-6" : "px-5"} py-4 text-right`}>
       <span className="block whitespace-nowrap text-foreground">{primary}</span>
-      <span className="mt-1 block whitespace-nowrap text-[10px] text-muted-foreground">{secondary}</span>
+      {secondary ? (
+        <span className="mt-1 block whitespace-nowrap text-sm text-muted-foreground">{secondary}</span>
+      ) : null}
     </td>
   );
 }

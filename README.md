@@ -2,6 +2,8 @@
 
 A pnpm/Turborepo workspace for maintaining an Ether.fi Cash destination ledger with Envio HyperIndex and exploring the indexed data through Next.js.
 
+![Ether.fi Cash Scanner overview](docs/assets/cashscan-overview.jpg)
+
 ## Workspace
 
 - `apps/indexer` — Envio v3 indexer for destination top-ups and settled spend on Optimism and Scroll, including legacy Scroll history.

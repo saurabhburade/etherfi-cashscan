@@ -5,9 +5,20 @@ const skeletonIds = ["primary", "secondary", "tertiary", "quaternary", "quinary"
 const activityIds = ["one", "two", "three", "four"];
 const transactionRowIds = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
 
-export function ChartGridSkeleton({ cards = 2, topLevel = false }: { cards?: number; topLevel?: boolean }) {
+export function ChartGridSkeleton({
+  cards = 2,
+  flushBottom = false,
+  topLevel = false,
+}: {
+  cards?: number;
+  flushBottom?: boolean;
+  topLevel?: boolean;
+}) {
   return (
-    <section aria-label="Loading charts" className={topLevel ? "py-2" : "mt-16 border-t border-border pt-16"}>
+    <section
+      aria-label="Loading charts"
+      className={topLevel ? (flushBottom ? "pt-6" : "pt-6 pb-8") : "mt-16 border-t border-border pt-16"}
+    >
       <div className="animate-pulse">
         <div className="h-7 w-64 max-w-3/4 rounded-full bg-secondary/70" />
         <div className="mt-3 h-4 w-[34rem] max-w-full rounded-full bg-secondary/45" />

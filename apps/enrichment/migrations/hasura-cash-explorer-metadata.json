@@ -1,0 +1,895 @@
+{
+  "type": "bulk",
+  "args": [
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account" },
+        "configuration": {
+          "custom_name": "Account",
+          "custom_column_names": {
+            "chain_id": "chainId",
+            "account_kind": "accountKind",
+            "owner_address": "ownerAddress",
+            "first_seen_at": "firstSeenAt",
+            "first_seen_block_number": "firstSeenBlockNumber",
+            "created_at": "createdAt",
+            "updated_at": "updatedAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token" },
+        "configuration": {
+          "custom_name": "CashExplorerToken",
+          "custom_column_names": {
+            "chain_id": "chainId",
+            "decimals_verified": "decimalsVerified",
+            "metadata_status": "metadataStatus",
+            "created_at": "createdAt",
+            "updated_at": "updatedAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "scanner_event" },
+        "configuration": {
+          "custom_name": "ScannerEvent",
+          "custom_root_fields": {
+            "select": "ScannerEvent",
+            "select_by_pk": "ScannerEvent_by_pk",
+            "select_aggregate": "ScannerEvent_aggregate"
+          },
+          "custom_column_names": {
+            "chain_id": "chainId",
+            "transaction_hash": "transactionHash",
+            "log_index": "logIndex",
+            "block_number": "blockNumber",
+            "block_hash": "blockHash",
+            "account_id": "accountId",
+            "actor_address": "actorAddress",
+            "event_type": "eventType",
+            "accounting_role": "accountingRole",
+            "canonical_group_id": "canonicalGroupId",
+            "accounting_direction": "accountingDirection",
+            "accounting_kind": "accountingKind",
+            "amount_usd_raw": "amountUsdRaw",
+            "amount_usd": "amountUsd",
+            "usd_decimals": "usdDecimals",
+            "price_usd_e18": "priceUsdE18",
+            "price_usd": "priceUsd",
+            "usd_status": "usdStatus",
+            "price_status": "priceStatus",
+            "token_count": "tokenCount",
+            "source_name": "sourceName",
+            "source_event_name": "sourceEventName",
+            "source_contract_address": "contractAddress",
+            "source_entity_type": "sourceEntityType",
+            "source_entity_id": "sourceEntityId",
+            "source_provenance": "sourceProvenance",
+            "source_payload": "sourcePayload",
+            "created_at": "createdAt",
+            "updated_at": "updatedAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "scanner_event_token_leg" },
+        "configuration": {
+          "custom_name": "ScannerEventTokenLeg",
+          "custom_root_fields": {
+            "select": "ScannerEventTokenLeg",
+            "select_by_pk": "ScannerEventTokenLeg_by_pk",
+            "select_aggregate": "ScannerEventTokenLeg_aggregate"
+          },
+          "column_config": {
+            "scanner_event_id": { "custom_name": "scannerEventId" },
+            "token_id": { "custom_name": "tokenId" },
+            "leg_index": { "custom_name": "legIndex" },
+            "raw_amount": { "custom_name": "amount" },
+            "amount_usd_raw": { "custom_name": "amountUsdRaw" },
+            "amount_usd": { "custom_name": "amountUsd" },
+            "usd_decimals": { "custom_name": "usdDecimals" },
+            "usd_status": { "custom_name": "priceStatus" },
+            "price_usd_e18": { "custom_name": "priceUsdE18" }
+          },
+          "custom_column_names": {
+            "scanner_event_id": "scannerEventId",
+            "token_id": "tokenId",
+            "leg_index": "legIndex",
+            "raw_amount": "amount",
+            "amount_usd_raw": "amountUsdRaw",
+            "amount_usd": "amountUsd",
+            "usd_decimals": "usdDecimals",
+            "usd_status": "priceStatus",
+            "price_usd_e18": "priceUsdE18",
+            "implied_price_usd": "impliedPriceUsd",
+            "price_observation_id": "priceObservationId",
+            "created_at": "createdAt",
+            "updated_at": "updatedAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_token_metric" },
+        "configuration": {
+          "custom_name": "AccountTokenMetric",
+          "custom_root_fields": {
+            "select": "AccountTokenMetric",
+            "select_by_pk": "AccountTokenMetric_by_pk",
+            "select_aggregate": "AccountTokenMetric_aggregate"
+          },
+          "custom_column_names": {
+            "account_id": "accountId",
+            "token_id": "tokenId",
+            "chain_id": "chainId",
+            "safe_balance_amount": "safeBalanceAmount",
+            "safe_inflow_amount": "safeInflowAmount",
+            "safe_outflow_amount": "safeOutflowAmount",
+            "spend_amount": "spendAmount",
+            "spend_usd": "spendUsd",
+            "spend_count": "spendCount",
+            "amount_usd": "amountUsd",
+            "lend_borrowed_amount": "lendBorrowedAmount",
+            "lend_borrowed_usd": "lendBorrowedUsd",
+            "lend_borrowed_count": "lendBorrowedCount",
+            "deposit_count": "depositCount",
+            "deposited_amount": "depositedAmount",
+            "deposited_usd": "depositedUsd",
+            "spent_amount": "spentAmount",
+            "spent_usd": "spentUsd",
+            "credit_spend_usd": "creditSpendUsd",
+            "debit_spend_usd": "debitSpendUsd",
+            "withdrawal_count": "withdrawalCount",
+            "withdrawn_amount": "withdrawnAmount",
+            "withdrawn_usd": "withdrawnUsd",
+            "cashback_amount": "cashbackAmount",
+            "cashback_usd": "cashbackUsd",
+            "cashback_count": "cashbackCount",
+            "cashback_other_amount": "cashbackOtherAmount",
+            "cashback_other_usd": "cashbackOtherUsd",
+            "cashback_other_count": "cashbackOtherCount",
+            "cashback_generated_amount": "cashbackGeneratedAmount",
+            "cashback_generated_usd": "cashbackGeneratedUsd",
+            "cashback_generated_count": "cashbackGeneratedCount",
+            "cashback_received_amount": "cashbackReceivedAmount",
+            "cashback_received_usd": "cashbackReceivedUsd",
+            "cashback_received_count": "cashbackReceivedCount",
+            "cashback_generated_for_others_amount": "cashbackGeneratedForOthersAmount",
+            "cashback_generated_for_others_usd": "cashbackGeneratedForOthersUsd",
+            "cashback_generated_for_others_count": "cashbackGeneratedForOthersCount",
+            "cashback_regular_amount": "cashbackRegularAmount",
+            "cashback_regular_usd": "cashbackRegularUsd",
+            "cashback_regular_count": "cashbackRegularCount",
+            "cashback_spender_amount": "cashbackSpenderAmount",
+            "cashback_spender_usd": "cashbackSpenderUsd",
+            "cashback_spender_count": "cashbackSpenderCount",
+            "cashback_promotion_amount": "cashbackPromotionAmount",
+            "cashback_promotion_usd": "cashbackPromotionUsd",
+            "cashback_promotion_count": "cashbackPromotionCount",
+            "cashback_referral_amount": "cashbackReferralAmount",
+            "cashback_referral_usd": "cashbackReferralUsd",
+            "cashback_referral_count": "cashbackReferralCount",
+            "borrowed_amount": "borrowedAmount",
+            "borrowed_usd": "borrowedUsd",
+            "repaid_amount": "repaidAmount",
+            "repaid_usd": "repaidUsd",
+            "outstanding_debt_amount": "outstandingDebtAmount",
+            "outstanding_debt_usd": "outstandingDebtUsd",
+            "outstanding_debt_status": "outstandingDebtStatus",
+            "other_inflow_amount": "otherInflowAmount",
+            "other_outflow_amount": "otherOutflowAmount",
+            "current_balance_amount": "currentBalanceAmount",
+            "current_balance_usd": "currentBalanceUsd",
+            "current_balance_valuation_status": "currentBalanceValuationStatus",
+            "current_balance_price_observed_at": "currentBalancePriceObservedAt",
+            "flow_valuation_basis": "flowValuationBasis",
+            "balance_valuation_basis": "balanceValuationBasis",
+            "first_activity_at": "firstActivityAt",
+            "last_activity_at": "lastActivityAt",
+            "usd_status": "usdStatus",
+            "updated_at": "updatedAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_token_event" },
+        "configuration": {
+          "custom_name": "AccountTokenEvent",
+          "custom_root_fields": {
+            "select": "AccountTokenEvent",
+            "select_by_pk": "AccountTokenEvent_by_pk",
+            "select_aggregate": "AccountTokenEvent_aggregate"
+          },
+          "custom_column_names": {
+            "scanner_event_token_leg_id": "scannerEventTokenLegId",
+            "scanner_event_id": "scannerEventId",
+            "account_id": "accountId",
+            "token_id": "tokenId",
+            "chain_id": "chainId",
+            "safe_address": "safeAddress",
+            "token_address": "tokenAddress",
+            "funding_mode": "fundingMode",
+            "amount_raw": "amountRaw",
+            "token_decimals": "tokenDecimals",
+            "price_usd_e18": "priceUsdE18",
+            "amount_usd": "amountUsd",
+            "valuation_status": "valuationStatus",
+            "valuation_source": "valuationSource",
+            "valuation_observed_at": "valuationObservedAt",
+            "valuation_basis": "valuationBasis",
+            "block_number": "blockNumber",
+            "transaction_hash": "transactionHash",
+            "log_index": "logIndex",
+            "leg_index": "legIndex",
+            "source_event_name": "sourceEventName",
+            "canonical_movement_key": "canonicalMovementKey",
+            "reconciliation_status": "reconciliationStatus",
+            "cashback_recipient_address": "cashbackRecipientAddress",
+            "cashback_type": "cashbackType",
+            "cashback_paid": "cashbackPaid",
+            "cashback_attribution": "cashbackAttribution",
+            "created_at": "createdAt",
+            "updated_at": "updatedAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_metric" },
+        "configuration": {
+          "custom_name": "AccountMetric",
+          "custom_root_fields": {
+            "select": "AccountMetric",
+            "select_by_pk": "AccountMetric_by_pk",
+            "select_aggregate": "AccountMetric_aggregate"
+          },
+          "custom_column_names": {
+            "chain_id": "chainId",
+            "safe_address": "safeAddress",
+            "token_count": "tokenCount",
+            "transaction_count": "transactionCount",
+            "lifetime_deposited_usd": "lifetimeDepositedUsd",
+            "lifetime_spent_usd": "lifetimeSpentUsd",
+            "lifetime_withdrawn_usd": "lifetimeWithdrawnUsd",
+            "lifetime_cashback_usd": "lifetimeCashbackUsd",
+            "lifetime_cashback_generated_amount": "lifetimeCashbackGeneratedAmount",
+            "lifetime_cashback_generated_usd": "lifetimeCashbackGeneratedUsd",
+            "lifetime_cashback_generated_count": "lifetimeCashbackGeneratedCount",
+            "lifetime_cashback_received_amount": "lifetimeCashbackReceivedAmount",
+            "lifetime_cashback_received_usd": "lifetimeCashbackReceivedUsd",
+            "lifetime_cashback_received_count": "lifetimeCashbackReceivedCount",
+            "lifetime_cashback_generated_for_others_amount": "lifetimeCashbackGeneratedForOthersAmount",
+            "lifetime_cashback_generated_for_others_usd": "lifetimeCashbackGeneratedForOthersUsd",
+            "lifetime_cashback_generated_for_others_count": "lifetimeCashbackGeneratedForOthersCount",
+            "lifetime_cashback_regular_amount": "lifetimeCashbackRegularAmount",
+            "lifetime_cashback_regular_usd": "lifetimeCashbackRegularUsd",
+            "lifetime_cashback_regular_count": "lifetimeCashbackRegularCount",
+            "lifetime_cashback_spender_amount": "lifetimeCashbackSpenderAmount",
+            "lifetime_cashback_spender_usd": "lifetimeCashbackSpenderUsd",
+            "lifetime_cashback_spender_count": "lifetimeCashbackSpenderCount",
+            "lifetime_cashback_promotion_amount": "lifetimeCashbackPromotionAmount",
+            "lifetime_cashback_promotion_usd": "lifetimeCashbackPromotionUsd",
+            "lifetime_cashback_promotion_count": "lifetimeCashbackPromotionCount",
+            "lifetime_cashback_referral_amount": "lifetimeCashbackReferralAmount",
+            "lifetime_cashback_referral_usd": "lifetimeCashbackReferralUsd",
+            "lifetime_cashback_referral_count": "lifetimeCashbackReferralCount",
+            "lifetime_cashback_other_amount": "lifetimeCashbackOtherAmount",
+            "lifetime_cashback_other_usd": "lifetimeCashbackOtherUsd",
+            "lifetime_cashback_other_count": "lifetimeCashbackOtherCount",
+            "credit_spend_usd": "creditSpendUsd",
+            "debit_spend_usd": "debitSpendUsd",
+            "borrowed_usd": "borrowedUsd",
+            "repaid_usd": "repaidUsd",
+            "event_ledger_outstanding_debt_usd": "eventLedgerOutstandingDebtUsd",
+            "debt_status": "debtStatus",
+            "current_balance_usd": "currentBalanceUsd",
+            "net_worth_usd": "netWorthUsd",
+            "unpriced_position_count": "unpricedPositionCount",
+            "first_activity_at": "firstActivityAt",
+            "last_activity_at": "lastActivityAt",
+            "balance_valuation_basis": "balanceValuationBasis",
+            "updated_at": "updatedAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_daily_metric" },
+        "configuration": {
+          "custom_name": "AccountDailyMetric",
+          "custom_root_fields": {
+            "select": "AccountDailyMetric",
+            "select_by_pk": "AccountDailyMetric_by_pk",
+            "select_aggregate": "AccountDailyMetric_aggregate"
+          },
+          "custom_column_names": {
+            "account_id": "accountId",
+            "token_id": "tokenId",
+            "chain_id": "chainId",
+            "safe_address": "safeAddress",
+            "deposited_usd": "depositedUsd",
+            "spent_usd": "spentUsd",
+            "credit_spend_usd": "creditSpendUsd",
+            "debit_spend_usd": "debitSpendUsd",
+            "withdrawn_usd": "withdrawnUsd",
+            "cashback_usd": "cashbackUsd",
+            "borrowed_usd": "borrowedUsd",
+            "repaid_usd": "repaidUsd",
+            "other_inflow_usd": "otherInflowUsd",
+            "other_outflow_usd": "otherOutflowUsd",
+            "closing_balance_usd": "closingBalanceUsd",
+            "closing_balance_status": "closingBalanceStatus",
+            "closing_balance_basis": "closingBalanceBasis",
+            "transaction_count": "transactionCount",
+            "pricing_coverage_ratio": "pricingCoverageRatio",
+            "updated_at": "updatedAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_token_daily_metric" }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token_daily_metric" },
+        "configuration": {
+          "custom_name": "TokenDailyMetric",
+          "custom_root_fields": {
+            "select": "TokenDailyMetric",
+            "select_by_pk": "TokenDailyMetric_by_pk",
+            "select_aggregate": "TokenDailyMetric_aggregate"
+          },
+          "column_config": {
+            "token_id": { "custom_name": "tokenId" },
+            "credit_usd": { "custom_name": "creditUsd" },
+            "debit_usd": { "custom_name": "debitUsd" },
+            "event_count": { "custom_name": "eventCount" },
+            "volume_usd": { "custom_name": "volumeUsd" },
+            "spend_amount": { "custom_name": "spendAmount" },
+            "spend_usd": { "custom_name": "spendUsd" },
+            "spend_count": { "custom_name": "spendCount" },
+            "usd_status": { "custom_name": "usdStatus" }
+          },
+          "custom_column_names": {
+            "token_id": "tokenId",
+            "credit_usd": "creditUsd",
+            "debit_usd": "debitUsd",
+            "event_count": "eventCount",
+            "volume_usd": "volumeUsd",
+            "spend_amount": "spendAmount",
+            "spend_usd": "spendUsd",
+            "spend_count": "spendCount",
+            "usd_status": "usdStatus",
+            "updated_at": "updatedAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": { "source": "__HASURA_SOURCE__", "table": { "schema": "cash_explorer", "name": "token_price_source" } }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token_price_observation" }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token_price_current" },
+        "configuration": {
+          "custom_name": "TokenPriceCurrent",
+          "custom_root_fields": {
+            "select": "TokenPriceCurrent",
+            "select_by_pk": "TokenPriceCurrent_by_pk",
+            "select_aggregate": "TokenPriceCurrent_aggregate"
+          },
+          "column_config": {
+            "token_id": { "custom_name": "tokenId" },
+            "observation_id": { "custom_name": "observationId" },
+            "price_usd_e18": { "custom_name": "priceUsdE18" },
+            "price_usd": { "custom_name": "priceUsd" },
+            "price_status": { "custom_name": "priceStatus" },
+            "source_type": { "custom_name": "sourceType" },
+            "observed_at": { "custom_name": "observedAt" }
+          },
+          "custom_column_names": {
+            "token_id": "tokenId",
+            "observation_id": "observationId",
+            "price_usd_e18": "priceUsdE18",
+            "price_usd": "priceUsd",
+            "price_status": "priceStatus",
+            "source_type": "sourceType",
+            "observed_at": "observedAt",
+            "expires_at": "expiresAt",
+            "refresh_after": "refreshAfter",
+            "updated_at": "updatedAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": { "source": "__HASURA_SOURCE__", "table": { "schema": "cash_explorer", "name": "price_anomaly" } }
+    },
+    {
+      "type": "pg_track_table",
+      "args": { "source": "__HASURA_SOURCE__", "table": { "schema": "cash_explorer", "name": "explorer_checkpoint" } }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "scanner_event" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "scanner_event_token_leg" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_token_metric" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_token_event" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_metric" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_daily_metric" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_token_daily_metric" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token_daily_metric" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token_price_source" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token_price_observation" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token_price_current" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "price_anomaly" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "explorer_checkpoint" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "scanner_event" },
+        "name": "account",
+        "using": { "foreign_key_constraint_on": "account_id" }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account" },
+        "name": "scanner_events",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "scanner_event" },
+            "column": "account_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "scanner_event_token_leg" },
+        "name": "scannerEvent",
+        "using": { "foreign_key_constraint_on": "scanner_event_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "scanner_event_token_leg" },
+        "name": "token",
+        "using": { "foreign_key_constraint_on": "token_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_token_event" },
+        "name": "account",
+        "using": { "foreign_key_constraint_on": "account_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_token_event" },
+        "name": "token",
+        "using": { "foreign_key_constraint_on": "token_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_token_event" },
+        "name": "scannerEvent",
+        "using": { "foreign_key_constraint_on": "scanner_event_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_token_event" },
+        "name": "tokenLeg",
+        "using": { "foreign_key_constraint_on": "scanner_event_token_leg_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_metric" },
+        "name": "account",
+        "using": { "foreign_key_constraint_on": "id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_daily_metric" },
+        "name": "account",
+        "using": { "foreign_key_constraint_on": "account_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_daily_metric" },
+        "name": "token",
+        "using": { "foreign_key_constraint_on": "token_id" }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "scanner_event" },
+        "name": "tokenLegs",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "scanner_event_token_leg" },
+            "column": "scanner_event_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token" },
+        "name": "scanner_event_token_legs",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "scanner_event_token_leg" },
+            "column": "token_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_token_metric" },
+        "name": "account",
+        "using": { "foreign_key_constraint_on": "account_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_token_metric" },
+        "name": "token",
+        "using": { "foreign_key_constraint_on": "token_id" }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account" },
+        "name": "token_metrics",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "account_token_metric" },
+            "column": "account_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token" },
+        "name": "account_metrics",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "account_token_metric" },
+            "column": "token_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_token_daily_metric" },
+        "name": "account_token_metric",
+        "using": { "foreign_key_constraint_on": "account_token_metric_id" }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_token_metric" },
+        "name": "dailyMetrics",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "account_token_daily_metric" },
+            "column": "account_token_metric_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token_daily_metric" },
+        "name": "token",
+        "using": { "foreign_key_constraint_on": "token_id" }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token" },
+        "name": "dailyMetrics",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "token_daily_metric" },
+            "column": "token_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token_price_source" },
+        "name": "token",
+        "using": { "foreign_key_constraint_on": "token_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token_price_observation" },
+        "name": "token",
+        "using": { "foreign_key_constraint_on": "token_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token_price_observation" },
+        "name": "source",
+        "using": { "foreign_key_constraint_on": "source_id" }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token" },
+        "name": "price_observations",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "token_price_observation" },
+            "column": "token_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token_price_current" },
+        "name": "token",
+        "using": { "foreign_key_constraint_on": "token_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token_price_current" },
+        "name": "observation",
+        "using": { "foreign_key_constraint_on": "observation_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "price_anomaly" },
+        "name": "token",
+        "using": { "foreign_key_constraint_on": "token_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "explorer_checkpoint" },
+        "name": "event",
+        "using": { "foreign_key_constraint_on": "event_id" }
+      }
+    }
+  ]
+}

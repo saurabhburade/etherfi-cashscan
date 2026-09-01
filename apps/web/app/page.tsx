@@ -1,5 +1,6 @@
 import { INDEXED_CHAIN_BY_ID } from "@etherfi/contracts";
-import { FileText } from "lucide-react";
+import { ArrowRight, FileText } from "lucide-react";
+import Link from "next/link";
 import { Suspense } from "react";
 import { formatUnits, zeroAddress } from "viem";
 
@@ -21,7 +22,7 @@ const tokenAmount = new Intl.NumberFormat("en-US", {
 function activityValue(activity: Activity) {
   const normalizedType = activity.type.toLowerCase();
   const leadsWithUsd = normalizedType.startsWith("spend") || normalizedType.includes("cashback");
-  const usdValue = leadsWithUsd ? compactUsd(activity.amountUsd) : null;
+  const usdValue = leadsWithUsd && activity.amountUsd !== null ? compactUsd(activity.amountUsd) : null;
 
   if (activity.amount !== "0" && activity.tokenDecimals !== null) {
     try {
@@ -34,8 +35,8 @@ function activityValue(activity: Activity) {
     }
   }
 
-  if (activity.amountUsd || usdValue) {
-    return usdValue ?? compactUsd(activity.amountUsd);
+  if (activity.amountUsd !== null || usdValue) {
+    return usdValue ?? (activity.amountUsd !== null ? compactUsd(activity.amountUsd) : "—");
   }
 
   if (activity.token !== zeroAddress) {
@@ -65,7 +66,7 @@ function activityHref(activity: Activity) {
 function ActivityRow({ activity }: { activity: Activity }) {
   const href = activityHref(activity);
   const hasToken = activity.token !== zeroAddress;
-  const hasValue = activity.amount !== "0" || activity.amountUsd !== 0;
+  const hasValue = activity.amount !== "0" || activity.amountUsd !== null;
   const iconSymbol =
     activity.tokenSymbol || (hasToken ? shortAddress(activity.token) : activity.amountUsd ? "USD" : "TX");
 
@@ -137,6 +138,15 @@ function ActivityPanel({ title, activities }: { title: string; activities: Activ
           No matching activity yet.
         </div>
       )}
+      <footer className="border-t border-border/35 px-4 py-4 sm:px-5">
+        <Link
+          className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-foreground"
+          href="/transactions"
+        >
+          View more
+          <ArrowRight aria-hidden="true" className="size-4" />
+        </Link>
+      </footer>
     </section>
   );
 }
@@ -147,7 +157,7 @@ export default function HomePage() {
   return (
     <DashboardShell active="overview" dataPromise={dataPromise}>
       <main className="pb-20">
-        <Suspense fallback={<ChartGridSkeleton cards={2} topLevel />}>
+        <Suspense fallback={<ChartGridSkeleton cards={2} flushBottom topLevel />}>
           <OverviewCharts dataPromise={dataPromise} />
         </Suspense>
         <Suspense fallback={<ActivityGridSkeleton />}>
@@ -159,7 +169,7 @@ export default function HomePage() {
 }
 
 async function OverviewCharts({ dataPromise }: { dataPromise: Promise<ExplorerData> }) {
-  return <SpendOverviewCharts data={await dataPromise} sections={["spend", "cards"]} />;
+  return <SpendOverviewCharts data={await dataPromise} flushBottom sections={["spend", "cards"]} />;
 }
 
 async function OverviewActivity({ dataPromise }: { dataPromise: Promise<ExplorerData> }) {
