@@ -890,6 +890,978 @@
         "name": "event",
         "using": { "foreign_key_constraint_on": "event_id" }
       }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_identity" },
+        "configuration": {
+          "custom_name": "AccountIdentity",
+          "custom_root_fields": {
+            "select": "AccountIdentity",
+            "select_by_pk": "AccountIdentity_by_pk",
+            "select_aggregate": "AccountIdentity_aggregate"
+          },
+          "custom_column_names": {
+            "identity_kind": "identityKind",
+            "first_seen_block_number": "firstSeenBlockNumber",
+            "first_seen_block_hash": "firstSeenBlockHash",
+            "finalized_at": "finalizedAt",
+            "created_at": "createdAt",
+            "updated_at": "updatedAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "economic_action" },
+        "configuration": {
+          "custom_name": "EconomicAction",
+          "custom_root_fields": {
+            "select": "EconomicAction",
+            "select_by_pk": "EconomicAction_by_pk",
+            "select_aggregate": "EconomicAction_aggregate"
+          },
+          "custom_column_names": {
+            "chain_id": "chainId",
+            "account_id": "accountId",
+            "account_identity_id": "accountIdentityId",
+            "action_type": "actionType",
+            "economic_key": "economicKey",
+            "transaction_hash": "transactionHash",
+            "block_number": "blockNumber",
+            "block_hash": "blockHash",
+            "occurred_at": "occurredAt",
+            "finality_status": "finalityStatus",
+            "source_count": "sourceCount",
+            "created_at": "createdAt",
+            "updated_at": "updatedAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "economic_action_source" },
+        "configuration": {
+          "custom_name": "EconomicActionSource",
+          "custom_root_fields": {
+            "select": "EconomicActionSource",
+            "select_by_pk": "EconomicActionSource_by_pk",
+            "select_aggregate": "EconomicActionSource_aggregate"
+          },
+          "custom_column_names": {
+            "economic_action_id": "economicActionId",
+            "lending_event_id": "lendingEventId",
+            "source_kind": "sourceKind",
+            "source_role": "sourceRole",
+            "created_at": "createdAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_market" },
+        "configuration": {
+          "custom_name": "LendingMarket",
+          "custom_root_fields": {
+            "select": "LendingMarket",
+            "select_by_pk": "LendingMarket_by_pk",
+            "select_aggregate": "LendingMarket_aggregate"
+          },
+          "custom_column_names": {
+            "chain_id": "chainId",
+            "market_kind": "marketKind",
+            "oracle_address": "oracleAddress",
+            "price_provider_address": "priceProviderAddress",
+            "registered_block_number": "registeredBlockNumber",
+            "registered_block_hash": "registeredBlockHash",
+            "finalized_at": "finalizedAt",
+            "created_at": "createdAt",
+            "updated_at": "updatedAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_reserve" },
+        "configuration": {
+          "custom_name": "LendingReserve",
+          "custom_root_fields": {
+            "select": "LendingReserve",
+            "select_by_pk": "LendingReserve_by_pk",
+            "select_aggregate": "LendingReserve_aggregate"
+          },
+          "custom_column_names": {
+            "market_id": "marketId",
+            "chain_id": "chainId",
+            "asset_token_id": "assetTokenId",
+            "reserve_number": "reserveNumber",
+            "hub_asset_id": "hubAssetId",
+            "is_active": "isActive",
+            "registered_block_number": "registeredBlockNumber",
+            "registered_block_hash": "registeredBlockHash",
+            "finalized_at": "finalizedAt",
+            "created_at": "createdAt",
+            "updated_at": "updatedAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_event" },
+        "configuration": {
+          "custom_name": "LendingEvent",
+          "custom_root_fields": {
+            "select": "LendingEvent",
+            "select_by_pk": "LendingEvent_by_pk",
+            "select_aggregate": "LendingEvent_aggregate"
+          },
+          "custom_column_names": {
+            "chain_id": "chainId",
+            "account_identity_id": "accountIdentityId",
+            "economic_action_id": "economicActionId",
+            "market_id": "marketId",
+            "reserve_id": "reserveId",
+            "event_type": "eventType",
+            "source_kind": "sourceKind",
+            "source_contract_address": "sourceContractAddress",
+            "transaction_hash": "transactionHash",
+            "log_index": "logIndex",
+            "block_number": "blockNumber",
+            "block_hash": "blockHash",
+            "occurred_at": "occurredAt",
+            "finality_status": "finalityStatus",
+            "source_event_name": "sourceEventName",
+            "source_payload": "sourcePayload",
+            "source_provenance": "sourceProvenance",
+            "created_at": "createdAt",
+            "updated_at": "updatedAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_event_leg" },
+        "configuration": {
+          "custom_name": "LendingEventLeg",
+          "custom_root_fields": {
+            "select": "LendingEventLeg",
+            "select_by_pk": "LendingEventLeg_by_pk",
+            "select_aggregate": "LendingEventLeg_aggregate"
+          },
+          "custom_column_names": {
+            "lending_event_id": "lendingEventId",
+            "reserve_id": "reserveId",
+            "token_id": "tokenId",
+            "leg_index": "legIndex",
+            "balance_kind": "balanceKind",
+            "raw_amount": "rawAmount",
+            "amount_usd": "amountUsd",
+            "valuation_status": "valuationStatus",
+            "price_observation_id": "priceObservationId",
+            "created_at": "createdAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_position" },
+        "configuration": {
+          "custom_name": "LendingPosition",
+          "custom_root_fields": {
+            "select": "LendingPosition",
+            "select_by_pk": "LendingPosition_by_pk",
+            "select_aggregate": "LendingPosition_aggregate"
+          },
+          "custom_column_names": {
+            "account_identity_id": "accountIdentityId",
+            "reserve_id": "reserveId",
+            "chain_id": "chainId",
+            "wallet_balance": "walletBalance",
+            "supplied_balance": "suppliedBalance",
+            "gross_assets": "grossAssets",
+            "protocol_debt": "protocolDebt",
+            "wallet_balance_usd": "walletBalanceUsd",
+            "supplied_balance_usd": "suppliedBalanceUsd",
+            "gross_assets_usd": "grossAssetsUsd",
+            "protocol_debt_usd": "protocolDebtUsd",
+            "net_worth_usd": "netWorthUsd",
+            "valuation_status": "valuationStatus",
+            "state_block_number": "stateBlockNumber",
+            "state_block_hash": "stateBlockHash",
+            "state_observed_at": "stateObservedAt",
+            "finalized_at": "finalizedAt",
+            "created_at": "createdAt",
+            "updated_at": "updatedAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_position_snapshot" },
+        "configuration": {
+          "custom_name": "LendingPositionSnapshot",
+          "custom_root_fields": {
+            "select": "LendingPositionSnapshot",
+            "select_by_pk": "LendingPositionSnapshot_by_pk",
+            "select_aggregate": "LendingPositionSnapshot_aggregate"
+          },
+          "custom_column_names": {
+            "lending_position_id": "lendingPositionId",
+            "account_identity_id": "accountIdentityId",
+            "reserve_id": "reserveId",
+            "chain_id": "chainId",
+            "block_number": "blockNumber",
+            "block_hash": "blockHash",
+            "snapshot_kind": "snapshotKind",
+            "wallet_balance": "walletBalance",
+            "supplied_balance": "suppliedBalance",
+            "gross_assets": "grossAssets",
+            "protocol_debt": "protocolDebt",
+            "wallet_balance_usd": "walletBalanceUsd",
+            "supplied_balance_usd": "suppliedBalanceUsd",
+            "gross_assets_usd": "grossAssetsUsd",
+            "protocol_debt_usd": "protocolDebtUsd",
+            "net_worth_usd": "netWorthUsd",
+            "valuation_status": "valuationStatus",
+            "observed_at": "observedAt",
+            "finalized_at": "finalizedAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_track_table",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_account_snapshot" },
+        "configuration": {
+          "custom_name": "LendingAccountSnapshot",
+          "custom_root_fields": {
+            "select": "LendingAccountSnapshot",
+            "select_by_pk": "LendingAccountSnapshot_by_pk",
+            "select_aggregate": "LendingAccountSnapshot_aggregate"
+          },
+          "custom_column_names": {
+            "account_identity_id": "accountIdentityId",
+            "chain_id": "chainId",
+            "block_number": "blockNumber",
+            "block_hash": "blockHash",
+            "snapshot_kind": "snapshotKind",
+            "wallet_balance_usd": "walletBalanceUsd",
+            "supplied_balance_usd": "suppliedBalanceUsd",
+            "gross_assets_usd": "grossAssetsUsd",
+            "protocol_debt_usd": "protocolDebtUsd",
+            "net_worth_usd": "netWorthUsd",
+            "risk_premium_ray": "riskPremiumRay",
+            "total_collateral_value_raw": "totalCollateralValueRaw",
+            "total_debt_value_ray_raw": "totalDebtValueRayRaw",
+            "valuation_status": "valuationStatus",
+            "observed_at": "observedAt",
+            "finalized_at": "finalizedAt"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_identity" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "economic_action" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "economic_action_source" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_market" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_reserve" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_event" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_event_leg" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_position" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_position_snapshot" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_select_permission",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_account_snapshot" },
+        "role": "anonymous",
+        "permission": { "columns": "*", "filter": {} }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account" },
+        "name": "identity",
+        "using": { "foreign_key_constraint_on": "identity_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "economic_action" },
+        "name": "accountIdentity",
+        "using": { "foreign_key_constraint_on": "account_identity_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "economic_action" },
+        "name": "account",
+        "using": { "foreign_key_constraint_on": "account_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "economic_action_source" },
+        "name": "economicAction",
+        "using": { "foreign_key_constraint_on": "economic_action_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "economic_action_source" },
+        "name": "lendingEvent",
+        "using": { "foreign_key_constraint_on": "lending_event_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "economic_action_source" },
+        "name": "scannerEvent",
+        "using": { "foreign_key_constraint_on": "scanner_event_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_reserve" },
+        "name": "market",
+        "using": { "foreign_key_constraint_on": "market_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_reserve" },
+        "name": "assetToken",
+        "using": { "foreign_key_constraint_on": "asset_token_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_event" },
+        "name": "accountIdentity",
+        "using": { "foreign_key_constraint_on": "account_identity_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_event" },
+        "name": "economicAction",
+        "using": { "foreign_key_constraint_on": "economic_action_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_event" },
+        "name": "market",
+        "using": { "foreign_key_constraint_on": "market_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_event" },
+        "name": "reserve",
+        "using": { "foreign_key_constraint_on": "reserve_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_event_leg" },
+        "name": "lendingEvent",
+        "using": { "foreign_key_constraint_on": "lending_event_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_event_leg" },
+        "name": "reserve",
+        "using": { "foreign_key_constraint_on": "reserve_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_event_leg" },
+        "name": "token",
+        "using": { "foreign_key_constraint_on": "token_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_event_leg" },
+        "name": "priceObservation",
+        "using": { "foreign_key_constraint_on": "price_observation_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_position" },
+        "name": "accountIdentity",
+        "using": { "foreign_key_constraint_on": "account_identity_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_position" },
+        "name": "reserve",
+        "using": { "foreign_key_constraint_on": "reserve_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_position_snapshot" },
+        "name": "lendingPosition",
+        "using": { "foreign_key_constraint_on": "lending_position_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_position_snapshot" },
+        "name": "accountIdentity",
+        "using": { "foreign_key_constraint_on": "account_identity_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_position_snapshot" },
+        "name": "reserve",
+        "using": { "foreign_key_constraint_on": "reserve_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_account_snapshot" },
+        "name": "accountIdentity",
+        "using": { "foreign_key_constraint_on": "account_identity_id" }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_token_event" },
+        "name": "economicAction",
+        "using": { "foreign_key_constraint_on": "economic_action_id" }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_identity" },
+        "name": "accounts",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "account" },
+            "column": "identity_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account" },
+        "name": "economicActions",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "economic_action" },
+            "column": "account_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_identity" },
+        "name": "economicActions",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "economic_action" },
+            "column": "account_identity_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_identity" },
+        "name": "lendingEvents",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "lending_event" },
+            "column": "account_identity_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_identity" },
+        "name": "lendingPositions",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "lending_position" },
+            "column": "account_identity_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account_identity" },
+        "name": "lendingAccountSnapshots",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "lending_account_snapshot" },
+            "column": "account_identity_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "economic_action" },
+        "name": "sources",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "economic_action_source" },
+            "column": "economic_action_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "economic_action" },
+        "name": "lendingEvents",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "lending_event" },
+            "column": "economic_action_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "economic_action" },
+        "name": "accountTokenEvents",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "account_token_event" },
+            "column": "economic_action_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_market" },
+        "name": "reserves",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "lending_reserve" },
+            "column": "market_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_market" },
+        "name": "events",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "lending_event" },
+            "column": "market_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_reserve" },
+        "name": "events",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "lending_event" },
+            "column": "reserve_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_reserve" },
+        "name": "eventLegs",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "lending_event_leg" },
+            "column": "reserve_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_reserve" },
+        "name": "positions",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "lending_position" },
+            "column": "reserve_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_event" },
+        "name": "legs",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "lending_event_leg" },
+            "column": "lending_event_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_event" },
+        "name": "economicActionSources",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "economic_action_source" },
+            "column": "lending_event_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "scanner_event" },
+        "name": "economicActionSources",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "economic_action_source" },
+            "column": "scanner_event_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "lending_position" },
+        "name": "snapshots",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "lending_position_snapshot" },
+            "column": "lending_position_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token" },
+        "name": "lendingReserves",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "lending_reserve" },
+            "column": "asset_token_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token" },
+        "name": "lendingEventLegs",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "lending_event_leg" },
+            "column": "token_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token_price_observation" },
+        "name": "lendingEventLegs",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "lending_event_leg" },
+            "column": "price_observation_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "scanner_event" },
+        "name": "accountTokenEvents",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "account_token_event" },
+            "column": "scanner_event_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_object_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "scanner_event_token_leg" },
+        "name": "accountTokenEvent",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "account_token_event" },
+            "column": "scanner_event_token_leg_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "account" },
+        "name": "accountDailyMetrics",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "account_daily_metric" },
+            "column": "account_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token" },
+        "name": "accountTokenEvents",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "account_token_event" },
+            "column": "token_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token" },
+        "name": "accountDailyMetrics",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "account_daily_metric" },
+            "column": "token_id"
+          }
+        }
+      }
+    },
+    {
+      "type": "pg_create_array_relationship",
+      "args": {
+        "source": "__HASURA_SOURCE__",
+        "table": { "schema": "cash_explorer", "name": "token_price_observation" },
+        "name": "currentPrices",
+        "using": {
+          "foreign_key_constraint_on": {
+            "table": { "schema": "cash_explorer", "name": "token_price_current" },
+            "column": "observation_id"
+          }
+        }
+      }
     }
   ]
 }

@@ -181,6 +181,12 @@ describe("token analytics metric contract", () => {
         borrowedCount: "12",
         borrowedAmount: "13",
         borrowedUsd: "14000000",
+        borrowedUsdLatest: "26000000",
+        borrowedUsdLatestStatus: "latest_indexed_price",
+        borrowedUsdLatestPriceUsdE18: "2000000000000000000",
+        borrowedUsdLatestPriceAt: "2026-09-01T00:00:00Z",
+        borrowedUsdLatestPriceChainId: 10,
+        borrowedUsdLatestPriceSource: "spend_implied",
         repaidCount: "15",
         repaidAmount: "16",
         repaidUsd: "17000000",
@@ -200,10 +206,102 @@ describe("token analytics metric contract", () => {
         reserveUsd: 8,
         destinationCredits: "8",
         destinationDebits: "9",
-        borrowedUsd: 14,
+        borrowedUsd: 26,
+        borrowedUsdEventTime: 14,
+        borrowedUsdStatus: "latest_indexed_price",
+        borrowedUsdPriceUsdE18: "2000000000000000000",
+        borrowedUsdPriceChainId: 10,
+        borrowedUsdPriceSource: "spend_implied",
         repaidUsd: 17,
       }),
     ]);
+  });
+
+  it("uses Envio's persisted latest-price borrow valuation when event-time USD is absent", () => {
+    const address = "0x06efdbff2a14a7c8e15944d1f4a48f9f95f663a4";
+    const rows = tokenAnalyticsRows(
+      [
+        {
+          chainId: 534352,
+          address,
+          name: "USD Coin",
+          symbol: "USDC",
+          decimals: 6,
+          decimalsVerified: true,
+          oracleDecimals: 0,
+          oracleHeartbeat: 0,
+          price: "0",
+          priceUpdatedAt: "0",
+        },
+      ] as TokenRecord[],
+      [
+        {
+          chainId: 534352,
+          tokenAddress: address,
+          borrowedCount: "640903",
+          borrowedAmount: "52981545913494",
+          borrowedUsd: "0",
+          borrowedUsdLatest: "52981545913494",
+          borrowedUsdLatestStatus: "latest_indexed_price",
+          borrowedUsdLatestPriceUsdE18: "1000000000000000000",
+          borrowedUsdLatestPriceAt: "2026-04-09T04:34:51Z",
+          borrowedUsdLatestPriceChainId: 534352,
+          borrowedUsdLatestPriceSource: "spend_implied",
+        },
+      ],
+    );
+
+    expect(rows[0]).toEqual(
+      expect.objectContaining({
+        borrowedUsd: 52_981_545.913494,
+        borrowedUsdEventTime: 0,
+        borrowedUsdStatus: "latest_indexed_price",
+        borrowedUsdPriceSource: "spend_implied",
+      }),
+    );
+  });
+
+  it("derives latest-price borrow valuation against the legacy Envio schema", () => {
+    const address = "0x06efdbff2a14a7c8e15944d1f4a48f9f95f663a4";
+    const rows = tokenAnalyticsRows(
+      [
+        {
+          chainId: 534352,
+          address,
+          name: "USD Coin",
+          symbol: "USDC",
+          decimals: 6,
+          decimalsVerified: true,
+          oracleDecimals: 0,
+          oracleHeartbeat: 0,
+          price: "0",
+          priceUpdatedAt: "0",
+        },
+      ] as TokenRecord[],
+      [
+        {
+          chainId: 534352,
+          tokenAddress: address,
+          borrowedCount: "640903",
+          borrowedAmount: "52981545913494",
+          borrowedUsd: "0",
+          latestSpendPriceUsdE18: "1000000000000000000",
+          latestSpendPriceStatus: "spend_implied",
+          latestSpendAt: "2026-04-09T04:34:51Z",
+        },
+      ],
+    );
+
+    expect(rows[0]).toEqual(
+      expect.objectContaining({
+        borrowedUsd: 52_981_545.913494,
+        borrowedUsdEventTime: 0,
+        borrowedUsdStatus: "latest_indexed_price",
+        borrowedUsdPriceUsdE18: "1000000000000000000",
+        borrowedUsdPriceChainId: 534352,
+        borrowedUsdPriceSource: "spend_implied",
+      }),
+    );
   });
 
   it("prefers a fresh indexed oracle price over a spend-implied price", () => {

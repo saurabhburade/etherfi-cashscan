@@ -93,9 +93,19 @@ function ActivityRow({ activity }: { activity: Activity }) {
       </span>
       <div className="min-w-0">
         <span className="block truncate text-zinc-100">{activityLabel(activity.type)}</span>
-        <time className="mt-1 block truncate text-zinc-400" dateTime={activity.timestamp}>
-          {timeAgo(activity.timestamp)}
-        </time>
+        <span className="mt-1 flex min-w-0 items-center gap-1 text-zinc-400">
+          <time className="shrink-0" dateTime={activity.timestamp}>
+            {timeAgo(activity.timestamp)}
+          </time>
+          <span aria-hidden="true">·</span>
+          <span className="shrink-0">by</span>
+          <Link
+            className="truncate font-mono underline decoration-zinc-600 underline-offset-4 transition hover:text-zinc-100"
+            href={`/accounts/${activity.actor}`}
+          >
+            {shortAddress(activity.actor)}
+          </Link>
+        </span>
       </div>
 
       <div className="min-w-0 text-right">
@@ -138,15 +148,13 @@ function ActivityPanel({ title, activities }: { title: string; activities: Activ
           No matching activity yet.
         </div>
       )}
-      <footer className="border-t border-border/35 px-4 py-4 sm:px-5">
-        <Link
-          className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-foreground"
-          href="/transactions"
-        >
-          View more
-          <ArrowRight aria-hidden="true" className="size-4" />
-        </Link>
-      </footer>
+      <Link
+        className="flex items-center justify-center gap-2 border-t border-border/35 bg-secondary/35 px-4 py-4 text-sm font-medium text-muted-foreground transition hover:bg-secondary/60 hover:text-foreground sm:px-5"
+        href="/transactions"
+      >
+        View more
+        <ArrowRight aria-hidden="true" className="size-4" />
+      </Link>
     </section>
   );
 }

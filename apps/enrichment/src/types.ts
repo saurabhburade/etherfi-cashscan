@@ -111,6 +111,71 @@ export type ProtocolEventDto = SourceEvent & {
   amountUsd: string | null;
   metadata: string;
 };
+/** One observed protocol log.  Unlike the legacy Cash tables, a lending log is
+ * never interpreted as a portfolio movement until its legs are available. */
+export type LendingSourceKind = "cash" | "gateway" | "spoke";
+export type LendingEventType =
+  | "supply"
+  | "withdraw"
+  | "borrow"
+  | "repay"
+  | "liquidation"
+  | "collateral_enable"
+  | "collateral_disable"
+  | "reserve_registered"
+  | "reserve_deregistered"
+  | "position_manager_update"
+  | "deficit"
+  // Cash-originated corroboration may be emitted alongside lending logs.
+  | "spend"
+  | "cashback";
+export type LendingSourceEvent = SourceEvent & {
+  sourceKind: LendingSourceKind;
+  eventType: LendingEventType;
+  sourceAddress: string | null;
+  marketAddress: string | null;
+  spokeAddress: string | null;
+  safeAddress: string | null;
+  actorAddress: string | null;
+  recipientAddress: string | null;
+  /** uint256, represented exactly as a decimal string at the GraphQL boundary. */
+  reserveId: string | null;
+  collateralReserveId: string | null;
+  debtReserveId: string | null;
+  metadata: string;
+};
+export type LendingSourceEventLeg = {
+  id: string;
+  sourceEventId: string;
+  legIndex: number;
+  legType: string;
+  /** uint256, never an address. */
+  reserveId: string | null;
+  tokenAddress: string | null;
+  amount: string | null;
+  shares: string | null;
+  suppliedSharesDelta: string | null;
+  drawnSharesDelta: string | null;
+  premiumSharesDelta: string | null;
+  premiumOffsetRayDelta: string | null;
+  direction: "increase" | "decrease" | "informational";
+};
+export type LendingReserveState = {
+  id: string;
+  chainId: number;
+  marketAddress: string | null;
+  spokeAddress: string | null;
+  tokenAddress: string | null;
+  hubAssetId: string | null;
+  hubAddress: string | null;
+  reserveId: string;
+  gatewayAddress: string | null;
+  gatewayRegistered: boolean;
+  active: boolean;
+  updatedBlock: string;
+  updatedAt: string;
+  transactionHash: string;
+};
 
 export type SourcePage = {
   protocolEvents: ProtocolEventDto[];
@@ -124,6 +189,10 @@ export type SourcePage = {
   safeBalances: SafeBalanceDto[];
   tokens: TokenMetadataDto[];
   priceFeeds: PriceFeedDto[];
+  /** Optional while an older Envio schema is rolling forward. */
+  lendingSourceEvents?: LendingSourceEvent[];
+  lendingSourceEventLegs?: LendingSourceEventLeg[];
+  lendingReserveStates?: LendingReserveState[];
 };
 export type SourceAdapter = { fetchPage(after: EventCursor | null, limit: number): Promise<SourcePage> };
 
@@ -163,4 +232,5 @@ export type Projection = {
   tokens: TokenMetadataDto[];
   safeBalances: SafeBalanceDto[];
   priceObservations: import("./pricing.js").PriceObservation[];
+  lending?: import("./lending.js").LendingProjection;
 };

@@ -19,7 +19,8 @@
     "benchmark:queries": "node scripts/benchmark-queries.mjs",
     "audit:prices": "tsx src/price-audit-cli.ts",
     "prices:backfill": "tsx src/cli.ts price-backfill",
-    "prices:refresh": "tsx src/cli.ts price-refresh"
+    "prices:refresh": "tsx src/cli.ts price-refresh",
+    "lending:snapshots": "tsx src/cli.ts lending-snapshots"
   },
   "dependencies": {
     "postgres": "3.4.8",

@@ -20,8 +20,20 @@ export async function runBackfill(
   const page = await adapter.fetchPage(nextRange(prior, limit).after, limit);
   const projection = projectPage(page);
   await store.writeProjection(projection);
-  const last = projection.events.sort(compareGlobalOrder).at(-1);
+  const rawFeeds = [page.protocolEvents, page.lendingSourceEvents ?? []];
+  const saturatedTails = rawFeeds
+    .filter((feed) => feed.length === limit)
+    .flatMap((feed) => {
+      const tail = feed.at(-1);
+      return tail ? [tail] : [];
+    });
+  // Independent GraphQL limits make the newest saturated tail the only safe
+  // shared boundary. The other feed may reread rows, but cannot be skipped.
+  const rawRows = rawFeeds.flat();
+  const last = saturatedTails.length
+    ? saturatedTails.sort(compareGlobalOrder)[0]
+    : (rawRows.length ? rawRows : projection.events).sort(compareGlobalOrder).at(-1);
   const checkpoint = last ? checkpointAfter(last, name) : prior;
   if (checkpoint && last) await store.writeCheckpoint(checkpoint);
-  return { processed: projection.events.length, checkpoint, locked: true };
+  return { processed: projection.events.length + (page.lendingSourceEvents?.length ?? 0), checkpoint, locked: true };
 }

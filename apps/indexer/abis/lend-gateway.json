@@ -1,0 +1,75 @@
+[
+  {
+    "type": "event",
+    "name": "ReserveRegistered",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "asset", "type": "address" },
+      { "indexed": true, "name": "reserveId", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "ReserveDeregistered",
+    "anonymous": false,
+    "inputs": [{ "indexed": true, "name": "asset", "type": "address" }]
+  },
+  {
+    "type": "event",
+    "name": "PositionManagerApproved",
+    "anonymous": false,
+    "inputs": [{ "indexed": true, "name": "safe", "type": "address" }]
+  },
+  {
+    "type": "event",
+    "name": "Supplied",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": true, "name": "asset", "type": "address" },
+      { "indexed": false, "name": "amount", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Withdrawn",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": true, "name": "asset", "type": "address" },
+      { "indexed": false, "name": "amount", "type": "uint256" },
+      { "indexed": true, "name": "to", "type": "address" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Borrowed",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": true, "name": "asset", "type": "address" },
+      { "indexed": false, "name": "amount", "type": "uint256" },
+      { "indexed": true, "name": "to", "type": "address" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Repaid",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": true, "name": "asset", "type": "address" },
+      { "indexed": false, "name": "amount", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "CollateralUsageSet",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "safe", "type": "address" },
+      { "indexed": true, "name": "asset", "type": "address" },
+      { "indexed": false, "name": "useAsCollateral", "type": "bool" }
+    ]
+  }
+]

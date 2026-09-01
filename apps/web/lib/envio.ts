@@ -149,7 +149,15 @@ export type TokenAnalyticsRow = {
   suppliedAmount: string;
   borrowedCount: number;
   borrowedAmount: string;
+  /** Complete cumulative borrow volume at the latest indexed token price. */
   borrowedUsd: number;
+  /** Source-contract event-time USD; this may cover only some borrow events. */
+  borrowedUsdEventTime: number;
+  borrowedUsdStatus: "event_time" | "latest_indexed_price" | "latest_cross_chain_price" | "unpriced";
+  borrowedUsdPriceUsdE18: string;
+  borrowedUsdPriceAt: string;
+  borrowedUsdPriceChainId: number;
+  borrowedUsdPriceSource: string;
   repaidCount: number;
   repaidAmount: string;
   repaidUsd: number;
@@ -408,12 +416,39 @@ export const TOKEN_ANALYTICS_QUERY = /* GraphQL */ `
       safeAccountCount safeBalance safeInflow safeOutflow
       destinationCount destinationBalance destinationInflow destinationOutflow
       suppliedCount suppliedAmount
+      borrowedCount borrowedAmount borrowedUsd borrowedUsdLatest borrowedUsdLatestStatus
+      borrowedUsdLatestPriceUsdE18 borrowedUsdLatestPriceAt borrowedUsdLatestPriceChainId borrowedUsdLatestPriceSource
+      repaidCount repaidAmount repaidUsd
+      latestSpendPriceUsdE18 latestSpendPriceStatus latestSpendAt updatedAt
+    }
+  }
+`;
+
+const TOKEN_ANALYTICS_LEGACY_QUERY = /* GraphQL */ `
+  query EtherFiCashTokenAnalytics(
+    $tokenWhere: Token_bool_exp!
+    $metricWhere: TokenAnalyticsMetric_bool_exp!
+  ) {
+    Token(limit: 1000, where: $tokenWhere) {
+      chainId address name symbol decimals decimalsVerified
+      oracleDecimals oracleHeartbeat price priceUpdatedAt
+    }
+    TokenAnalyticsMetric(limit: 1000, where: $metricWhere) {
+      chainId tokenAddress
+      spendCount spendUsd
+      topUpCount topUpAmount
+      withdrawalCount
+      safeAccountCount safeBalance safeInflow safeOutflow
+      destinationCount destinationBalance destinationInflow destinationOutflow
+      suppliedCount suppliedAmount
       borrowedCount borrowedAmount borrowedUsd
       repaidCount repaidAmount repaidUsd
       latestSpendPriceUsdE18 latestSpendPriceStatus latestSpendAt updatedAt
     }
   }
 `;
+
+let tokenAnalyticsHasLatestBorrowFields: boolean | null = null;
 
 const SAFE_ACCOUNTS_QUERY = /* GraphQL */ `
   query EtherFiCashExplorerSafeAccounts($where: SafeTokenBalance_bool_exp!) {
@@ -1018,12 +1053,30 @@ export async function loadTokenAnalytics(filters: { chainId?: number } = {}): Pr
     process.env.ENVIO_GRAPHQL_URL ?? process.env.NEXT_PUBLIC_ENVIO_GRAPHQL_URL ?? "http://localhost:8080/v1/graphql";
   const adminSecret = process.env.ENVIO_HASURA_ADMIN_SECRET;
   const where = chainWhereFor(filters);
-  const data = await graphqlRequired<TokenAnalyticsResponse>(
-    endpoint,
-    TOKEN_ANALYTICS_QUERY,
-    { tokenWhere: where, metricWhere: where },
-    adminSecret,
-  );
+  const variables = { tokenWhere: where, metricWhere: where };
+  let data: TokenAnalyticsResponse;
+  if (tokenAnalyticsHasLatestBorrowFields === false) {
+    data = await graphqlRequired<TokenAnalyticsResponse>(
+      endpoint,
+      TOKEN_ANALYTICS_LEGACY_QUERY,
+      variables,
+      adminSecret,
+    );
+  } else {
+    try {
+      data = await graphqlRequired<TokenAnalyticsResponse>(endpoint, TOKEN_ANALYTICS_QUERY, variables, adminSecret);
+      tokenAnalyticsHasLatestBorrowFields = true;
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes("borrowedUsdLatest")) throw error;
+      tokenAnalyticsHasLatestBorrowFields = false;
+      data = await graphqlRequired<TokenAnalyticsResponse>(
+        endpoint,
+        TOKEN_ANALYTICS_LEGACY_QUERY,
+        variables,
+        adminSecret,
+      );
+    }
+  }
   return tokenAnalyticsRows(data.Token.map(tokenRecord), data.TokenAnalyticsMetric);
 }
 
@@ -1050,6 +1103,22 @@ export function tokenAnalyticsRows(tokens: TokenRecord[], metrics: Row[]): Token
           : null;
       const reserveBalance = String(metric.destinationBalance ?? "0");
       const topUpAmount = String(metric.topUpAmount ?? "0");
+      const borrowedAmount = String(metric.borrowedAmount ?? "0");
+      const borrowedUsdEventTime = usd(metric.borrowedUsd);
+      const persistedBorrowedUsdLatest = metric.borrowedUsdLatest == null ? null : usd(metric.borrowedUsdLatest);
+      const borrowedUsdLatest =
+        persistedBorrowedUsdLatest ??
+        (token ? (indexedTokenAmountUsd(borrowedAmount, token) ?? derivedAmountUsd(borrowedAmount) ?? 0) : 0);
+      const indexedBorrowStatus = String(
+        metric.borrowedUsdLatestStatus ?? (borrowedUsdLatest > 0 ? "latest_indexed_price" : "unpriced"),
+      );
+      const borrowedUsdStatus: TokenAnalyticsRow["borrowedUsdStatus"] =
+        (indexedBorrowStatus === "latest_indexed_price" || indexedBorrowStatus === "latest_cross_chain_price") &&
+        borrowedUsdLatest > 0
+          ? indexedBorrowStatus
+          : borrowedUsdEventTime > 0
+            ? "event_time"
+            : "unpriced";
 
       return {
         chainId,
@@ -1074,8 +1143,17 @@ export function tokenAnalyticsRows(tokens: TokenRecord[], metrics: Row[]): Token
         suppliedCount: integer(metric.suppliedCount),
         suppliedAmount: String(metric.suppliedAmount ?? "0"),
         borrowedCount: integer(metric.borrowedCount),
-        borrowedAmount: String(metric.borrowedAmount ?? "0"),
-        borrowedUsd: usd(metric.borrowedUsd),
+        borrowedAmount,
+        borrowedUsd:
+          borrowedUsdStatus === "latest_indexed_price" || borrowedUsdStatus === "latest_cross_chain_price"
+            ? borrowedUsdLatest
+            : borrowedUsdEventTime,
+        borrowedUsdEventTime,
+        borrowedUsdStatus,
+        borrowedUsdPriceUsdE18: String(metric.borrowedUsdLatestPriceUsdE18 ?? metric.latestSpendPriceUsdE18 ?? "0"),
+        borrowedUsdPriceAt: String(metric.borrowedUsdLatestPriceAt ?? metric.latestSpendAt ?? ""),
+        borrowedUsdPriceChainId: integer(metric.borrowedUsdLatestPriceChainId ?? chainId),
+        borrowedUsdPriceSource: String(metric.borrowedUsdLatestPriceSource ?? metric.latestSpendPriceStatus ?? "none"),
         repaidCount: integer(metric.repaidCount),
         repaidAmount: String(metric.repaidAmount ?? "0"),
         repaidUsd: usd(metric.repaidUsd),

@@ -23,6 +23,14 @@ export function TokenDetailSummary({ rows }: { rows: TokenAnalyticsRow[] }) {
   const chainIds = [...new Set(rows.map((row) => row.chainId))];
   const reserve = tokenMetricSummary(rows, "reserveBalance", "reserveUsd");
   const topUps = tokenMetricSummary(rows, "topUpAmount", "topUpUsd");
+  const borrowStatuses = new Set(rows.filter((row) => row.borrowedCount > 0).map((row) => row.borrowedUsdStatus));
+  const borrowValuation = borrowStatuses.has("unpriced")
+    ? "USD price unavailable"
+    : borrowStatuses.has("latest_cross_chain_price")
+      ? "latest cross-chain price"
+      : borrowStatuses.has("latest_indexed_price")
+        ? "latest indexed price"
+        : "event-time USD";
   const metrics = [
     {
       label: "Reserve balance",
@@ -48,7 +56,7 @@ export function TokenDetailSummary({ rows }: { rows: TokenAnalyticsRow[] }) {
     {
       label: "Borrowed",
       value: money.format(rows.reduce((total, row) => total + row.borrowedUsd, 0)),
-      detail: `${compact.format(rows.reduce((total, row) => total + row.borrowedCount, 0))} events`,
+      detail: `${compact.format(rows.reduce((total, row) => total + row.borrowedCount, 0))} events · ${borrowValuation}`,
     },
     {
       label: "Repaid",

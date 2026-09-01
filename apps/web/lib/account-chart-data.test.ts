@@ -143,7 +143,51 @@ describe("account chart data", () => {
     );
 
     expect(points[0]).toEqual(
-      expect.objectContaining({ depositedUsd: 0, spentUsd: 4, cumulativeVolumeUsd: 4, hasUnpricedFlow: true }),
+      expect.objectContaining({ depositedUsd: 0, spentUsd: 4, cumulativeVolumeUsd: 4.1, hasUnpricedFlow: true }),
     );
+  });
+
+  it("includes every displayed daily account flow in cumulative volume", () => {
+    const points = accountDailyChartPoints(
+      detail({
+        days: [
+          {
+            day: "2026-09-01",
+            depositedUsd: 5,
+            spentUsd: 4,
+            creditSpendUsd: 1,
+            debitSpendUsd: 3,
+            withdrawnUsd: 3,
+            cashbackUsd: 2,
+            borrowedUsd: 6,
+            repaidUsd: 1,
+            closingBalanceUsd: null,
+            closingBalanceStatus: "not_reconstructed",
+            transactionCount: 6,
+            pricingCoverageRatio: 1,
+          },
+          {
+            day: "2026-09-02",
+            depositedUsd: 1,
+            spentUsd: 2,
+            creditSpendUsd: 0,
+            debitSpendUsd: 2,
+            withdrawnUsd: 0,
+            cashbackUsd: 0,
+            borrowedUsd: 0,
+            repaidUsd: 1,
+            closingBalanceUsd: null,
+            closingBalanceStatus: "not_reconstructed",
+            transactionCount: 2,
+            pricingCoverageRatio: 1,
+          },
+        ],
+      }),
+    );
+
+    expect(points).toEqual([
+      expect.objectContaining({ cashbackUsd: 2, borrowedUsd: 6, repaidUsd: 1, cumulativeVolumeUsd: 21 }),
+      expect.objectContaining({ cumulativeVolumeUsd: 25 }),
+    ]);
   });
 });

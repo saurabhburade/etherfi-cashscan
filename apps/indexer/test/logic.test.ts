@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  amountAtPrice,
   applyBalanceDelta,
   balanceChange,
   bytes32Label,
@@ -10,6 +11,7 @@ import {
   impliedUsdPriceE18,
   isEurRampToken,
   isLaterTokenSpend,
+  priceDeviationOverHalf,
   rampAmountUsd,
   rampKindFromLabel,
   spendBucket,
@@ -79,6 +81,18 @@ describe("indexer identities", () => {
     expect(impliedUsdPriceE18(155_160_000n, 155_160_000n, 6)).toBe(10n ** 18n);
     expect(impliedUsdPriceE18(50_000_000n, 100_000_000n, 6)).toBe(2n * 10n ** 18n);
     expect(impliedUsdPriceE18(0n, 100_000_000n, 6)).toBe(0n);
+  });
+
+  it("rejects only price deviations greater than fifty percent", () => {
+    const oneDollar = 10n ** 18n;
+    expect(priceDeviationOverHalf(15n * 10n ** 17n, oneDollar)).toBe(false);
+    expect(priceDeviationOverHalf(1_500_000_000_000_000_001n, oneDollar)).toBe(true);
+    expect(priceDeviationOverHalf(5n * 10n ** 17n, oneDollar)).toBe(false);
+    expect(priceDeviationOverHalf(499_999_999_999_999_999n, oneDollar)).toBe(true);
+  });
+
+  it("reprices the complete Scroll USDC borrow aggregate at the indexed one-dollar price", () => {
+    expect(amountAtPrice(52_981_545_913_494n, 10n ** 18n, 6)).toBe(52_981_545_913_494n);
   });
 
   it("keeps the latest token valuation deterministic across equal timestamps", () => {

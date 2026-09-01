@@ -33,6 +33,36 @@ In another terminal:
 pnpm dev:web
 ```
 
+### Full analytics setup
+
+`envio dev` now creates and backfills both the raw compatibility entities and
+the normalized account, pricing, and lending GraphQL entities declared in
+`apps/indexer/schema.graphql`. A fresh deployment does not run a SQL migration,
+Hasura metadata import, or a separate enrichment worker.
+
+Historical effects default to dRPC and fall back to PublicNode for block-exact
+same-chain prices, timestamp-aligned cross-chain price fallbacks, and Aave V4
+position snapshots. Explicit archive endpoints remain first priority and are
+recommended for higher limits or production deployments:
+
+```bash
+OPTIMISM_ARCHIVE_RPC_URL='https://your-optimism-archive-rpc.example' \
+OPTIMISM_ARCHIVE_RPC_FALLBACK_URL='https://your-second-archive-rpc.example' \
+SCROLL_ARCHIVE_RPC_URL='https://your-scroll-archive-rpc.example' \
+SCROLL_ARCHIVE_RPC_FALLBACK_URL='https://your-second-scroll-archive-rpc.example' \
+  pnpm dev:indexer
+```
+
+The unauthenticated Optimism PublicNode endpoint may reject archive calls;
+dRPC remains the built-in historical default, and a tokenized PublicNode URL
+can be supplied through `OPTIMISM_ARCHIVE_RPC_FALLBACK_URL`.
+
+The `apps/enrichment` migration/worker commands remain only for installations
+that must preserve the older `cash_explorer` SQL schema. They are not part of
+fresh bootstrap. An existing Envio database created from an older schema still
+requires a new schema or reset because Envio cannot retrofit newly declared
+entities into an incompatible checkpoint.
+
 Envio serves GraphQL at `http://localhost:8080/v1/graphql` by default. The scanner reads `ENVIO_GRAPHQL_URL` (server-only, preferred) or `NEXT_PUBLIC_ENVIO_GRAPHQL_URL`. If the API is unavailable, the UI shows an explicit unavailable state and never substitutes fixture or Dune data.
 
 Useful checks:
@@ -59,9 +89,18 @@ Every balance is chain-qualified and keyed by destination safe and token.
 - settled `Spend` debits each emitted token amount from that safe.
 - every current `CashEventEmitter` event is stored, including both repayment
   variants, cashback, and the full withdrawal lifecycle.
-- `AccountTokenBalance.amount` is cumulative destination top-ups minus cumulative settled spend.
-- this derived ledger is not an exact wallet, lending, collateral, or available-credit balance.
-- token metadata is resolved once per chain/address through a cached Envio RPC effect when absent from the verified registry; USD balance valuation still requires a separately indexed price source.
+- exact Safe wallet balances are reconstructed from ERC-20 `Transfer` logs
+  filtered to dynamically registered Safe addresses; no chain-wide Transfer
+  table is stored.
+- account lifetime flows remain separate from current balances. Current balance
+  USD uses the latest indexed price and is never inferred by subtracting
+  historical USD flows.
+- token metadata is resolved once per chain/address through a cached Envio RPC
+  effect when absent from the verified registry. Event-emitted USD is primary;
+  Optimism PriceProvider reads are cached in 15-minute buckets at exact blocks.
+- Gateway and Spoke logs retain immutable provenance, correlate to one economic
+  action, and materialize event-derived positions plus cached exact-block Aave
+  snapshots when an archive endpoint is configured.
 - repayment, cashback, withdrawal, spend-bucket, and hourly entities are available in the live GraphQL schema.
 
 ## Production notes

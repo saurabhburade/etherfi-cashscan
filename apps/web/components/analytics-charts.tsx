@@ -503,7 +503,7 @@ export function TokenAnalyticsCharts({
       id="token-analytics"
       subtitle={
         showHeader
-          ? "Event-time USD where indexed. Top-up and reserve USD use the latest indexed Spend price; unpriced tokens are excluded from those doughnuts."
+          ? "Event-time USD where indexed. Top-up, reserve, and borrow USD use explicitly labeled latest indexed prices when required; unpriced tokens are excluded."
           : undefined
       }
       title={showHeader ? "Tokens" : undefined}
@@ -519,7 +519,12 @@ export function TokenAnalyticsCharts({
           subtitle="by token · request count"
           totalSuffix="requests"
         />
-        <TokenPie data={borrows} label="Borrow volume" moneyValues subtitle="by token" />
+        <TokenPie
+          data={borrows}
+          label="Borrow volume"
+          moneyValues
+          subtitle="by token · latest same-chain indexed price where required"
+        />
         <TokenPie data={repayments} label="Repayment volume" moneyValues subtitle="by token" />
       </div>
       {showTable ? <TokenFlowTable data={data} /> : null}
@@ -842,6 +847,7 @@ function TokenFlowTable({ data }: { data: TokenAnalyticsRow[] }) {
                   <MetricCell primary={tokenValue(row.suppliedAmount, row)} />
                   <MetricCell
                     primary={row.borrowedUsd > 0 ? money(row.borrowedUsd) : tokenValue(row.borrowedAmount, row)}
+                    secondary={borrowValuationLabel(row.borrowedUsdStatus)}
                   />
                   <MetricCell
                     primary={row.repaidUsd > 0 ? money(row.repaidUsd) : tokenValue(row.repaidAmount, row)}
@@ -942,6 +948,12 @@ function balanceValue(row: ExplorerData["balances"][number]) {
 }
 function tokenAnalyticsId(row: Pick<TokenAnalyticsRow, "chainId" | "token">) {
   return `${row.chainId}:${row.token}`;
+}
+function borrowValuationLabel(status: TokenAnalyticsRow["borrowedUsdStatus"]) {
+  if (status === "latest_indexed_price") return "latest indexed price";
+  if (status === "latest_cross_chain_price") return "latest cross-chain price";
+  if (status === "event_time") return "event-time USD";
+  return "unpriced";
 }
 function tokenActivity(row: TokenAnalyticsRow) {
   return (

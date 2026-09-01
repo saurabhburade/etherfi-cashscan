@@ -3,7 +3,7 @@ import { type AccountAnalyticsSort, loadAccountAnalyticsPage } from "@/lib/accou
 
 export const runtime = "edge";
 
-const sorts = new Set<AccountAnalyticsSort>(["balance", "netWorth", "spend", "deposits", "recent"]);
+const sorts = new Set<AccountAnalyticsSort>(["balance", "netWorth", "spend", "deposits", "transactions", "recent"]);
 
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;

@@ -151,12 +151,14 @@ function eventValue(item: Activity) {
       <div className="space-y-1">
         {item.tokenLegs.slice(0, 3).map((leg, index) => (
           <div key={`${leg.token}:${index}`}>
-            {leg.amount !== "0" && leg.decimals !== null
-              ? `${tokenAmount.format(Number(formatUnits(BigInt(leg.amount), leg.decimals)))} `
-              : null}
-            <TokenDetailLink label={leg.symbol || tokenLabel(leg.token)} token={leg.token} />
+            <span className="block">
+              {leg.amount !== "0" && leg.decimals !== null
+                ? `${tokenAmount.format(Number(formatUnits(BigInt(leg.amount), leg.decimals)))} `
+                : null}
+              <TokenDetailLink label={leg.symbol || tokenLabel(leg.token)} token={leg.token} />
+            </span>
             {leg.amountUsd !== null ? (
-              <span className="ml-1 text-muted-foreground">· {compactUsd(leg.amountUsd)}</span>
+              <span className="mt-1 block text-muted-foreground">{compactUsd(leg.amountUsd)}</span>
             ) : (
               <UnpricedBadge />
             )}

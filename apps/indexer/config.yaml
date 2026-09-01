@@ -60,6 +60,32 @@ contracts:
       - event: Repaid
       - event: Liquidated
       - event: InterestIndexUpdated
+  # Verified against etherfi-protocol/cash-v3 deployment records and the
+  # pinned etherfi-protocol/aave-v4 ISpoke source. These subscriptions were
+  # added after this indexer's original launch; replay is required to backfill.
+  - name: LendGateway
+    abi_file_path: ./abis/lend-gateway.json
+    events:
+      - event: ReserveRegistered
+      - event: ReserveDeregistered
+      - event: PositionManagerApproved
+      - event: Supplied
+      - event: Withdrawn
+      - event: Borrowed
+      - event: Repaid
+      - event: CollateralUsageSet
+  - name: AaveV4Spoke
+    abi_file_path: ./abis/aave-v4-spoke.json
+    events:
+      - event: AddReserve
+      - event: Supply
+      - event: Withdraw
+      - event: Borrow
+      - event: Repay
+      - event: LiquidationCall
+      - event: ReportDeficit
+      - event: SetUsingAsCollateral
+      - event: SetUserPositionManager
   - name: RampVolumeEmitter
     abi_file_path: ./abis/ramp-volume.json
     events:
@@ -120,6 +146,14 @@ chains:
         address: "0x3b9c20928f913645ee1e56aaa8bf399367fb4dcb"
       - name: EtherFiSafeFactory
         address: "0xf4e147db314947fc1275a8cbb6cde48c510cd8cf"
+      # Creation blocks confirmed from Optimism Blockscout transaction records:
+      # Spoke 0x054055…02af62 (154915790), Gateway 0x106a94…067800 (155083900).
+      - name: LendGateway
+        address: "0x01f8cdfb1694ea8fe4ed6c38a0fd78d1188e03f4"
+        start_block: 155083900
+      - name: AaveV4Spoke
+        address: "0xdffcc3536d932eb51df51a7f5fa407c4270d5308"
+        start_block: 154915790
 
   - id: 534352
     start_block: 5000000

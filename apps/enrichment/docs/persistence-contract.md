@@ -87,3 +87,42 @@ pnpm --dir apps/enrichment migration:validate
 Run `20260901_cash_explorer_validation.sql` only against a database after
 apply. It is read-only and checks foreign keys, valid index definitions,
 duplicate canonical IDs, and a keyset `EXPLAIN` plan.
+
+## Lending and cross-source accounting
+
+`20260902_lending_accounting.sql` adds the event-first lending model without
+changing or repurposing legacy balances. `account_identity` is a lowercase,
+cross-chain Safe identity; chain-scoped `account` records optionally point to
+it through `identity_id`. Every deduplicated `economic_action` retains both
+the chain-scoped account and cross-chain identity. Its `action_type` covers
+Cash (`deposit`, `spend`, `withdrawal`, `cashback`, `fee`, `other`) and lending
+actions. `economic_action_source` links exactly one canonical source: either
+a `scanner_event` for Cash/Transfer provenance or a typed `lending_event`.
+
+Markets model Aave V4 (`spoke_address`, `gateway_address`, `hub_address`, and
+oracle), while reserves use the numeric `reserve_number`/`hub_asset_id` model.
+Lending events retain one source log and typed `cash`/`gateway`/`spoke`
+provenance; their legs retain token/reserve deltas. Composite foreign keys keep
+market, reserve, token, and event chain IDs aligned.
+
+Current positions and exact block snapshots expose wallet balance, supplied
+balance/shares, drawn and premium shares, gross assets, authoritative protocol
+debt, net worth, collateral use, valuation status, state source/status, and
+price provenance. Account snapshots additionally expose market-level health
+factor, collateral factor, available borrow, and collateral/borrow counts.
+Unpriced valuation fields are NULL, never synthetic zero. `account_metric` and
+`account_token_metric` receive additive explicit lending fields; legacy fields
+keep their existing meaning.
+
+For Aave V4 account aggregates, `risk_premium_ray`,
+`total_collateral_value_raw`, and `total_debt_value_ray_raw` remain explicitly
+raw numeric fields. They must not be displayed as USD; the normalized USD
+aggregate fields remain NULL until pricing and scale are independently verified.
+
+`account_daily_metric.token_id` is preserved for compatibility. The migration
+creates `account_daily_metric_legacy_token_rows`, an auditable view of old
+token rows, and only applies a partial uniqueness index to new account-only
+rows. An operator can backfill those rows to `account_token_daily_metric` and
+validate the later token-null constraint after reconciliation; this migration
+does not strand, delete, or rewrite historical rows. Price provenance accepts
+`aave_oracle_historical`, `aave_oracle_current`, and `price_provider_current`.

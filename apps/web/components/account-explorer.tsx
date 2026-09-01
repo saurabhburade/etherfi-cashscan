@@ -123,6 +123,7 @@ export function AccountExplorer({ initialPage }: { initialPage: AccountAnalytics
           <option value="balance">Highest balance</option>
           <option value="spend">Highest spend</option>
           <option value="deposits">Highest deposits</option>
+          <option value="transactions">Most transactions</option>
           <option value="recent">Recently active</option>
         </Select>
         {hasFilters ? (

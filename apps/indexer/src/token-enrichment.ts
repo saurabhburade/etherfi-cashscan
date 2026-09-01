@@ -76,6 +76,42 @@ export function canonicalOracleSymbol(symbol: string): string {
   return SYMBOL_ALIASES[normalized] ?? normalized;
 }
 
+export type VerifiedCrossChainPricePeer = {
+  chainId: number;
+  tokenAddress: string;
+  canonicalAsset: string;
+  decimals: number;
+};
+
+/**
+ * Resolve cross-chain price peers from the checked-in registry only. Runtime
+ * ERC-20 symbols are intentionally excluded because a token can spoof another
+ * asset's symbol and inherit an unrelated USD price.
+ */
+export function verifiedCrossChainPricePeers(chainId: number, tokenAddress: string): VerifiedCrossChainPricePeer[] {
+  const local = TOKEN_REGISTRY[chainId]?.[tokenAddress.toLowerCase()];
+  if (!local) return [];
+  const canonicalAsset = canonicalOracleSymbol(local.symbol);
+  return Object.entries(TOKEN_REGISTRY)
+    .flatMap(([candidateChainId, tokens]) =>
+      Number(candidateChainId) === chainId
+        ? []
+        : Object.entries(tokens)
+            .filter(([, metadata]) => canonicalOracleSymbol(metadata.symbol) === canonicalAsset)
+            .map(([candidateAddress, metadata]) => ({
+              chainId: Number(candidateChainId),
+              tokenAddress: candidateAddress,
+              canonicalAsset,
+              decimals: metadata.decimals,
+            })),
+    )
+    .sort((a, b) => a.chainId - b.chainId || a.tokenAddress.localeCompare(b.tokenAddress));
+}
+
+export function tokenPriceBucketId(chainId: number, tokenAddress: string, bucketStart: string): string {
+  return `${chainId}:${tokenAddress.toLowerCase()}:${bucketStart}`;
+}
+
 type FeedDirectoryRow = {
   name?: string;
   proxyAddress?: string;

@@ -3,6 +3,7 @@ import {
   accountUpsertPlan,
   eventPersistencePlans,
   legPersistencePlans,
+  lendingPersistencePlans,
   priceAnomalyFromObservationPlan,
   priceCurrentFromObservationPlan,
   priceObservationUpsertPlan,
@@ -55,6 +56,9 @@ export class PostgresEnrichmentStore {
       for (const token of projection.tokens) await execute(this.sql, tokenMetadataUpsertPlan(token));
       for (const event of projection.events)
         for (const plan of eventPersistencePlans(event)) await execute(this.sql, plan);
+
+      if (projection.lending)
+        for (const plan of lendingPersistencePlans(projection.lending)) await execute(this.sql, plan);
 
       const eventById = new Map(projection.events.map((event) => [event.id, event]));
       for (const leg of projection.legs) {
@@ -143,6 +147,20 @@ export class PostgresEnrichmentStore {
       JSON.stringify({ cursor }),
     ]);
   }
+
+  async writeLendingSnapshots(snapshots: import("./lending-snapshots.js").LendingStateSnapshot[]) {
+    if (this.dryRun || !snapshots.length) return;
+    const { lendingSnapshotPersistencePlans } = await import("./repository.js");
+    await this.sql.begin();
+    try {
+      for (const snapshot of snapshots)
+        for (const plan of lendingSnapshotPersistencePlans(snapshot)) await execute(this.sql, plan);
+      await this.sql.commit();
+    } catch (error) {
+      await this.sql.rollback();
+      throw error;
+    }
+  }
 }
 
 const execute = (sql: SqlExecutor, plan: { text: string; values: unknown[] }) => sql.query(plan.text, plan.values);
@@ -207,7 +225,7 @@ SELECT l.id,l.id,e.id,e.account_id,l.token_id,e.chain_id,a.address,t.address,
   e.transaction_hash,e.log_index,l.leg_index,e.source_event_name,l.id,'canonical_leg',
   CASE WHEN e.accounting_kind='cashback' THEN lower(payload.value->>'recipient')
     WHEN e.accounting_kind='cashback_received' THEN a.address ELSE NULL END,
-  CASE WHEN e.accounting_kind='cashback' AND payload.value->>'cashbackType' ~ '^[0-9]+$'
+  CASE WHEN e.accounting_kind='cashback' AND payload.value->>'cashbackType' ~ '^\\d+$'
     THEN (payload.value->>'cashbackType')::numeric ELSE NULL END,
   CASE WHEN e.accounting_kind='cashback' THEN COALESCE((payload.value->>'paid')::boolean,false)
     WHEN e.accounting_kind='cashback_received' THEN true ELSE NULL END,

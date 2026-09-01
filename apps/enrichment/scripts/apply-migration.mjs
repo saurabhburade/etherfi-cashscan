@@ -6,6 +6,7 @@ const migrations = [
   fileURLToPath(new URL("../migrations/20260901_cash_explorer_additive.sql", import.meta.url)),
   fileURLToPath(new URL("../migrations/20260901_cash_explorer_account_analytics.sql", import.meta.url)),
   fileURLToPath(new URL("../migrations/20260901_cashback_attribution.sql", import.meta.url)),
+  fileURLToPath(new URL("../migrations/20260902_lending_accounting.sql", import.meta.url)),
 ];
 
 if (!process.env.DATABASE_URL) {

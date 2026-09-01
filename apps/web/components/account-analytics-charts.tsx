@@ -200,11 +200,11 @@ function DailyCashFlowChart({ data }: { data: ReturnType<typeof accountDailyChar
   const total = data.at(-1)?.cumulativeVolumeUsd ?? 0;
   const hasUnpriced = data.some((row) => row.hasUnpricedFlow);
   return (
-    <article className="overflow-hidden rounded-2xl bg-secondary/50 text-secondary-foreground">
+    <article className="overflow-hidden rounded-2xl bg-secondary/50 text-secondary-foreground lg:col-span-2">
       <div className="flex items-start justify-between gap-3 px-5 pt-5 sm:px-6 sm:pt-6">
         <div>
-          <span className="text-sm font-semibold text-muted-foreground">Daily spend, top-ups & withdrawals</span>
-          <h3 className="mt-2 text-xl font-normal tracking-[-.03em]">{money(total)} cumulative volume</h3>
+          <span className="text-sm font-semibold text-muted-foreground">Cash Flow Volume</span>
+          <h3 className="mt-2 text-xl font-normal tracking-[-.03em]">{money(total)}</h3>
         </div>
         <ChartExportActions
           containerRef={chartContainerRef}
@@ -216,7 +216,7 @@ function DailyCashFlowChart({ data }: { data: ReturnType<typeof accountDailyChar
       {data.length ? (
         <div className="mt-2" ref={chartContainerRef}>
           <BarChart
-            aspectRatio="2 / 1"
+            aspectRatio="3 / 1"
             barGap={0.2}
             data={data}
             margin={{ top: 24, right: 18, bottom: 72, left: 64 }}
@@ -226,6 +226,9 @@ function DailyCashFlowChart({ data }: { data: ReturnType<typeof accountDailyChar
             <Bar dataKey="depositedUsd" fill="var(--chart-1)" lineCap={3} />
             <Bar dataKey="spentUsd" fill="var(--chart-2)" lineCap={3} />
             <Bar dataKey="withdrawnUsd" fill="var(--chart-4)" lineCap={3} />
+            <Bar dataKey="cashbackUsd" fill="var(--chart-5)" lineCap={3} />
+            <Bar dataKey="borrowedUsd" fill="var(--chart-6)" lineCap={3} />
+            <Bar dataKey="repaidUsd" fill="var(--chart-7)" lineCap={3} />
             <Area
               dataKey="cumulativeVolumeUsd"
               fill="var(--chart-3)"
@@ -242,6 +245,9 @@ function DailyCashFlowChart({ data }: { data: ReturnType<typeof accountDailyChar
                 { color: "var(--chart-1)", label: "Deposits / top-ups" },
                 { color: "var(--chart-2)", label: "Spend" },
                 { color: "var(--chart-4)", label: "Withdrawals" },
+                { color: "var(--chart-5)", label: "Cashback" },
+                { color: "var(--chart-6)", label: "Borrowed" },
+                { color: "var(--chart-7)", label: "Repaid" },
                 { color: "var(--chart-3)", label: "Cumulative volume" },
               ]}
             />
@@ -258,6 +264,9 @@ function DailyCashFlowChart({ data }: { data: ReturnType<typeof accountDailyChar
                   label: "Withdrawals",
                   value: money(Number(point.withdrawnUsd ?? 0)),
                 },
+                { color: "var(--chart-5)", label: "Cashback", value: money(Number(point.cashbackUsd ?? 0)) },
+                { color: "var(--chart-6)", label: "Borrowed", value: money(Number(point.borrowedUsd ?? 0)) },
+                { color: "var(--chart-7)", label: "Repaid", value: money(Number(point.repaidUsd ?? 0)) },
                 {
                   color: "var(--chart-3)",
                   label: "Cumulative volume",

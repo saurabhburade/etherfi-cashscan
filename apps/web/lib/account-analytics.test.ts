@@ -129,6 +129,35 @@ describe("account analytics feature contract", () => {
     );
   });
 
+  it("uses legacy token-day rows only when an account-day rollup is absent", () => {
+    const base = {
+      chainId: 10,
+      depositedUsd: 0,
+      spentUsd: 0,
+      creditSpendUsd: 0,
+      debitSpendUsd: 0,
+      withdrawnUsd: 0,
+      cashbackUsd: 0,
+      borrowedUsd: 0,
+      repaidUsd: 0,
+      closingBalanceUsd: null,
+      closingBalanceStatus: "not_reconstructed",
+      transactionCount: 1,
+      pricingCoverageRatio: 1,
+    };
+    const rows = aggregateAccountDays([
+      { ...base, day: "2026-01-01", tokenId: "10:0xtoken-a", spentUsd: 30 },
+      { ...base, day: "2026-01-01", tokenId: "10:0xtoken-b", spentUsd: 20 },
+      { ...base, day: "2026-01-02", tokenId: "10:0xtoken-a", spentUsd: 40 },
+      { ...base, day: "2026-01-02", tokenId: null, spentUsd: 40 },
+    ]);
+
+    expect(rows.map(({ day, spentUsd, transactionCount }) => ({ day, spentUsd, transactionCount }))).toEqual([
+      { day: "2026-01-01", spentUsd: 50, transactionCount: 2 },
+      { day: "2026-01-02", spentUsd: 40, transactionCount: 1 },
+    ]);
+  });
+
   it("values raw Safe transfer amounts with the latest indexed token price", () => {
     expect(valueAtCurrentPrice("27937720000", 6, 1)).toBe(27_937.72);
     expect(valueAtCurrentPrice("1000000000000000000", 18, 2_500)).toBe(2_500);

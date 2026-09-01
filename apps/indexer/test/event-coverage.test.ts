@@ -122,3 +122,126 @@ describe("Dune-parity event coverage", () => {
     expect(handlers).toContain("to: chain.TrackedSafeTransfer.addresses");
   });
 });
+
+describe("Cash Lend Gateway / Aave V4 Spoke coverage", () => {
+  const config = read("../config.yaml");
+  const handlers = read("../src/handlers/index.ts");
+
+  for (const [contract, abi, events] of [
+    [
+      "LendGateway",
+      "../abis/lend-gateway.json",
+      [
+        "ReserveRegistered",
+        "ReserveDeregistered",
+        "PositionManagerApproved",
+        "Supplied",
+        "Withdrawn",
+        "Borrowed",
+        "Repaid",
+        "CollateralUsageSet",
+      ],
+    ],
+    [
+      "AaveV4Spoke",
+      "../abis/aave-v4-spoke.json",
+      [
+        "AddReserve",
+        "Supply",
+        "Withdraw",
+        "Borrow",
+        "Repay",
+        "LiquidationCall",
+        "ReportDeficit",
+        "SetUsingAsCollateral",
+        "SetUserPositionManager",
+      ],
+    ],
+  ] as const) {
+    it(`subscribes and preserves immutable provenance for ${contract}`, () => {
+      const abiEvents = (JSON.parse(read(abi)) as AbiEntry[])
+        .filter((entry) => entry.type === "event")
+        .map((entry) => entry.name);
+      expect(abiEvents).toEqual(events);
+      expect(config).toContain(`- name: ${contract}`);
+      for (const event of events) expect(config).toContain(`- event: ${event}`);
+    });
+  }
+
+  it("uses chain:tx:log source IDs, preserves null absence semantics and signed deltas, and never folds V4 logs into DebtPosition", () => {
+    const lendingSection = handlers.slice(handlers.indexOf("// Lend Gateway and Aave V4 Spoke handlers"));
+    expect(handlers).toContain(
+      "const lendingEventId = (event: BlockEvent) => eventId(event.chainId, event.transaction.hash, event.logIndex)",
+    );
+    expect(handlers).toContain("id: `${sourceEventId}:${legIndex}`");
+    expect(handlers).toContain("premiumSharesDelta");
+    expect(handlers).toContain("premiumOffsetRayDelta");
+    expect(handlers).toContain("suppliedSharesDelta");
+    expect(handlers).toContain('eventName === "Supply" ? shares : eventName === "Withdraw" ? -shares : 0n');
+    expect(handlers).toContain('"debt_restored"');
+    expect(handlers).toContain('"collateral_seized"');
+    expect(handlers).toContain('"liquidation_fee"');
+    expect(handlers).toMatch(/"liquidation_fee",\s+event\.params\.collateralReserveId[\s\S]*?"informational",?\s*\);/);
+    expect(handlers).toContain('"deficit"');
+    expect(handlers).toContain("context.LendingGatewayReserveLookup.set");
+    expect(handlers).toContain("lendingGatewayReserve(context, event, event.params.asset)");
+    expect(handlers).toContain("reserve?.active ? reserve.reserveId : undefined");
+    expect(handlers).toContain("...(fields.safeAddress ? { safeAddress: lower(fields.safeAddress) } : {})");
+    expect(handlers).toContain("...(tokenAddress ? { tokenAddress: lower(tokenAddress) } : {})");
+    expect(handlers).toMatch(/if \(existing\?\.tokenAddress\)\s+await recordLendingLeg/);
+    expect(lendingSection).not.toContain("safeAddress: fields.safeAddress ? lower(fields.safeAddress) : ZERO_ADDRESS");
+    expect(handlers).toContain("active: false");
+    expect(lendingSection).not.toContain("context.DebtPosition");
+    expect(lendingSection).toContain("context.effect(lendingStateSnapshotEffect");
+  });
+});
+
+describe("Envio-owned Cash Explorer projection contract", () => {
+  const schema = read("../schema.graphql");
+  const handlers = read("../src/handlers/index.ts");
+
+  it("defines the canonical account, lending, and price roots used by the explorer", () => {
+    for (const entity of [
+      "AccountIdentity",
+      "AccountTokenEvent",
+      "AccountTokenMetric",
+      "AccountMetric",
+      "AccountDailyMetric",
+      "EconomicAction",
+      "EconomicActionSource",
+      "LendingMarket",
+      "LendingReserve",
+      "LendingEvent",
+      "LendingEventLeg",
+      "LendingPosition",
+      "LendingPositionSnapshot",
+      "LendingAccountSnapshot",
+      "TokenPriceSource",
+      "TokenPriceObservation",
+      "TokenPriceCurrent",
+      "PriceAnomaly",
+    ])
+      expect(schema).toContain(`type ${entity}`);
+    expect(schema).toContain("account: Account");
+    expect(schema).toContain("token: Token");
+    expect(schema).toContain('account_metrics: [AccountTokenMetric!]! @derivedFrom(field: "token")');
+    expect(schema).toContain('tokenLegs: [ScannerEventTokenLeg!]! @derivedFrom(field: "scannerEvent")');
+  });
+
+  it("projects one canonical token row per leg and routes enrichment through cached Envio effects", () => {
+    expect(handlers).toContain("const id = `${actionId}:${legIndex}`");
+    expect(handlers).toContain("canonicalTokenLeg(");
+    const canonical = handlers.slice(
+      handlers.indexOf("async function canonicalAccount"),
+      handlers.indexOf("async function bumpTopUpRecipient"),
+    );
+    expect(canonical).toContain("context.effect(currentTokenPriceEffect");
+    expect(handlers).toContain("context.effect(lendingStateSnapshotEffect");
+    expect(canonical).not.toContain("ZERO_ADDRESS, token");
+    expect(handlers).toContain('event.params.paid ? "cashback_received" : "cashback_generated"');
+    expect(handlers).toContain("context.ScannerEvent.set");
+    expect(handlers).toContain("context.ScannerEventTokenLeg.set");
+    expect(handlers).toContain('eventType.startsWith("topup")');
+    expect(handlers).toContain('status: options.status ?? "completed"');
+  });
+});

@@ -1,4 +1,4 @@
-export type PriceSource = "event_implied" | "chainlink" | "price_provider";
+export type PriceSource = "event_implied" | "chainlink" | "aave_oracle" | "price_provider";
 export type PriceObservation = {
   id: string;
   chainId: number;
@@ -74,7 +74,7 @@ export function historicalPrice(
       Date.parse(row.observedAt) <= at.getTime() &&
       (finalizedBlock == null || row.blockNumber == null || BigInt(row.blockNumber) <= BigInt(finalizedBlock)),
   );
-  const precedence: PriceSource[] = ["event_implied", "chainlink", "price_provider"];
+  const precedence: PriceSource[] = ["event_implied", "chainlink", "aave_oracle", "price_provider"];
   for (const source of precedence) {
     const rows = allowed
       .filter((row) => row.source === source)

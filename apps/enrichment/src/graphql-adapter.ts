@@ -1,5 +1,12 @@
 import { canonicalEventId, normalizeAddress } from "./ids.js";
-import type { EventCursor, SourceAdapter, SourcePage } from "./types.js";
+import type {
+  EventCursor,
+  LendingReserveState,
+  LendingSourceEvent,
+  LendingSourceEventLeg,
+  SourceAdapter,
+  SourcePage,
+} from "./types.js";
 
 export type GraphqlTransport = (
   query: string,
@@ -62,6 +69,19 @@ export function createGraphqlSourceAdapter(transport: GraphqlTransport): SourceA
           ? await transport(SOURCE_STATE_QUERY, { tokenIds: [...tokenIds], balanceIds: [...balanceIds] })
           : { data: {} };
       assertGraphql(state);
+      // Lending has its own source-log stream.  It intentionally uses the same
+      // cursor ordering as Cash so a checkpoint is resumable across all source
+      // kinds, while legs and reserve state are fetched by stable IDs.
+      const lending = await transport(LENDING_SOURCE_PAGE_QUERY, keysetVariables(after, limit));
+      assertGraphql(lending);
+      const lendingEvents = array(lending.data?.LendingSourceEvent).map(parseLendingEvent);
+      const lendingIds = lendingEvents.map((row) => row.id);
+      const reserveWhere = lendingReserveWhere(lendingEvents);
+      const lendingDetail =
+        lendingIds.length || reserveWhere._or.length
+          ? await transport(LENDING_SOURCE_DETAIL_QUERY, { eventIds: lendingIds, reserveWhere })
+          : { data: {} };
+      assertGraphql(lendingDetail);
       return {
         protocolEvents,
         spends,
@@ -74,6 +94,9 @@ export function createGraphqlSourceAdapter(transport: GraphqlTransport): SourceA
         safeBalances: array(state.data?.SafeTokenBalance).map(parseBalance),
         tokens: array(state.data?.Token).map(parseToken),
         priceFeeds,
+        lendingSourceEvents: lendingEvents,
+        lendingSourceEventLegs: array(lendingDetail.data?.LendingSourceEventLeg).map(parseLendingLeg),
+        lendingReserveStates: array(lendingDetail.data?.LendingReserveState).map(parseLendingReserveState),
       };
     },
   };
@@ -213,6 +236,67 @@ const parsePriceFeed = (row: Record<string, unknown>) => ({
   roundId: String(row.roundId),
   updatedAt: String(row.updatedAt),
 });
+const parseLendingEvent = (row: Record<string, unknown>): LendingSourceEvent => ({
+  ...event(row),
+  sourceKind: String(row.sourceKind) as LendingSourceEvent["sourceKind"],
+  eventType: String(row.eventType) as LendingSourceEvent["eventType"],
+  safeAddress: row.safeAddress == null ? null : String(row.safeAddress),
+  sourceAddress: row.sourceAddress == null ? null : String(row.sourceAddress),
+  marketAddress: row.marketAddress == null ? null : String(row.marketAddress),
+  spokeAddress: row.spokeAddress == null ? null : String(row.spokeAddress),
+  actorAddress: row.actorAddress == null ? null : String(row.actorAddress),
+  recipientAddress: row.recipientAddress == null ? null : String(row.recipientAddress),
+  reserveId: row.reserveId == null ? null : String(row.reserveId),
+  collateralReserveId: row.collateralReserveId == null ? null : String(row.collateralReserveId),
+  debtReserveId: row.debtReserveId == null ? null : String(row.debtReserveId),
+  metadata: String(row.metadata ?? "{}"),
+});
+const parseLendingLeg = (row: Record<string, unknown>): LendingSourceEventLeg => ({
+  id: String(row.id),
+  sourceEventId: String(row.sourceEventId),
+  legIndex: Number(row.legIndex),
+  legType: String(row.legType),
+  reserveId: row.reserveId == null ? null : String(row.reserveId),
+  tokenAddress: row.tokenAddress == null ? null : String(row.tokenAddress),
+  amount: row.amount == null ? null : String(row.amount),
+  shares: row.shares == null ? null : String(row.shares),
+  suppliedSharesDelta: row.suppliedSharesDelta == null ? null : String(row.suppliedSharesDelta),
+  direction: String(row.direction) as LendingSourceEventLeg["direction"],
+  drawnSharesDelta: row.drawnSharesDelta == null ? null : String(row.drawnSharesDelta),
+  premiumSharesDelta: row.premiumSharesDelta == null ? null : String(row.premiumSharesDelta),
+  premiumOffsetRayDelta: row.premiumOffsetRayDelta == null ? null : String(row.premiumOffsetRayDelta),
+});
+const parseLendingReserveState = (row: Record<string, unknown>): LendingReserveState => ({
+  id: String(row.id),
+  chainId: Number(row.chainId),
+  marketAddress: row.marketAddress == null ? null : String(row.marketAddress),
+  spokeAddress: row.spokeAddress == null ? null : String(row.spokeAddress),
+  gatewayAddress: row.gatewayAddress == null ? null : String(row.gatewayAddress),
+  reserveId: String(row.reserveId),
+  tokenAddress: row.tokenAddress == null ? null : String(row.tokenAddress),
+  hubAssetId: row.hubAssetId == null ? null : String(row.hubAssetId),
+  hubAddress: row.hubAddress == null ? null : String(row.hubAddress),
+  gatewayRegistered: Boolean(row.gatewayRegistered),
+  active: Boolean(row.active),
+  updatedBlock: String(row.updatedBlock),
+  updatedAt: String(row.updatedAt),
+  transactionHash: String(row.transactionHash),
+});
+
+function lendingReserveWhere(events: LendingSourceEvent[]) {
+  return {
+    _or: events.flatMap((event) => {
+      const reserveIds = [event.reserveId, event.collateralReserveId, event.debtReserveId].filter(
+        (value): value is string => value != null,
+      );
+      return reserveIds.map((reserveId) => ({
+        chainId: { _eq: event.chainId },
+        reserveId: { _eq: reserveId },
+        ...(event.spokeAddress ? { spokeAddress: { _eq: event.spokeAddress } } : {}),
+      }));
+    }),
+  };
+}
 
 export function keysetVariables(after: EventCursor | null, limit: number) {
   return {
@@ -249,3 +333,5 @@ export function keysetVariables(after: EventCursor | null, limit: number) {
 export const SOURCE_PAGE_QUERY = `query Page($limit:Int!,$where:ProtocolEvent_bool_exp!){ProtocolEvent(limit:$limit,where:$where,order_by:[{timestamp:desc},{chainId:asc},{blockNumber:desc},{logIndex:desc},{id:asc}]){id chainId contractAddress eventType actor tokenAddress amount amountUsd blockNumber timestamp transactionHash logIndex metadata}}`;
 export const SOURCE_DETAIL_QUERY = `query Detail($hashes:[String!]!){Spend(where:{transactionHash:{_in:$hashes}}){id chainId transactionHash logIndex blockNumber timestamp safe txId mode totalUsd usdDecimals tokens amounts amountsUsd dataAvailability} SpendTokenValuation(where:{transactionHash:{_in:$hashes}}){spendId tokenIndex tokenAddress amount amountUsd tokenDecimals usdDecimals priceUsdE18 priceStatus} TopUp(where:{transactionHash:{_in:$hashes}}){id chainId transactionHash logIndex blockNumber timestamp user tradingSafe tokenAddress amount sourceChainId txId status} Repayment(where:{transactionHash:{_in:$hashes}}){id chainId transactionHash logIndex blockNumber timestamp safe tokenAddress amount amountUsd repaymentType} DebtEvent(where:{transactionHash:{_in:$hashes}}){id chainId transactionHash logIndex blockNumber timestamp user payer tokenAddress amount amountUsd usdStatus eventType} Cashback(where:{transactionHash:{_in:$hashes}}){id chainId transactionHash logIndex blockNumber timestamp safe recipient tokenAddress amount amountUsd spendingUsd paid cashbackType} WithdrawalEvent(where:{transactionHash:{_in:$hashes}}){id chainId transactionHash logIndex blockNumber timestamp safe recipient tokens amounts status finalizeTimestamp} PriceFeedUpdate(where:{transactionHash:{_in:$hashes}}){id chainId transactionHash logIndex blockNumber timestamp feedAddress pair answer decimals roundId updatedAt}}`;
 export const SOURCE_STATE_QUERY = `query State($tokenIds:[String!]!,$balanceIds:[String!]!){Token(where:{id:{_in:$tokenIds}}){chainId address name symbol decimals decimalsVerified metadataStatus oracleAddress oraclePair oracleDecimals} SafeTokenBalance(where:{id:{_in:$balanceIds}}){chainId safeAddress tokenAddress amount inflow outflow updatedAt updatedBlock transactionHash}}`;
+export const LENDING_SOURCE_PAGE_QUERY = `query LendingPage($limit:Int!,$where:LendingSourceEvent_bool_exp!){LendingSourceEvent(limit:$limit,where:$where,order_by:[{timestamp:desc},{chainId:asc},{blockNumber:desc},{logIndex:desc},{id:asc}]){id chainId sourceKind eventType sourceAddress marketAddress spokeAddress safeAddress actorAddress recipientAddress reserveId collateralReserveId debtReserveId metadata blockNumber timestamp transactionHash logIndex}}`;
+export const LENDING_SOURCE_DETAIL_QUERY = `query LendingDetail($eventIds:[String!]!,$reserveWhere:LendingReserveState_bool_exp!){LendingSourceEventLeg(where:{sourceEventId:{_in:$eventIds}}){id sourceEventId legIndex legType reserveId tokenAddress amount shares suppliedSharesDelta drawnSharesDelta premiumSharesDelta premiumOffsetRayDelta direction} LendingReserveState(where:$reserveWhere){id chainId marketAddress spokeAddress gatewayAddress reserveId tokenAddress hubAssetId hubAddress gatewayRegistered active updatedAt updatedBlock transactionHash}}`;

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 const base = new URL("../migrations/", import.meta.url);
 const migration = await readFile(new URL("20260901_cash_explorer_additive.sql", base), "utf8");
 const accountMigration = await readFile(new URL("20260901_cash_explorer_account_analytics.sql", base), "utf8");
+const lendingMigration = await readFile(new URL("20260902_lending_accounting.sql", base), "utf8");
 const cashbackMigration = await readFile(new URL("20260901_cashback_attribution.sql", base), "utf8");
 const validation = await readFile(new URL("20260901_cash_explorer_validation.sql", base), "utf8");
 const metadata = JSON.parse(await readFile(new URL("hasura-cash-explorer-metadata.json", base), "utf8"));
@@ -22,11 +23,44 @@ const tables = [
   "token_price_current",
   "price_anomaly",
   "explorer_checkpoint",
+  "account_identity",
+  "economic_action",
+  "economic_action_source",
+  "lending_market",
+  "lending_reserve",
+  "lending_event",
+  "lending_event_leg",
+  "lending_position",
+  "lending_position_snapshot",
+  "lending_account_snapshot",
 ];
 for (const table of tables) {
-  if (!migration.includes(`cash_explorer.${table}`) && !accountMigration.includes(`cash_explorer.${table}`))
+  if (
+    !migration.includes(`cash_explorer.${table}`) &&
+    !accountMigration.includes(`cash_explorer.${table}`) &&
+    !lendingMigration.includes(`cash_explorer.${table}`)
+  )
     throw new Error(`Missing canonical table: ${table}`);
 }
+for (const fragment of [
+  "account_identity_address_key UNIQUE (address)",
+  "ADD COLUMN IF NOT EXISTS identity_id",
+  "market_kind IN ('aave_v4', 'etherfi_cash')",
+  "spoke_address text",
+  "reserve_number numeric(78,0) NOT NULL",
+  "economic_action_source_exactly_one",
+  "scanner_event_id text UNIQUE",
+  "price_provider_current",
+  "account_daily_metric_legacy_token_rows",
+  "lending_position_net_worth_ranking_idx",
+  "account_metric_net_worth_ranking_idx",
+  "wallet_balance numeric",
+  "supplied_shares numeric",
+  "health_factor_e18 numeric",
+  "spoke_address text NOT NULL",
+  "economic_action_account_chain_fkey",
+])
+  if (!lendingMigration.includes(fragment)) throw new Error(`Missing lending contract fragment: ${fragment}`);
 for (const fragment of [
   "CREATE SCHEMA IF NOT EXISTS cash_explorer",
   "scanner_event_global_keyset_idx",
@@ -69,6 +103,16 @@ for (const [table, typeName] of Object.entries({
   account_token_event: "AccountTokenEvent",
   account_metric: "AccountMetric",
   account_daily_metric: "AccountDailyMetric",
+  account_identity: "AccountIdentity",
+  economic_action: "EconomicAction",
+  economic_action_source: "EconomicActionSource",
+  lending_market: "LendingMarket",
+  lending_reserve: "LendingReserve",
+  lending_event: "LendingEvent",
+  lending_event_leg: "LendingEventLeg",
+  lending_position: "LendingPosition",
+  lending_position_snapshot: "LendingPositionSnapshot",
+  lending_account_snapshot: "LendingAccountSnapshot",
 })) {
   const configuration = tracked.get(table);
   const roots = configuration?.custom_root_fields;
@@ -97,6 +141,9 @@ for (const [table, column, name] of [
   ["account_token_metric", "current_balance_usd", "currentBalanceUsd"],
   ["account_token_event", "canonical_movement_key", "canonicalMovementKey"],
   ["account_metric", "net_worth_usd", "netWorthUsd"],
+  ["lending_account_snapshot", "risk_premium_ray", "riskPremiumRay"],
+  ["lending_account_snapshot", "total_collateral_value_raw", "totalCollateralValueRaw"],
+  ["lending_account_snapshot", "total_debt_value_ray_raw", "totalDebtValueRayRaw"],
   ["account_daily_metric", "closing_balance_status", "closingBalanceStatus"],
   ["account_token_event", "cashback_type", "cashbackType"],
   ["account_metric", "lifetime_cashback_generated_usd", "lifetimeCashbackGeneratedUsd"],
@@ -123,7 +170,19 @@ const relationshipNames = new Set(
     )
     .map((operation) => operation.args.name),
 );
-for (const name of ["tokenLegs", "scannerEvent", "token", "account", "dailyMetrics"])
+for (const name of [
+  "tokenLegs",
+  "scannerEvent",
+  "token",
+  "account",
+  "dailyMetrics",
+  "accountIdentity",
+  "economicAction",
+  "scannerEvent",
+  "lendingEvent",
+  "lendingPositions",
+  "snapshots",
+])
   if (!relationshipNames.has(name)) throw new Error(`Missing web relationship ${name}`);
 if (!validation.includes("EXPLAIN (COSTS false)")) throw new Error("Missing keyset EXPLAIN validation");
 for (const fragment of ["cashback_type numeric", "cashback_other_amount", "cashback_attribution"])

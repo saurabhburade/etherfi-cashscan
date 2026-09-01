@@ -98,6 +98,17 @@ export function impliedUsdPriceE18(amount: bigint, amountUsd: bigint, tokenDecim
   return (amountUsd * tokenScale * 10n ** 18n) / (amount * usdScale);
 }
 
+/** Returns USD with the Cash emitter's six-decimal scale. */
+export function amountAtPrice(amount: bigint, priceUsdE18: bigint, tokenDecimals: number): bigint {
+  return (amount * priceUsdE18 * 1_000_000n) / (10n ** BigInt(tokenDecimals) * 10n ** 18n);
+}
+
+export function priceDeviationOverHalf(candidate: bigint, current: bigint): boolean {
+  if (candidate <= 0n || current <= 0n) return false;
+  const difference = candidate > current ? candidate - current : current - candidate;
+  return difference * 2n > current;
+}
+
 export function isLaterTokenSpend(
   candidate: { timestamp: number | bigint; blockNumber: number | bigint; logIndex: number; id: string },
   current: { timestamp: number | bigint; blockNumber: number | bigint; logIndex: number; id: string },

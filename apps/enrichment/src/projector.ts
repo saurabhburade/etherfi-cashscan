@@ -1,5 +1,6 @@
 import { classifyDebtAudit, classifyRepayment, classifySpend, classifyTopUp, markDuplicates } from "./classifier.js";
 import { canonicalEventId, normalizeAddress } from "./ids.js";
+import { projectLending } from "./lending.js";
 import { normalizeEventImpliedPrice, type PriceObservation } from "./pricing.js";
 import type { Projection, ScannerEvent, ScannerEventTokenLeg, SourcePage } from "./types.js";
 
@@ -221,5 +222,12 @@ export function projectPage(page: SourcePage): Projection {
     });
   }
 
-  return { events: canonicalEvents, legs, tokens: page.tokens, safeBalances: page.safeBalances, priceObservations };
+  return {
+    events: canonicalEvents,
+    legs,
+    tokens: page.tokens,
+    safeBalances: page.safeBalances,
+    priceObservations,
+    lending: projectLending(page),
+  };
 }

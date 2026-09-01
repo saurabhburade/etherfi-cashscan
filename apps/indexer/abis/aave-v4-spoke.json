@@ -1,0 +1,138 @@
+[
+  {
+    "type": "event",
+    "name": "AddReserve",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "reserveId", "type": "uint256" },
+      { "indexed": true, "name": "assetId", "type": "uint256" },
+      { "indexed": true, "name": "hub", "type": "address" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Supply",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "reserveId", "type": "uint256" },
+      { "indexed": true, "name": "caller", "type": "address" },
+      { "indexed": true, "name": "user", "type": "address" },
+      { "indexed": false, "name": "suppliedShares", "type": "uint256" },
+      { "indexed": false, "name": "suppliedAmount", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Withdraw",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "reserveId", "type": "uint256" },
+      { "indexed": true, "name": "caller", "type": "address" },
+      { "indexed": true, "name": "user", "type": "address" },
+      { "indexed": false, "name": "withdrawnShares", "type": "uint256" },
+      { "indexed": false, "name": "withdrawnAmount", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Borrow",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "reserveId", "type": "uint256" },
+      { "indexed": true, "name": "caller", "type": "address" },
+      { "indexed": true, "name": "user", "type": "address" },
+      { "indexed": false, "name": "drawnShares", "type": "uint256" },
+      { "indexed": false, "name": "drawnAmount", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Repay",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "reserveId", "type": "uint256" },
+      { "indexed": true, "name": "caller", "type": "address" },
+      { "indexed": true, "name": "user", "type": "address" },
+      { "indexed": false, "name": "drawnShares", "type": "uint256" },
+      { "indexed": false, "name": "totalAmountRepaid", "type": "uint256" },
+      {
+        "indexed": false,
+        "name": "premiumDelta",
+        "type": "tuple",
+        "components": [
+          { "name": "sharesDelta", "type": "int256" },
+          { "name": "offsetRayDelta", "type": "int256" },
+          { "name": "restoredPremiumRay", "type": "uint256" }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "LiquidationCall",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "collateralReserveId", "type": "uint256" },
+      { "indexed": true, "name": "debtReserveId", "type": "uint256" },
+      { "indexed": true, "name": "user", "type": "address" },
+      { "indexed": false, "name": "liquidator", "type": "address" },
+      { "indexed": false, "name": "receiveShares", "type": "bool" },
+      { "indexed": false, "name": "debtAmountRestored", "type": "uint256" },
+      { "indexed": false, "name": "drawnSharesLiquidated", "type": "uint256" },
+      {
+        "indexed": false,
+        "name": "premiumDelta",
+        "type": "tuple",
+        "components": [
+          { "name": "sharesDelta", "type": "int256" },
+          { "name": "offsetRayDelta", "type": "int256" },
+          { "name": "restoredPremiumRay", "type": "uint256" }
+        ]
+      },
+      { "indexed": false, "name": "collateralAmountRemoved", "type": "uint256" },
+      { "indexed": false, "name": "collateralSharesLiquidated", "type": "uint256" },
+      { "indexed": false, "name": "collateralSharesToLiquidator", "type": "uint256" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "ReportDeficit",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "reserveId", "type": "uint256" },
+      { "indexed": true, "name": "user", "type": "address" },
+      { "indexed": false, "name": "drawnShares", "type": "uint256" },
+      {
+        "indexed": false,
+        "name": "premiumDelta",
+        "type": "tuple",
+        "components": [
+          { "name": "sharesDelta", "type": "int256" },
+          { "name": "offsetRayDelta", "type": "int256" },
+          { "name": "restoredPremiumRay", "type": "uint256" }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "SetUsingAsCollateral",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "reserveId", "type": "uint256" },
+      { "indexed": true, "name": "caller", "type": "address" },
+      { "indexed": true, "name": "user", "type": "address" },
+      { "indexed": false, "name": "usingAsCollateral", "type": "bool" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "SetUserPositionManager",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "name": "user", "type": "address" },
+      { "indexed": true, "name": "positionManager", "type": "address" },
+      { "indexed": false, "name": "approve", "type": "bool" }
+    ]
+  }
+]

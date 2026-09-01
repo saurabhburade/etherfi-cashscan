@@ -98,6 +98,7 @@ type Token {
   latestSpendLogIndex: Int!
   latestSpendValuationId: String!
   analyticsUpdatedAt: Timestamp!
+  account_metrics: [AccountTokenMetric!]! @derivedFrom(field: "token")
 }
 
 # Deterministic, replay-safe cumulative token analytics keyed by
@@ -125,7 +126,18 @@ type TokenAnalyticsMetric {
   suppliedAmount: BigInt!
   borrowedCount: BigInt!
   borrowedAmount: BigInt!
+  # Event-time USD emitted by source contracts. This can be incomplete when a
+  # debt event contains token units only.
   borrowedUsd: BigInt!
+  # Complete cumulative borrow volume repriced at the latest valid indexed
+  # token price. This stays separate from event-time USD so valuation bases are
+  # never silently mixed.
+  borrowedUsdLatest: BigInt!
+  borrowedUsdLatestStatus: String!
+  borrowedUsdLatestPriceUsdE18: BigInt!
+  borrowedUsdLatestPriceAt: Timestamp!
+  borrowedUsdLatestPriceChainId: Int!
+  borrowedUsdLatestPriceSource: String!
   repaidCount: BigInt!
   repaidAmount: BigInt!
   repaidUsd: BigInt!
@@ -572,7 +584,7 @@ type DebtEvent {
   payer: String!
   tokenAddress: String! @index
   amount: BigInt!
-  amountUsd: BigInt!
+  amountUsd: BigInt
   usdStatus: String!
   blockNumber: BigInt!
   timestamp: Timestamp!
@@ -592,6 +604,7 @@ type DebtPosition {
   outstandingAmount: BigInt!
   borrowedUsd: BigInt!
   repaidUsd: BigInt!
+  liquidatedUsd: BigInt!
   outstandingUsd: BigInt!
   usdStatus: String!
   updatedAt: Timestamp!
@@ -610,6 +623,84 @@ type DebtInterestIndex {
   timestamp: Timestamp!
   transactionHash: String!
   logIndex: Int!
+}
+
+# Immutable, one-per-log lending provenance. Gateway and Spoke logs deliberately
+# remain independent records while Envio correlates them into one economic
+# action and performs only cached, block-anchored state effects.
+type LendingSourceEvent {
+  id: ID!
+  chainId: Int! @index
+  sourceKind: String! @index
+  sourceAddress: String! @index
+  marketAddress: String! @index
+  spokeAddress: String! @index
+  eventType: String! @index
+  safeAddress: String @index
+  actorAddress: String
+  recipientAddress: String
+  reserveId: BigInt
+  collateralReserveId: BigInt
+  debtReserveId: BigInt
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+  metadata: String!
+}
+
+# Each token/reserve delta within a source log. IDs are `${sourceEventId}:${leg}`
+# so liquidation remains one parent log with distinct debt/collateral legs.
+type LendingSourceEventLeg {
+  id: ID!
+  sourceEventId: String! @index
+  chainId: Int! @index
+  legIndex: Int!
+  legType: String! @index
+  reserveId: BigInt
+  tokenAddress: String @index
+  amount: BigInt!
+  shares: BigInt!
+  suppliedSharesDelta: BigInt!
+  drawnSharesDelta: BigInt!
+  premiumSharesDelta: BigInt!
+  premiumOffsetRayDelta: BigInt!
+  direction: String!
+}
+
+# Event-derived Gateway token -> Aave V4 Spoke reserve mapping. `tokenAddress`
+# can be zero for an observed Spoke AddReserve until its Gateway registration.
+type LendingReserveState {
+  id: ID!
+  chainId: Int! @index
+  marketAddress: String! @index
+  spokeAddress: String! @index
+  gatewayAddress: String! @index
+  reserveId: BigInt! @index
+  tokenAddress: String @index
+  hubAssetId: BigInt!
+  hubAddress: String!
+  gatewayRegistered: Boolean!
+  active: Boolean!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+  transactionHash: String!
+}
+
+# Gateway events identify reserve registrations by token, while deregistration
+# omits reserveId. This event-derived lookup preserves that relationship without
+# a handler-side state call.
+type LendingGatewayReserveLookup {
+  id: ID!
+  chainId: Int! @index
+  gatewayAddress: String! @index
+  tokenAddress: String! @index
+  spokeAddress: String! @index
+  reserveId: BigInt! @index
+  active: Boolean!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+  transactionHash: String!
 }
 
 type RampVolumeSnapshot {
@@ -742,4 +833,479 @@ type ProtocolEvent
   transactionHash: String! @index
   logIndex: Int!
   metadata: String!
+}
+
+# Canonical Cash Explorer projection.  These rows are intentionally owned by
+# Envio; effects may later attach block-exact enrichment, but never create the
+# primary event history.
+type AccountIdentity {
+  id: ID!
+  address: String! @index
+  identityKind: String!
+  firstSeenAt: Timestamp!
+  firstSeenChainId: Int!
+  updatedAt: Timestamp!
+}
+type Account {
+  id: ID!
+  chainId: Int! @index
+  address: String! @index
+  identity: AccountIdentity
+  firstSeenAt: Timestamp!
+  updatedAt: Timestamp!
+}
+type AccountTokenEvent
+  @index(fields: [["chainId", "ASC"], ["accountAddress", "ASC"], ["timestamp", "DESC"], ["id", "ASC"]])
+{
+  id: ID!
+  chainId: Int! @index
+  accountIdentityId: String! @index
+  accountAddress: String! @index
+  account: Account
+  tokenAddress: String! @index
+  token: Token
+  economicActionId: String! @index
+  legIndex: Int!
+  eventType: String! @index
+  category: String! @index
+  direction: String!
+  fundingMode: String
+  status: String!
+  amount: BigInt!
+  amountRaw: BigInt!
+  tokenDecimals: Int!
+  priceUsdE18: BigInt
+  amountUsd: BigInt
+  valuationStatus: String!
+  valuationSource: String!
+  cashbackType: String
+  blockNumber: BigInt!
+  timestamp: Timestamp! @index
+  transactionHash: String! @index
+  logIndex: Int!
+}
+type AccountTokenMetric
+  @index(fields: [["chainId", "ASC"], ["currentBalanceUsd", "DESC"], ["lastActivityAt", "DESC"]])
+{
+  id: ID!
+  chainId: Int! @index
+  accountIdentityId: String! @index
+  accountAddress: String! @index
+  account: Account
+  tokenAddress: String! @index
+  token: Token
+  balance: BigInt!
+  inflow: BigInt!
+  outflow: BigInt!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+  safeBalanceAmount: BigInt!
+  safeInflowAmount: BigInt!
+  safeOutflowAmount: BigInt!
+  amountUsd: BigInt
+  usdStatus: String!
+  currentBalanceAmount: BigInt
+  currentBalanceUsd: BigInt @index
+  currentBalanceValuationStatus: String!
+  depositCount: BigInt!
+  depositedAmount: BigInt!
+  depositedUsd: BigInt
+  spendCount: BigInt!
+  spentAmount: BigInt!
+  spentUsd: BigInt
+  creditSpendUsd: BigInt
+  debitSpendUsd: BigInt
+  withdrawalCount: BigInt!
+  withdrawnAmount: BigInt!
+  withdrawnUsd: BigInt
+  cashbackCount: BigInt!
+  cashbackAmount: BigInt!
+  cashbackUsd: BigInt
+  borrowedUsd: BigInt
+  repaidUsd: BigInt
+  outstandingDebtUsd: BigInt
+  outstandingDebtStatus: String!
+  borrowedAmount: BigInt!
+  repaidAmount: BigInt!
+  outstandingDebtAmount: BigInt!
+  otherInflowAmount: BigInt!
+  otherOutflowAmount: BigInt!
+  firstActivityAt: Timestamp!
+  lastActivityAt: Timestamp! @index
+}
+type AccountMetric
+  @index(fields: [["chainId", "ASC"], ["netWorthUsd", "DESC"], ["lastActivityAt", "DESC"]])
+  @index(fields: [["chainId", "ASC"], ["currentBalanceUsd", "DESC"], ["lastActivityAt", "DESC"]])
+{
+  id: ID!
+  chainId: Int! @index
+  accountIdentityId: String! @index
+  accountAddress: String! @index
+  safeAddress: String! @index
+  spendUsd: BigInt!
+  topUpCount: BigInt!
+  cashbackReceivedUsd: BigInt!
+  currentTierId: Int
+  tierUpdatedAt: Timestamp
+  tokenCount: BigInt!
+  transactionCount: BigInt!
+  lifetimeDepositedUsd: BigInt @index
+  lifetimeSpentUsd: BigInt @index
+  lifetimeWithdrawnUsd: BigInt
+  lifetimeCashbackUsd: BigInt
+  lifetimeCashbackGeneratedUsd: BigInt
+  lifetimeCashbackReceivedUsd: BigInt
+  lifetimeCashbackGeneratedForOthersUsd: BigInt
+  lifetimeCashbackRegularUsd: BigInt
+  lifetimeCashbackSpenderUsd: BigInt
+  lifetimeCashbackPromotionUsd: BigInt
+  lifetimeCashbackReferralUsd: BigInt
+  lifetimeCashbackOtherUsd: BigInt
+  creditSpendUsd: BigInt
+  debitSpendUsd: BigInt
+  borrowedUsd: BigInt
+  repaidUsd: BigInt
+  eventLedgerOutstandingDebtUsd: BigInt
+  debtStatus: String!
+  pricedBalanceUsd: BigInt!
+  currentBalanceUsd: BigInt @index
+  netWorthUsd: BigInt @index
+  unpricedPositionCount: BigInt!
+  firstActivityAt: Timestamp!
+  lastActivityAt: Timestamp! @index
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
+type AccountDailyMetric {
+  id: ID!
+  chainId: Int! @index
+  accountIdentityId: String! @index
+  accountAddress: String! @index
+  account: Account
+  token: Token
+  day: String! @index
+  spendUsd: BigInt!
+  topUpCount: BigInt!
+  cashbackReceivedUsd: BigInt!
+  depositedUsd: BigInt
+  spentUsd: BigInt
+  creditSpendUsd: BigInt
+  debitSpendUsd: BigInt
+  withdrawnUsd: BigInt
+  cashbackUsd: BigInt
+  borrowedUsd: BigInt
+  repaidUsd: BigInt
+  closingBalanceUsd: BigInt
+  closingBalanceStatus: String!
+  transactionCount: BigInt!
+  pricingCoverageRatio: BigInt
+}
+type EconomicAction
+  @index(fields: [["chainId", "ASC"], ["timestamp", "DESC"], ["blockNumber", "DESC"], ["logIndex", "DESC"]])
+{
+  id: ID!
+  chainId: Int! @index
+  accountIdentityId: String @index
+  accountAddress: String @index
+  actionType: String! @index
+  transactionHash: String! @index
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  logIndex: Int!
+  amountUsd: BigInt
+  valuationStatus: String!
+  sourceCount: Int!
+  economicKey: String! @index
+  metadata: String!
+}
+type EconomicActionSource {
+  id: ID!
+  economicActionId: String! @index
+  sourceEventId: String! @index
+  sourceKind: String! @index
+  sourceRole: String!
+}
+type LendingMarket {
+  id: ID!
+  chainId: Int! @index
+  address: String! @index
+  spokeAddress: String!
+  gatewayAddress: String
+  hubAddress: String
+  reservePlan: String!
+  registeredAt: Timestamp!
+}
+type LendingReserve {
+  id: ID!
+  marketId: String! @index
+  chainId: Int! @index
+  reserveId: BigInt! @index
+  tokenAddress: String @index
+  token: Token
+  assetStatus: String!
+  active: Boolean!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
+type LendingEvent {
+  id: ID!
+  chainId: Int! @index
+  accountIdentityId: String @index
+  accountAddress: String
+  marketId: String @index
+  reserveId: String @index
+  economicActionId: String @index
+  eventType: String! @index
+  sourceKind: String!
+  sourceAddress: String!
+  transactionHash: String! @index
+  blockNumber: BigInt!
+  timestamp: Timestamp! @index
+  logIndex: Int!
+  metadata: String!
+}
+type LendingEventLeg {
+  id: ID!
+  lendingEventId: String! @index
+  reserveId: String
+  tokenAddress: String @index
+  legIndex: Int!
+  legType: String!
+  direction: String!
+  amount: BigInt!
+  shares: BigInt!
+  suppliedSharesDelta: BigInt!
+  drawnSharesDelta: BigInt!
+  premiumSharesDelta: BigInt!
+  premiumOffsetRayDelta: BigInt!
+  amountUsd: BigInt
+  valuationStatus: String!
+}
+type LendingPosition {
+  id: ID!
+  accountIdentityId: String! @index
+  reserveId: String! @index
+  chainId: Int! @index
+  walletBalance: BigInt
+  suppliedBalance: BigInt
+  drawnShares: BigInt
+  usingAsCollateral: Boolean
+  stateStatus: String!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+  suppliedShares: BigInt
+  premiumShares: BigInt
+  premiumOffsetRay: BigInt
+  grossAssets: BigInt
+  protocolDebt: BigInt
+  walletBalanceUsd: BigInt
+  suppliedBalanceUsd: BigInt
+  grossAssetsUsd: BigInt
+  protocolDebtUsd: BigInt
+  netWorthUsd: BigInt
+  valuationStatus: String
+  stateSource: String
+  finalityStatus: String
+  priceObservationId: String
+  stateBlockNumber: BigInt
+  stateBlockHash: String
+  stateObservedAt: Timestamp
+  finalizedAt: Timestamp
+}
+type LendingPositionSnapshot {
+  id: ID!
+  lendingPositionId: String! @index
+  chainId: Int!
+  blockNumber: BigInt! @index
+  snapshotKind: String!
+  suppliedBalance: BigInt
+  drawnShares: BigInt
+  usingAsCollateral: Boolean
+  accountIdentityId: String
+  reserveId: String
+  blockHash: String
+  walletBalance: BigInt
+  suppliedShares: BigInt
+  premiumShares: BigInt
+  premiumOffsetRay: BigInt
+  grossAssets: BigInt
+  protocolDebt: BigInt
+  walletBalanceUsd: BigInt
+  suppliedBalanceUsd: BigInt
+  grossAssetsUsd: BigInt
+  protocolDebtUsd: BigInt
+  netWorthUsd: BigInt
+  valuationStatus: String
+  stateStatus: String
+  error: String
+  stateSource: String
+  finalityStatus: String
+  priceObservationId: String
+  observedAt: Timestamp
+  finalizedAt: Timestamp
+}
+type LendingAccountSnapshot {
+  id: ID!
+  accountIdentityId: String! @index
+  chainId: Int! @index
+  blockNumber: BigInt! @index
+  suppliedBalance: BigInt
+  debtShares: BigInt
+  marketId: String
+  blockHash: String
+  snapshotKind: String
+  walletBalanceUsd: BigInt
+  suppliedBalanceUsd: BigInt
+  grossAssetsUsd: BigInt
+  protocolDebtUsd: BigInt
+  netWorthUsd: BigInt
+  riskPremiumRay: BigInt
+  totalCollateralValueRaw: BigInt
+  totalDebtValueRayRaw: BigInt
+  healthFactorE18: BigInt
+  avgCollateralFactorE18: BigInt
+  availableBorrowUsd: BigInt
+  activeCollateralCount: Int
+  borrowCount: Int
+  valuationStatus: String
+  stateStatus: String
+  error: String
+  stateSource: String
+  finalityStatus: String
+  observedAt: Timestamp
+  finalizedAt: Timestamp
+}
+type TokenPriceSource {
+  id: ID!
+  chainId: Int! @index
+  tokenId: String! @index
+  tokenAddress: String! @index
+  token: Token
+  sourceKind: String!
+  sourceType: String! @index
+  sourceIdentifier: String!
+  sourceAddress: String
+  updatedAt: Timestamp!
+}
+type TokenPriceObservation {
+  id: ID!
+  chainId: Int! @index
+  tokenId: String! @index
+  tokenAddress: String! @index
+  token: Token
+  sourceId: String! @index
+  priceUsdE18: BigInt
+  amountUsd: BigInt
+  valuationStatus: String!
+  priceStatus: String! @index
+  observedAt: Timestamp! @index
+  blockNumber: BigInt! @index
+  referenceChainId: Int
+  referenceTokenAddress: String
+  referenceBlockNumber: BigInt
+  referenceObservedAt: Timestamp
+}
+type TokenPriceCurrent {
+  id: ID!
+  chainId: Int! @index
+  tokenAddress: String! @index
+  token: Token
+  observationId: String
+  tokenId: String! @index
+  priceUsdE18: BigInt
+  priceUsd: BigInt
+  priceStatus: String! @index
+  sourceType: String!
+  valuationStatus: String!
+  observedAt: Timestamp
+  expiresAt: Timestamp
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+  referenceChainId: Int
+  referenceTokenAddress: String
+  referenceBlockNumber: BigInt
+  referenceObservedAt: Timestamp
+}
+type CanonicalTokenPriceBucket
+  @index(fields: [["canonicalAsset", "ASC"], ["bucketStart", "DESC"], ["chainId", "ASC"], ["tokenAddress", "ASC"]])
+{
+  id: ID!
+  canonicalAsset: String! @index
+  chainId: Int! @index
+  tokenAddress: String! @index
+  tokenId: String! @index
+  token: Token
+  priceUsdE18: BigInt!
+  observedAt: Timestamp! @index
+  bucketStart: Timestamp! @index
+  blockNumber: BigInt! @index
+  logIndex: Int!
+  sourceType: String! @index
+}
+type PriceAnomaly {
+  id: ID!
+  chainId: Int! @index
+  tokenId: String! @index
+  tokenAddress: String! @index
+  observationId: String!
+  candidateObservationId: String! @index
+  verificationStatus: String! @index
+  reason: String!
+  observedAt: Timestamp!
+}
+type ScannerEvent
+  @index(
+    fields: [["timestamp", "DESC"], ["chainId", "ASC"], ["blockNumber", "DESC"], ["logIndex", "DESC"], ["id", "ASC"]]
+  )
+{
+  id: ID!
+  chainId: Int! @index
+  eventType: String! @index
+  contractAddress: String!
+  actorAddress: String
+  tokenAddress: String
+  amount: BigInt
+  amountUsd: BigInt
+  usdStatus: String!
+  blockNumber: BigInt!
+  timestamp: Timestamp!
+  transactionHash: String!
+  logIndex: Int!
+  tokenLegs: [ScannerEventTokenLeg!]! @derivedFrom(field: "scannerEvent")
+}
+type ScannerEventTokenLeg {
+  id: ID!
+  scannerEvent: ScannerEvent!
+  token: Token
+  legIndex: Int!
+  tokenAddress: String!
+  amount: BigInt!
+  amountUsd: BigInt
+  direction: String!
+  priceStatus: String!
+}
+type AccountTokenDailyMetric {
+  id: ID!
+  account: Account!
+  token: Token!
+  chainId: Int! @index
+  day: String! @index
+  eventCount: BigInt!
+  creditAmount: BigInt!
+  debitAmount: BigInt!
+  creditUsd: BigInt
+  debitUsd: BigInt
+  usdStatus: String!
+}
+type TokenDailyMetric {
+  id: ID!
+  token: Token!
+  chainId: Int! @index
+  tokenAddress: String! @index
+  day: String! @index
+  eventCount: BigInt!
+  creditUsd: BigInt
+  debitUsd: BigInt
+  volumeUsd: BigInt
+  usdStatus: String!
 }

@@ -14,6 +14,8 @@ export type AccountDailyChartPoint = {
   spentUsd: number;
   withdrawnUsd: number;
   cashbackUsd: number;
+  borrowedUsd: number;
+  repaidUsd: number;
   cumulativeVolumeUsd: number;
   hasUnpricedFlow: boolean;
 };
@@ -85,16 +87,28 @@ export function accountDailyChartPoints(detail: AccountAnalyticsDetail): Account
     const depositedUsd = row.depositedUsd ?? 0;
     const spentUsd = row.spentUsd ?? 0;
     const withdrawnUsd = row.withdrawnUsd ?? 0;
-    cumulativeVolumeUsd += depositedUsd + spentUsd + withdrawnUsd;
+    const cashbackUsd = row.cashbackUsd ?? 0;
+    const borrowedUsd = row.borrowedUsd ?? 0;
+    const repaidUsd = row.repaidUsd ?? 0;
+    cumulativeVolumeUsd += depositedUsd + spentUsd + withdrawnUsd + cashbackUsd + borrowedUsd + repaidUsd;
     return {
       date: new Date(`${row.day}T00:00:00Z`),
       day: row.day,
       depositedUsd,
       spentUsd,
       withdrawnUsd,
-      cashbackUsd: row.cashbackUsd ?? 0,
+      cashbackUsd,
+      borrowedUsd,
+      repaidUsd,
       cumulativeVolumeUsd,
-      hasUnpricedFlow: [row.depositedUsd, row.spentUsd, row.withdrawnUsd].some((value) => value === null),
+      hasUnpricedFlow: [
+        row.depositedUsd,
+        row.spentUsd,
+        row.withdrawnUsd,
+        row.cashbackUsd,
+        row.borrowedUsd,
+        row.repaidUsd,
+      ].some((value) => value === null),
     };
   });
 }

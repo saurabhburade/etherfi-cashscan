@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { type ReactNode, useRef } from "react";
+import { ChartExportActions } from "@/components/chart-export-actions";
 import { Area, AreaChart } from "@/components/charts/area-chart";
 import { Bar } from "@/components/charts/bar";
 import { BarChart } from "@/components/charts/bar-chart";
@@ -444,27 +445,48 @@ function Definition({ label: name, value: output }: { label: string; value: stri
   );
 }
 function TierDistribution({ data }: { data: Array<{ color: string; label: string; value: number }> }) {
+  const chartContainerRef = useRef<HTMLDivElement>(null);
   const total = data.reduce((sum, row) => sum + row.value, 0);
   return (
     <article className="rounded-2xl border border-border bg-card p-5 text-card-foreground sm:p-6">
-      <h3 className="text-lg font-normal tracking-[-.02em]">Effective tier distribution</h3>
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="text-lg font-normal tracking-[-.02em]">Effective tier distribution</h3>
+        {data.length ? (
+          <ChartExportActions
+            containerRef={chartContainerRef}
+            filename="etherfi-effective-tier-distribution.svg"
+            title="Ether.fi: Effective tier distribution"
+            value={number(total)}
+          />
+        ) : null}
+      </div>
       {data.length ? (
-        <div className="mt-6 grid items-center gap-6 sm:grid-cols-[240px_minmax(0,1fr)]">
+        <div className="mt-6 grid items-center gap-6 sm:grid-cols-[240px_minmax(0,1fr)]" ref={chartContainerRef}>
           <PieChart className="mx-auto max-w-60" cornerRadius={3} data={data} innerRadius={72} padAngle={0.018}>
             <PieCenter defaultLabel="Safes" valueClassName="text-lg" />
             {data.map((row, index) => (
               <PieSlice color={row.color} hoverEffect="grow" index={index} key={row.label} />
             ))}
           </PieChart>
-          <div className="space-y-3">
+          <div className="chart-html-legend space-y-3">
             {data.map((row) => (
-              <div className="flex items-center gap-3 text-xs" key={row.label}>
-                <span className="size-1.5 rounded-full" style={{ background: row.color }} />
+              <div
+                className="flex items-center gap-3 text-xs"
+                data-chart-legend-label={row.label}
+                data-chart-legend-value={number(row.value)}
+                key={row.label}
+              >
+                <span className="chart-html-legend-swatch size-1.5 rounded-full" style={{ background: row.color }} />
                 <span className="flex-1 text-muted-foreground">{row.label}</span>
                 <span className="font-mono text-foreground">{number(row.value)}</span>
               </div>
             ))}
-            <div className="border-t border-border pt-3 text-right text-sm text-foreground">All · {number(total)}</div>
+            <div
+              className="border-t border-border pt-3 text-right text-sm text-foreground"
+              data-chart-legend-total={`All · ${number(total)}`}
+            >
+              All · {number(total)}
+            </div>
           </div>
         </div>
       ) : (

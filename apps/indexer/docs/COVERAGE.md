@@ -103,6 +103,14 @@ yield, borrowing, repayment, cashback, withdrawals, or other balance changes.
 The configured chain start blocks remain conservative floors. Replace them with
 independently verified contract-specific deployment blocks before production.
 
+## Cash Lend subscription migration
+
+`LendGateway` and `AaveV4Spoke` are new Envio subscriptions. Existing indexed
+storage will not contain their historical logs until it is replayed from the
+configured per-contract creation blocks. Add these subscriptions through a
+replay, or run a second Envio schema alongside the existing production schema;
+do not reset production storage as part of this change.
+
 ## Dune-parity event surfaces
 
 The indexer subscribes only to addresses in `@etherfi/contracts` and only to
@@ -115,6 +123,7 @@ or stable business keys and are therefore reorg-safe under Envio rollback.
 | Cash repayment | `RepayDebtManager`, `Repay` | `Repayment`; daily `repaidUsd` | Emitter's `debtAmountInUsd`, 6 decimals |
 | Withdrawals | withdrawal lifecycle events | `WithdrawalEvent` | Token amounts only; no price is inferred |
 | Debt supply/borrow/repay/liquidation | Optimism current + legacy and Scroll current `DebtManager` | `DebtEvent`, `DebtInterestIndex`, per-manager/user/token `DebtPosition` | Raw token amounts; USD remains zero with `unpriced_event_only`; interest indexes are retained but not applied without per-user shares |
+| Cash Lend | Optimism `LendGateway` and ether.fi's Aave V4 `Spoke` | Immutable `LendingSourceEvent`, `LendingSourceEventLeg`, `LendingReserveState` | Gateway and Spoke provenance stays separate; liquidation has debt/collateral/fee legs and is not a repayment or withdrawal |
 | Ramps | Optimism `RampVolumeEmitter.RampVolume` | latest chain/log-ordered `RampVolumeSnapshot` per label/token/day; query-time daily aggregation | Six-decimal USDC is already USD; six-decimal EURC is joined to indexed EUR/USD history |
 | EUR/USD | Optimism Chainlink `AnswerUpdated` | append-only `PriceFeedUpdate`, latest `PriceFeedState`, and last observation per UTC day in `DailyFxRate` | Answer uses the verified 8-decimal feed convention |
 | Safe discovery | current `BeaconProxyDeployed`, legacy `UserSafeDeployed` | `UserSafe` | Discovery only |

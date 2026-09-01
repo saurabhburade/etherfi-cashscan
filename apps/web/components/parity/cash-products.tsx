@@ -517,15 +517,26 @@ function RampDistributionCard({ offrampUsd, onrampUsd }: { offrampUsd: number; o
                 <PieSlice color={row.color} hoverEffect="grow" index={index} key={row.label} />
               ))}
             </PieChart>
-            <div className="min-w-0 space-y-3">
+            <div className="chart-html-legend min-w-0 space-y-3">
               {data.map((row) => (
-                <div className="flex items-center gap-3 text-xs" key={row.label}>
-                  <span className="size-1.5 shrink-0 rounded-full" style={{ background: row.color }} />
+                <div
+                  className="flex items-center gap-3 text-xs"
+                  data-chart-legend-label={row.label}
+                  data-chart-legend-value={currency(row.value)}
+                  key={row.label}
+                >
+                  <span
+                    className="chart-html-legend-swatch size-1.5 shrink-0 rounded-full"
+                    style={{ background: row.color }}
+                  />
                   <span className="min-w-0 flex-1 text-muted-foreground">{row.label}</span>
                   <span className="shrink-0 font-mono text-foreground">{currency(row.value)}</span>
                 </div>
               ))}
-              <div className="border-t border-border/40 pt-3 text-right text-sm text-foreground">
+              <div
+                className="border-t border-border/40 pt-3 text-right text-sm text-foreground"
+                data-chart-legend-total={`All · ${currency(total)}`}
+              >
                 All · {currency(total)}
               </div>
             </div>
@@ -570,15 +581,26 @@ function CashbackDistributionCard({
                 <PieSlice color={row.color} hoverEffect="grow" index={index} key={row.label} />
               ))}
             </PieChart>
-            <div className="min-w-0 space-y-3">
+            <div className="chart-html-legend min-w-0 space-y-3">
               {data.map((row) => (
-                <div className="flex items-center gap-3 text-xs" key={row.label}>
-                  <span className="size-1.5 shrink-0 rounded-full" style={{ background: row.color }} />
+                <div
+                  className="flex items-center gap-3 text-xs"
+                  data-chart-legend-label={row.label}
+                  data-chart-legend-value={currency(row.value)}
+                  key={row.label}
+                >
+                  <span
+                    className="chart-html-legend-swatch size-1.5 shrink-0 rounded-full"
+                    style={{ background: row.color }}
+                  />
                   <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground">{row.label}</span>
                   <span className="shrink-0 font-mono text-foreground">{currency(row.value)}</span>
                 </div>
               ))}
-              <div className="border-t border-border/40 pt-3 text-right text-sm text-foreground">
+              <div
+                className="border-t border-border/40 pt-3 text-right text-sm text-foreground"
+                data-chart-legend-total={`All · ${currency(total)}`}
+              >
                 All · {currency(total)}
               </div>
             </div>

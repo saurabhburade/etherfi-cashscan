@@ -1,6 +1,7 @@
 import postgres from "postgres";
 import { runBackfill } from "./backfill.js";
 import { createGraphqlSourceAdapter } from "./graphql-adapter.js";
+import { markLendingFinalized, runLendingSnapshotBatch } from "./lending-snapshot-worker.js";
 import { refreshCurrentPrices, runHistoricalPriceBackfill } from "./price-enrichment.js";
 import { graphqlHttpTransport, PostgresEnrichmentStore, requiredWorkerEnv, type SqlExecutor } from "./worker.js";
 
@@ -103,6 +104,37 @@ async function refreshConfiguredCurrentPrices(sql: SqlExecutor) {
   }
 }
 
+async function refreshConfiguredLendingSnapshots(sql: SqlExecutor) {
+  const rpcUrl = process.env.OPTIMISM_ARCHIVE_RPC_URL;
+  if (!rpcUrl) return;
+  try {
+    const result = await runLendingSnapshotBatch(sql, {
+      chainId: 10,
+      rpcUrl,
+      confirmations: 20n,
+      limit: 100,
+    });
+    if (result.finalized != null) await markLendingFinalized(sql, 10, result.finalized);
+    await new PostgresEnrichmentStore(sql, false).writeLendingSnapshots(result.snapshots);
+    console.log(
+      JSON.stringify({
+        type: "lending_snapshots",
+        chainId: 10,
+        selected: result.selected,
+        finalized: result.finalized?.toString() ?? null,
+      }),
+    );
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        type: "lending_snapshots_error",
+        chainId: 10,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+}
+
 async function main() {
   const command = process.argv[2] ?? "backfill";
   const databaseUrl = process.env.DATABASE_URL;
@@ -110,7 +142,7 @@ async function main() {
   const sql = postgresExecutor(databaseUrl);
   try {
     if (command === "backfill") {
-      const config = requiredWorkerEnv();
+      requiredWorkerEnv();
       const results = await runBatches(sql, process.env, {
         maxBatches: integerFlag("max-batches", 1),
         dryRun: process.argv.includes("--dry-run"),
@@ -128,6 +160,7 @@ async function main() {
           onBatch: (result, batch) => console.log(JSON.stringify({ type: "worker_progress", batch, ...result })),
         });
         console.log(JSON.stringify(results.at(-1) ?? null));
+        await refreshConfiguredLendingSnapshots(sql);
         await refreshConfiguredCurrentPrices(sql);
         await new Promise((resolve) => setTimeout(resolve, pollMs));
       }
@@ -160,6 +193,28 @@ async function main() {
         dryRun: process.argv.includes("--dry-run"),
       });
       console.log(JSON.stringify({ type: "current_price_refresh", ...result }));
+      return;
+    }
+    if (command === "lending-snapshots") {
+      const chainId = chainFlag();
+      const rpc = rpcEnv(chainId, true);
+      const result = await runLendingSnapshotBatch(sql, {
+        chainId,
+        rpcUrl: rpc.rpcUrl,
+        confirmations: BigInt(integerFlag("confirmations", 20)),
+        limit: integerFlag("limit", 100),
+      });
+      if (!process.argv.includes("--dry-run")) {
+        if (result.finalized != null) await markLendingFinalized(sql, chainId, result.finalized);
+        await new PostgresEnrichmentStore(sql, false).writeLendingSnapshots(result.snapshots);
+      }
+      console.log(
+        JSON.stringify({
+          type: "lending_snapshots",
+          selected: result.selected,
+          finalized: result.finalized?.toString() ?? null,
+        }),
+      );
       return;
     }
     throw new Error(`Unknown command: ${command}`);

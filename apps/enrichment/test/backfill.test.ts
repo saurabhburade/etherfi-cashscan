@@ -36,6 +36,63 @@ const page: SourcePage = {
   priceFeeds: [],
 };
 describe("backfill", () => {
+  it("advances only to the newest saturated feed tail when GraphQL feeds are imbalanced", async () => {
+    const rawEvent = (id: string, timestamp: string, blockNumber: string) => ({
+      id,
+      chainId: 10,
+      contractAddress: "0x0000000000000000000000000000000000000001",
+      eventType: "configured",
+      actor: "0x0000000000000000000000000000000000000000",
+      tokenAddress: "0x0000000000000000000000000000000000000000",
+      amount: "0",
+      amountUsd: null,
+      blockNumber,
+      timestamp,
+      transactionHash: `0x${id.padStart(64, "0")}`,
+      logIndex: 0,
+      metadata: "{}",
+    });
+    let checkpoint: Checkpoint | null = null;
+    await runBackfill(
+      {
+        fetchPage: async () => ({
+          ...page,
+          protocolEvents: [
+            rawEvent("1", "2026-01-01T00:30:00.000Z", "30"),
+            rawEvent("2", "2026-01-01T00:20:00.000Z", "20"),
+          ],
+          lendingSourceEvents: [
+            {
+              ...rawEvent("3", "2026-01-01T00:01:00.000Z", "1"),
+              sourceKind: "spoke",
+              sourceAddress: "0x0000000000000000000000000000000000000002",
+              marketAddress: "0x0000000000000000000000000000000000000002",
+              spokeAddress: "0x0000000000000000000000000000000000000002",
+              eventType: "borrow",
+              safeAddress: "0x0000000000000000000000000000000000000003",
+              actorAddress: null,
+              recipientAddress: null,
+              reserveId: "1",
+              collateralReserveId: null,
+              debtReserveId: null,
+            },
+          ],
+        }),
+      },
+      {
+        tryAdvisoryLock: async () => true,
+        readCheckpoint: async () => null,
+        writeProjection: async () => {},
+        writeCheckpoint: async (next) => {
+          checkpoint = next;
+        },
+      },
+      "test",
+      2,
+    );
+    assert.equal((checkpoint as Checkpoint | null)?.cursor?.id, "2");
+  });
+
   it("uses an advisory lock and commits a deterministic checkpoint after idempotent write", async () => {
     let checkpoint: Checkpoint | null = null;
     let writes = 0;

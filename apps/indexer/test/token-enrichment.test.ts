@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { canonicalOracleSymbol, findDirectUsdFeed, tokenFromRegistry } from "../src/token-enrichment.js";
+import {
+  canonicalOracleSymbol,
+  findDirectUsdFeed,
+  tokenFromRegistry,
+  tokenPriceBucketId,
+  verifiedCrossChainPricePeers,
+} from "../src/token-enrichment.js";
 
 describe("token oracle discovery", () => {
   const feeds = [
@@ -46,5 +52,16 @@ describe("token oracle discovery", () => {
       decimalsVerified: true,
       metadataStatus: "static_verified",
     });
+  });
+
+  it("maps only registry-verified peers across Cash chains", () => {
+    expect(verifiedCrossChainPricePeers(534352, "0x06efdbff2a14a7c8e15944d1f4a48f9f95f663a4")).toContainEqual({
+      chainId: 10,
+      tokenAddress: "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+      canonicalAsset: "USDC",
+      decimals: 6,
+    });
+    expect(verifiedCrossChainPricePeers(534352, "0x1111111111111111111111111111111111111111")).toEqual([]);
+    expect(tokenPriceBucketId(10, "0xAbC", "2026-01-01T10:00:00.000Z")).toBe("10:0xabc:2026-01-01T10:00:00.000Z");
   });
 });
