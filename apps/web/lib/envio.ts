@@ -280,10 +280,31 @@ const HOURLY_QUERY = /* GraphQL */ `
 `;
 
 export const EVENTS_QUERY = /* GraphQL */ `
-  query EtherFiCashExplorerEvents($eventWhere: ProtocolEvent_bool_exp!) {
-    ProtocolEvent(
-      limit: 50
-      where: $eventWhere
+  query EtherFiCashExplorerEvents(
+    $spendWhere: ProtocolEvent_bool_exp!
+    $cashbackWhere: ProtocolEvent_bool_exp!
+  ) {
+    latestSpends: ProtocolEvent(
+      limit: 10
+      where: $spendWhere
+      order_by: [{ timestamp: desc }, { chainId: asc }, { blockNumber: desc }, { logIndex: desc }, { id: asc }]
+    ) {
+      id
+      eventType
+      chainId
+      blockNumber
+      contractAddress
+      actor
+      tokenAddress
+      amount
+      amountUsd
+      timestamp
+      transactionHash
+      metadata
+    }
+    latestCashbacks: ProtocolEvent(
+      limit: 10
+      where: $cashbackWhere
       order_by: [{ timestamp: desc }, { chainId: asc }, { blockNumber: desc }, { logIndex: desc }, { id: asc }]
     ) {
       id
@@ -633,7 +654,7 @@ type CoreResponse = {
 type GlobalActiveSafeResponse = { GlobalActiveSafe_aggregate?: AggregateResponse };
 type SpendBucketsResponse = { SpendBucketMetric: Row[] };
 type HourlyResponse = { HourlySpendMetric: Row[] };
-type EventsResponse = { ProtocolEvent: Row[] };
+type EventsResponse = { latestSpends: Row[]; latestCashbacks: Row[] };
 type ActivityPageResponse = {
   ProtocolEvent: Row[];
   Token: Row[];
@@ -757,7 +778,15 @@ export async function loadExplorerData(filters: { query?: string; chainId?: numb
         : graphqlOptional<GlobalActiveSafeResponse>(endpoint, GLOBAL_ACTIVE_SAFE_QUERY, {}, adminSecret),
       graphqlOptional<SpendBucketsResponse>(endpoint, SPEND_BUCKETS_QUERY, { where: chainWhere }, adminSecret),
       graphqlOptional<HourlyResponse>(endpoint, HOURLY_QUERY, { where: chainWhere }, adminSecret),
-      graphqlOptional<EventsResponse>(endpoint, EVENTS_QUERY, { eventWhere: eventWhere(filters) }, adminSecret),
+      graphqlOptional<EventsResponse>(
+        endpoint,
+        EVENTS_QUERY,
+        {
+          spendWhere: eventWhereForType(filters, "spend"),
+          cashbackWhere: eventWhereForType(filters, "cashback"),
+        },
+        adminSecret,
+      ),
       graphqlOptional<TokenResponse>(endpoint, TOKENS_QUERY, { where: chainWhere }, adminSecret),
       graphqlOptional<ExtendedDailyResponse>(endpoint, EXTENDED_DAILY_QUERY, { where: chainWhere }, adminSecret),
       graphqlOptional<CashbackTotalResponse>(endpoint, CASHBACK_TOTAL_QUERY, { where: chainWhere }, adminSecret),
@@ -864,7 +893,8 @@ export async function loadExplorerData(filters: { query?: string; chainId?: numb
     );
     const tokens = (tokenData?.Token ?? []).map(tokenRecord);
     const tokenById = new Map(tokens.map((token) => [`${token.chainId}:${token.address}`, token]));
-    const spendEventIds = (eventData?.ProtocolEvent ?? [])
+    const activityEvents = [...(eventData?.latestSpends ?? []), ...(eventData?.latestCashbacks ?? [])];
+    const spendEventIds = activityEvents
       .filter((row) => String(row.eventType).startsWith("spend"))
       .map((row) => String(row.id));
     const spendDetails = spendEventIds.length
@@ -911,7 +941,7 @@ export async function loadExplorerData(filters: { query?: string; chainId?: numb
       moduleWhitelists: cashConfiguration?.WithdrawalModuleWhitelist ?? [],
     });
 
-    const hasIndexedData = metricRows.length > 0 || activeCardCount > 0 || (eventData?.ProtocolEvent.length ?? 0) > 0;
+    const hasIndexedData = metricRows.length > 0 || activeCardCount > 0 || activityEvents.length > 0;
 
     return {
       mode: hasIndexedData ? "live" : "empty",
@@ -943,7 +973,7 @@ export async function loadExplorerData(filters: { query?: string; chainId?: numb
         rewardCount: integer(row.rewardCount),
         amountUsd: usd(row.amountUsd),
       })),
-      activity: (eventData?.ProtocolEvent ?? []).map((row) => activityRow(row, tokenById, spendById)),
+      activity: activityEvents.map((row) => activityRow(row, tokenById, spendById)),
       rampTokens: rampSnapshotsComplete ? buildRampTokens(rampAnalytics.rows, tokenById) : [],
       debtTokens: debtUsdComplete ? buildDebtTokens(debtPositions, tokenById) : [],
       ...cash,
@@ -2039,6 +2069,12 @@ export function eventWhere(filters: { query?: string; chainId?: number }) {
     where.id = { _eq: "" };
   }
   return where;
+}
+
+function eventWhereForType(filters: { query?: string; chainId?: number }, eventType: "spend" | "cashback") {
+  const where = eventWhere(filters);
+  const typeWhere = { eventType: { _eq: eventType } };
+  return Object.keys(where).length ? { _and: [where, typeWhere] } : typeWhere;
 }
 
 export function cashHistoryForDisplay(history: CashHistoryResponse | null) {

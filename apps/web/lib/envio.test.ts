@@ -89,6 +89,14 @@ describe("event query contract", () => {
     );
   });
 
+  it("loads homepage spends and cashbacks independently", () => {
+    expect(EVENTS_QUERY).toContain("latestSpends: ProtocolEvent(");
+    expect(EVENTS_QUERY).toContain("latestCashbacks: ProtocolEvent(");
+    expect(EVENTS_QUERY.match(/limit: 10/g)).toHaveLength(2);
+    expect(EVENTS_QUERY).toContain("where: $spendWhere");
+    expect(EVENTS_QUERY).toContain("where: $cashbackWhere");
+  });
+
   it("uses indexable exact predicates for supported search keys", () => {
     const hash = `0x${"AB".repeat(32)}`;
     const address = `0x${"CD".repeat(20)}`;
