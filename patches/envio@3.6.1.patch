@@ -1,3 +1,27 @@
+diff --git a/index.d.ts b/index.d.ts
+index 5d971ca3d909083d9db25450b5ec430cd6a72b1c..37692aa32e09f7755500ed247a1c37791479a57d 100644
+--- a/index.d.ts
++++ b/index.d.ts
+@@ -91,6 +91,9 @@ export type EffectOptions<Input, Output> = {
+   readonly rateLimit: RateLimit;
+   /** Whether the effect should be cached. */
+   readonly cache?: boolean;
++  /** Optional logical cache identity. Calls returning the same key are
++   * single-flight deduplicated while the handler still receives the full input. */
++  readonly cacheKey?: (input: Input) => string;
+   /** Whether the effect's cache is shared across all chains. Defaults to
+    * `true`, or to `false` when config.yaml sets
+    * `disable_default_cross_chain: true`. Set to `false` to isolate the cache
+@@ -224,6 +227,9 @@ export function createEffect<
+     readonly rateLimit: RateLimit;
+     /** Whether the effect should be cached. */
+     readonly cache?: boolean;
++    /** Optional logical cache identity. Calls returning the same key are
++     * single-flight deduplicated while the handler still receives the full input. */
++    readonly cacheKey?: (input: I) => string;
+     /** Whether the effect's cache is shared across all chains. Defaults to
+      * `true`, or to `false` when config.yaml sets
+      * `disable_default_cross_chain: true`. Set to `false` to isolate the cache
 diff --git a/src/Env.res b/src/Env.res
 index ab23da20d3d46fe33b13ef908f2fc40a7a53da48..740131205a9746453394d1b796d09acef7ab88d7 100644
 --- a/src/Env.res
@@ -68,6 +92,42 @@ index c4a316843a7abe7141e70d57a3c1d83f76a94df1..1e528de6ef7cf20f6fcdd312e0f214b7
    clientFilterAddressThreshold,
    inMemoryObjectsTarget,
    serverPort,
+diff --git a/src/Envio.res b/src/Envio.res
+index a41abf301454e16c560c996b7c3e11d03876500a..33ff3b41083251ecd0936d70fccdd07785b96a45 100644
+--- a/src/Envio.res
++++ b/src/Envio.res
+@@ -186,6 +186,9 @@ and effectOptions<'input, 'output> = {
+   rateLimit: rateLimit,
+   /** Whether the effect should be cached. */
+   cache?: bool,
++  /** Optional logical cache identity. Calls returning the same key are
++   single-flight deduplicated while the handler still receives the full input. */
++  cacheKey?: 'input => string,
+   /** Whether the effect's cache is shared across all chains. Defaults to `true`,
+    or to `false` when config.yaml sets `disable_default_cross_chain: true`.
+    Set to `false` to isolate the cache (and rate limiting) per chain and enable
+@@ -251,6 +254,9 @@ let createEffect = (
+     input: S.schema(_ => options.input)->(
+       Utils.magic: S.t<S.t<'input>> => S.t<Internal.effectInput>
+     ),
++    cacheKey: options.cacheKey->Option.map(fn =>
++      fn->(Utils.magic: ('input => string) => Internal.effectInput => string)
++    ),
+     output: outputSchema,
+     storageMeta: {
+       outputSchema,
+diff --git a/src/Envio.res.mjs b/src/Envio.res.mjs
+index 1108214d573572ffe4e0700a3a9e15f2350c76bb..777592337e6fe7e386a82cdfa08e078c43384fc2 100644
+--- a/src/Envio.res.mjs
++++ b/src/Envio.res.mjs
+@@ -39,6 +39,7 @@ function createEffect(options, handler) {
+   return {
+     name: options.name,
+     handler: handler,
++    cacheKey: Stdlib_Option.map(options.cacheKey, fn => fn),
+     storageMeta: {
+       itemSchema: itemSchema,
+       outputSchema: outputSchema
 diff --git a/src/FetchState.res b/src/FetchState.res
 index 4123e06e4d5684cfc8d606df12cc10d97584e3fe..9238fe6960415c6d49a90cba0da31962ed41a377 100644
 --- a/src/FetchState.res
@@ -121,6 +181,21 @@ index dd22e8a0b88df6df7a9c4f18e98b5d8a962fd452..806900504bc9d715740c4dcafcce2bb1
 
  let maxChainConcurrency = Env.maxChainConcurrency;
 
+diff --git a/src/Internal.res b/src/Internal.res
+index 646ee8a1d2d849d76be83561b1b8ee4e9808af15..c48e6723f277db69c1d33fd416011a62b7fd65b3 100644
+--- a/src/Internal.res
++++ b/src/Internal.res
+@@ -775,6 +775,10 @@ type rateLimitOptions = {
+ type effect = {
+   name: string,
+   handler: effectArgs => promise<effectOutput>,
++  // Optional user-defined logical identity for effect calls. The full input
++  // still reaches the handler, while calls with the same key are single-flight
++  // deduplicated and share one persisted cache row.
++  cacheKey: option<effectInput => string>,
+   storageMeta: effectCacheStorageMeta,
+   defaultShouldCache: bool,
+   // When true a single cache is shared across every chain and the handler must
 diff --git a/src/LazyLoader.res b/src/LazyLoader.res
 index 28492cd5d819e9eb50f731ee1b72c8130ec65f2d..b0235fa3eb47ecb40723ade21131b4f4ecc210e0 100644
 --- a/src/LazyLoader.res
@@ -277,6 +352,36 @@ index 7c4bdcddf0dd750c430227a5a7e8bbb6d0e94a28..2ce1e1ccd924ff535b68150b7358bcc4
    });
    am.externalPromises.set(k, promise);
    if (am.inProgress.size < am._loaderPoolSize) {
+diff --git a/src/UserContext.res b/src/UserContext.res
+index 3915fdfab14eeb7ac04ab4b5d1acb27771db1497..2ac1ad3ab1629fdd7cfd16a3cae13b87a7d933bd 100644
+--- a/src/UserContext.res
++++ b/src/UserContext.res
+@@ -94,7 +94,10 @@ let initEffect = (params: contextParams) => {
+       let effectArgs: Internal.effectArgs = {
+         input,
+         context: effectContext,
+-        cacheKey: input->S.reverseConvertOrThrow(effect.input)->Utils.Hash.makeOrThrow,
++        cacheKey: switch effect.cacheKey {
++        | Some(makeCacheKey) => input->makeCacheKey->Utils.Hash.makeOrThrow
++        | None => input->S.reverseConvertOrThrow(effect.input)->Utils.Hash.makeOrThrow
++        },
+         checkpointId: params.checkpointId,
+       }
+       LoadLayer.loadEffect(
+diff --git a/src/UserContext.res.mjs b/src/UserContext.res.mjs
+index c5a5da93cce9bbb4a453af0b27741609928c10fa..e3ca80bb2489a3520c55ce7e1918cf53e96b1055 100644
+--- a/src/UserContext.res.mjs
++++ b/src/UserContext.res.mjs
+@@ -58,7 +58,8 @@ function initEffect(params) {
+     let tmp;
+     tmp = scope === "crossChain" ? undefined : Primitive_option.some(scope);
+     let effectContext = new EffectContext(params, tmp, effect.name, effect.defaultShouldCache, makeCaller(effect));
+-    let effectArgs_cacheKey = Utils.Hash.makeOrThrow(S$RescriptSchema.reverseConvertOrThrow(input, effect.input));
++    let makeCacheKey = effect.cacheKey;
++    let effectArgs_cacheKey = makeCacheKey !== undefined ? Utils.Hash.makeOrThrow(makeCacheKey(input)) : Utils.Hash.makeOrThrow(S$RescriptSchema.reverseConvertOrThrow(input, effect.input));
+     let effectArgs_checkpointId = params.checkpointId;
+     let effectArgs = {
+       input: input,
 diff --git a/src/sources/RpcSource.res b/src/sources/RpcSource.res
 index a0bdce8b71b14cd3a6f37859ac04c135a4281910..ed8f5a5c3375d647e35bd6220c6c25cb76cb1454 100644
 --- a/src/sources/RpcSource.res

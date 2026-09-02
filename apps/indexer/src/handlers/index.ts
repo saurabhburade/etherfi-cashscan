@@ -1,6 +1,7 @@
 import { indexer } from "envio";
 import {
   currentTokenPriceEffect,
+  exactTokenPriceEffect,
   fifteenMinuteBucket,
   lendingStateSnapshotEffect,
   priceProviderAvailableAtBlock,
@@ -120,11 +121,14 @@ const tokenAnalyticsDefaults = {
   analyticsUpdatedAt: new Date(0),
 };
 
-async function recordToken(context: any, event: BlockEvent, tokenAddress: string) {
+async function recordToken(context: any, event: BlockEvent, tokenAddress: string, seedPrice = true) {
   const address = lower(tokenAddress);
   const id = `${event.chainId}:${address}`;
   const existing = await context.Token.get(id);
-  if (existing) return existing;
+  if (existing) {
+    if (seedPrice) await seedDetectedTokenPrice(context, event, address, existing);
+    return existing;
+  }
   const registered = tokenFromRegistry(event.chainId, address);
   const metadata =
     registered.metadataStatus === "static_verified"
@@ -145,6 +149,7 @@ async function recordToken(context: any, event: BlockEvent, tokenAddress: string
     ...tokenAnalyticsDefaults,
   };
   context.Token.set(token);
+  if (seedPrice) await seedDetectedTokenPrice(context, event, address, token);
   return token;
 }
 
@@ -170,6 +175,7 @@ function validIndexedTokenPrice(price: any) {
         "canonical_bucket_priced",
         "cross_chain_event_priced",
         "cross_chain_oracle_priced",
+        "historical_constant_priced",
       ].includes(price.priceStatus),
   );
 }
@@ -946,8 +952,11 @@ async function resolveCanonicalValuation(
   tokenAddress: string,
   amount: bigint,
   emittedAmountUsd?: bigint,
+  knownToken?: any,
 ): Promise<CanonicalValuation> {
-  const token = await recordToken(context, event, tokenAddress);
+  // Callers that are already inside token discovery provide the token to avoid
+  // recursively entering the discovery-time price seeding path.
+  const token = knownToken ?? (await recordToken(context, event, tokenAddress, false));
   if (emittedAmountUsd !== undefined) {
     const priceUsdE18 = token.decimalsVerified
       ? impliedUsdPriceE18(amount, emittedAmountUsd, token.decimals)
@@ -1169,14 +1178,15 @@ async function resolveCanonicalValuation(
   }
   const bucketStart = fifteenMinuteBucket(observedAt);
   const expiresAt = new Date(new Date(bucketStart).getTime() + 900_000);
-  const effect = priceProviderAvailableAtBlock(event.chainId, asBigInt(event.block.number))
-    ? await context.effect(currentTokenPriceEffect, {
-        tokenAddress: lower(tokenAddress),
-        bucketStart,
-        blockNumber: String(event.block.number),
-        blockHash: event.block.hash,
-        blockTimestamp: String(event.block.timestamp),
-      })
+  const priceEffectInput = {
+    tokenAddress: lower(tokenAddress),
+    bucketStart,
+    blockNumber: String(event.block.number),
+    blockHash: event.block.hash,
+    blockTimestamp: String(event.block.timestamp),
+  };
+  let effect = priceProviderAvailableAtBlock(event.chainId, asBigInt(event.block.number))
+    ? await context.effect(currentTokenPriceEffect, priceEffectInput)
     : { status: "unavailable", valueJson: "null" };
   if (effect.status !== "resolved") {
     context.TokenPriceCurrent.set({
@@ -1202,8 +1212,13 @@ async function resolveCanonicalValuation(
   let sourceBlockHash: string;
   let sourceTimestampSeconds: bigint;
   let sourceObservedAt: Date;
+  const bucketStartedAt = new Date(bucketStart);
+  const bucketStartSeconds = BigInt(Math.floor(bucketStartedAt.getTime() / 1000));
+  const eventBlockNumber = asBigInt(event.block.number);
+  const eventTimestampSeconds = asBigInt(event.block.timestamp);
+  let requireExactProvenance = false;
   try {
-    const parsed = JSON.parse(effect.valueJson) as {
+    let parsed = JSON.parse(effect.valueJson) as {
       priceUsdE18?: string;
       sourceBlockNumber?: string;
       sourceBlockHash?: string;
@@ -1214,12 +1229,30 @@ async function resolveCanonicalValuation(
     sourceBlockHash = parsed.sourceBlockHash ?? "";
     sourceTimestampSeconds = BigInt(parsed.sourceTimestampSeconds ?? "");
     sourceObservedAt = new Date(Number(sourceTimestampSeconds) * 1000);
+    requireExactProvenance = sourceBlockNumber > eventBlockNumber || sourceTimestampSeconds > eventTimestampSeconds;
+    if (requireExactProvenance) {
+      // Parallel preload does not guarantee which event starts the bucket's
+      // single-flight call. Retry only an earlier event at its own exact block.
+      effect = await context.effect(exactTokenPriceEffect, priceEffectInput);
+      if (effect.status !== "resolved") throw new Error();
+      parsed = JSON.parse(effect.valueJson) as typeof parsed;
+      priceUsdE18 = BigInt(parsed.priceUsdE18 ?? "0");
+      sourceBlockNumber = BigInt(parsed.sourceBlockNumber ?? "");
+      sourceBlockHash = parsed.sourceBlockHash ?? "";
+      sourceTimestampSeconds = BigInt(parsed.sourceTimestampSeconds ?? "");
+      sourceObservedAt = new Date(Number(sourceTimestampSeconds) * 1000);
+    }
     if (
       !/^0x[0-9a-fA-F]{64}$/.test(sourceBlockHash) ||
       Number.isNaN(sourceObservedAt.getTime()) ||
-      sourceBlockNumber !== asBigInt(event.block.number) ||
-      sourceBlockHash.toLowerCase() !== event.block.hash.toLowerCase() ||
-      sourceTimestampSeconds !== asBigInt(event.block.timestamp)
+      sourceBlockNumber > eventBlockNumber ||
+      sourceTimestampSeconds > eventTimestampSeconds ||
+      sourceTimestampSeconds < bucketStartSeconds ||
+      sourceTimestampSeconds >= bucketStartSeconds + 900n ||
+      (requireExactProvenance &&
+        (sourceBlockNumber !== eventBlockNumber ||
+          sourceBlockHash.toLowerCase() !== event.block.hash.toLowerCase() ||
+          sourceTimestampSeconds !== eventTimestampSeconds))
     )
       throw new Error();
   } catch {
@@ -1284,8 +1317,8 @@ async function resolveCanonicalValuation(
     priceStatus: "oracle_priced",
     sourceType: "price_provider",
     valuationStatus: "oracle_priced",
-    observedAt: sourceObservedAt,
-    expiresAt: new Date(sourceObservedAt.getTime() + 900_000),
+    observedAt: bucketStartedAt,
+    expiresAt,
     updatedAt: observedAt,
     updatedBlock: asBigInt(event.block.number),
   });
@@ -1304,6 +1337,25 @@ async function resolveCanonicalValuation(
     status: "oracle_priced",
     source: "price_provider",
   };
+}
+
+async function seedDetectedTokenPrice(context: any, event: BlockEvent, tokenAddress: string, token: any) {
+  const id = `${event.chainId}:${lower(tokenAddress)}`;
+  const current = await context.TokenPriceCurrent.get(id);
+  const observedAt = ts(event);
+
+  // TokenPriceCurrent also records unavailable attempts. Respecting its
+  // 15-minute validity window prevents transfer-heavy tokens from causing an
+  // eth_call for every event while still allowing a later event to retry.
+  if (
+    current?.observedAt &&
+    current.observedAt.getTime() <= observedAt.getTime() &&
+    current.expiresAt &&
+    current.expiresAt.getTime() >= observedAt.getTime()
+  )
+    return;
+
+  await resolveCanonicalValuation(context, event, tokenAddress, 0n, undefined, token);
 }
 
 async function canonicalTokenLeg(

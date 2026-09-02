@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  envio@3.6.1: ddf26739b3f3e9c20402da378118765cd0b0dfa971491ccc23927170f9a8795c
+  envio@3.6.1: bfce177cbb8817d5a19c4f54db31f7433d444feb24ebba7b0564c5a4282569e5
 
 importers:
 
@@ -62,7 +62,7 @@ importers:
         version: link:../../packages/contracts
       envio:
         specifier: 3.6.1
-        version: 3.6.1(patch_hash=ddf26739b3f3e9c20402da378118765cd0b0dfa971491ccc23927170f9a8795c)(@types/react@19.2.18)(react-dom@19.2.5(react@19.2.8))(supports-color@10.2.2)(typescript@5.9.2)(zod@4.5.2)
+        version: 3.6.1(patch_hash=bfce177cbb8817d5a19c4f54db31f7433d444feb24ebba7b0564c5a4282569e5)(@types/react@19.2.18)(react-dom@19.2.5(react@19.2.8))(supports-color@10.2.2)(typescript@5.9.2)(zod@4.5.2)
       react-dom:
         specifier: 19.2.5
         version: 19.2.5(react@19.2.8)
@@ -8546,7 +8546,7 @@ snapshots:
   envio-linux-x64@3.6.1:
     optional: true
 
-  envio@3.6.1(patch_hash=ddf26739b3f3e9c20402da378118765cd0b0dfa971491ccc23927170f9a8795c)(@types/react@19.2.18)(react-dom@19.2.5(react@19.2.8))(supports-color@10.2.2)(typescript@5.9.2)(zod@4.5.2):
+  envio@3.6.1(patch_hash=bfce177cbb8817d5a19c4f54db31f7433d444feb24ebba7b0564c5a4282569e5)(@types/react@19.2.18)(react-dom@19.2.5(react@19.2.8))(supports-color@10.2.2)(typescript@5.9.2)(zod@4.5.2):
     dependencies:
       '@clickhouse/client': 1.17.0
       '@elastic/ecs-pino-format': 1.4.0

@@ -55,14 +55,18 @@ runtime symbols never authorize price sharing. A row must be positive,
 non-future, and no more than 15 minutes old.
 
 Only a common-cache miss or rejected candidate invokes the same-chain
-PriceProvider once at the indexed event's exact block. The `eth_call` uses the
-event block hash as an EIP-1898 canonical block reference; there is no
-timestamp-to-block search or separate header request. The cached effect key
-includes the chain, token, UTC 15-minute bucket, and event block number, hash,
-and timestamp, so reorg replays cannot reuse stale provenance. Successful
-accepted fetches update the chain-local price entities and the common PostgreSQL
-bucket with source chain, token, block hash/number, log index, timestamp, type,
-and observation ID. Handlers never issue a cross-chain historical RPC call.
+PriceProvider. Calls are single-flighted by chain, token, and UTC 15-minute
+bucket. The winning event supplies an exact EIP-1898 block-hash reference. If a
+later event wins a concurrent bucket race, an earlier consumer makes a separately
+cached exact-block fallback rather than accepting a result from its future.
+Distinct bucket calls are packed into JSON-RPC batches of at most 20, dispatched
+at no more than 10 HTTP requests per second per chain/scope, and retried through
+the archive fallback list. There is no
+timestamp-to-block search or separate header request. Successful accepted
+fetches retain their exact source block provenance, update the chain-local price
+entities, and update the common PostgreSQL bucket with source chain, token,
+block hash/number, log index, timestamp, type, and observation ID. Handlers
+never issue a cross-chain historical RPC call.
 Known pre-deployment event blocks skip guaranteed failures, candidates more than
 50 percent away from the prior valid price are rejected, and unavailable calls
 remain nullable.

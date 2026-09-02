@@ -21,6 +21,8 @@ describe("Envio mixed-source fetch policy", () => {
     expect(patch).toContain("WithSuggestedToBlock(_) as retry");
     expect(patch).toContain("Attach rejection handlers to both boundary requests immediately");
     expect(patch).toContain("let (latestFetchedBlockInfo, optFirstBlockParent) = await Promise.all2");
+    expect(patch).toContain("Optional user-defined logical identity for effect calls");
+    expect(patch).toContain("input->makeCacheKey->Utils.Hash.makeOrThrow");
   });
 
   it("provides several independent sync fallbacks on each indexed chain", () => {

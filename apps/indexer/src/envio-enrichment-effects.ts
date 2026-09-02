@@ -40,9 +40,20 @@ const multicallAbi = parseAbi([
 
 type Address = `0x${string}`;
 type RpcBlockReference = `0x${string}` | { blockHash: `0x${string}`; requireCanonical: true };
-type RpcResponse = { result?: unknown; error?: { message?: string } };
+type RpcResponse = { id?: number | string; result?: unknown; error?: { message?: string } };
 export type EffectValue = { status: "resolved" | "partial" | "unavailable"; valueJson: string; error: string | null };
 type RpcScope = "current" | "archive";
+type RpcCallResult = { ok: true; value: unknown } | { ok: false; error: string };
+type PendingRpcCall = {
+  method: string;
+  params: unknown[];
+  resolve: (result: RpcCallResult) => void;
+};
+type RpcBatchState = { queue: PendingRpcCall[]; running: boolean; nextDispatchAt: number };
+
+const RPC_BATCH_SIZE = 20;
+const RPC_BATCH_MIN_INTERVAL_MS = 100;
+const rpcBatchStates = new Map<string, RpcBatchState>();
 
 export const historicalTokenPriceEffect = createEffect(
   {
@@ -67,9 +78,11 @@ export const historicalTokenPriceEffect = createEffect(
 
 export const currentTokenPriceEffect = createEffect(
   {
-    name: "cash_current_token_price_v4",
-    // Cache key: (chain, tokenAddress, fifteenMinuteBucket, event block
-    // number/hash/timestamp). Event provenance makes reorg replays distinct.
+    name: "cash_current_token_price_v5",
+    // The full event provenance reaches the handler, but every token has one
+    // single-flight call per 15-minute bucket. A concurrent later event can win
+    // that single-flight race; callers detect that case and use the exact-block
+    // effect below rather than applying a future price to an earlier event.
     input: {
       tokenAddress: S.address,
       bucketStart: S.string,
@@ -79,8 +92,12 @@ export const currentTokenPriceEffect = createEffect(
     },
     output: { status: S.string, valueJson: S.string, error: S.nullable(S.string) },
     cache: true,
+    cacheKey: ({ tokenAddress, bucketStart }) => `${tokenAddress.toLowerCase()}:${bucketStart}`,
     crossChain: false,
-    rateLimit: { calls: 10, per: "second" },
+    // Logical calls are single-flighted above, then packed into bounded JSON-RPC
+    // batches below. Limiting each logical call here would recreate the large
+    // preload queue even though providers receive far fewer HTTP requests.
+    rateLimit: false,
   },
   async ({ input, context }) => {
     const blockNumber = parseBlockNumber(input.blockNumber);
@@ -92,14 +109,56 @@ export const currentTokenPriceEffect = createEffect(
       !isTimestampInBucket(input.bucketStart, blockTimestamp)
     )
       return cacheSuccessfulResult(context, unavailable("Invalid exact current price input"));
-    if (!priceProviderAvailableAtBlock(context.chain.id, blockNumber))
-      // Contract absence at a finalized historical block is deterministic, so
-      // retain this negative exact-block result instead of retrying it.
+    if (!priceProviderAvailableAtBlock(context.chain.id, blockNumber)) {
+      // This cache key spans a whole bucket, which can cross the deployment
+      // boundary. Never let a pre-deployment miss poison later events.
+      context.cache = false;
       return unavailable("PriceProvider was not deployed at the indexed event block");
+    }
 
     // One same-chain archive call, bound to the canonical event block hash.
     // EIP-1898 removes the need for timestamp search or a header verification
     // request while preventing a reorg replacement block from being accepted.
+    const result = await readPrice(
+      context.chain.id,
+      input.tokenAddress as Address,
+      exactBlockReference(input.blockHash),
+      "archive",
+    );
+    return cacheSuccessfulResult(context, withPriceReference(result, blockNumber, input.blockHash, blockTimestamp));
+  },
+);
+
+export const exactTokenPriceEffect = createEffect(
+  {
+    name: "cash_exact_token_price_v1",
+    input: {
+      tokenAddress: S.address,
+      bucketStart: S.string,
+      blockNumber: S.string,
+      blockHash: S.string,
+      blockTimestamp: S.string,
+    },
+    output: { status: S.string, valueJson: S.string, error: S.nullable(S.string) },
+    cache: true,
+    crossChain: false,
+    // Exact-race fallbacks share the same bounded JSON-RPC batcher as the
+    // bucketed path. The full input remains the cache identity for this effect.
+    rateLimit: false,
+  },
+  async ({ input, context }) => {
+    const blockNumber = parseBlockNumber(input.blockNumber);
+    const blockTimestamp = parseTimestampSeconds(input.blockTimestamp);
+    if (
+      blockNumber === null ||
+      blockTimestamp === null ||
+      !isBlockHash(input.blockHash) ||
+      !isTimestampInBucket(input.bucketStart, blockTimestamp)
+    )
+      return cacheSuccessfulResult(context, unavailable("Invalid exact price input"));
+    if (!priceProviderAvailableAtBlock(context.chain.id, blockNumber))
+      return unavailable("PriceProvider was not deployed at the indexed event block");
+
     const result = await readPrice(
       context.chain.id,
       input.tokenAddress as Address,
@@ -174,7 +233,7 @@ async function readPrice(
   const provider = priceProviderFor(chainId);
   if (!provider) return unavailable("No verified PriceProvider for this chain; use event-emitted prices");
   const data = encodeFunctionData({ abi: priceProviderAbi, functionName: "price", args: [tokenAddress] });
-  const rpc = await rpcCall(chainId, scope, "eth_call", [{ to: provider, data }, at]);
+  const rpc = await batchedRpcCall(chainId, scope, "eth_call", [{ to: provider, data }, at]);
   if (!rpc.ok) return unavailable(rpc.error);
   try {
     if (typeof rpc.value !== "string") return unavailable("Price RPC returned an invalid payload");
@@ -300,12 +359,7 @@ function decodeSpoke(name: SpokeFunction, data: `0x${string}`) {
   return decodeFunctionResult({ abi: spokeAbi, functionName: name, data } as never);
 }
 
-async function rpcCall(
-  chainId: number,
-  scope: RpcScope,
-  method: string,
-  params: unknown[],
-): Promise<{ ok: true; value: unknown } | { ok: false; error: string }> {
+async function rpcCall(chainId: number, scope: RpcScope, method: string, params: unknown[]): Promise<RpcCallResult> {
   let lastError = "No RPC URL configured";
   for (const url of rpcUrlsFor(chainId, scope)) {
     try {
@@ -323,6 +377,87 @@ async function rpcCall(
     }
   }
   return { ok: false, error: lastError };
+}
+
+function batchedRpcCall(chainId: number, scope: RpcScope, method: string, params: unknown[]): Promise<RpcCallResult> {
+  const key = `${chainId}:${scope}`;
+  let state = rpcBatchStates.get(key);
+  if (!state) {
+    state = { queue: [], running: false, nextDispatchAt: 0 };
+    rpcBatchStates.set(key, state);
+  }
+
+  return new Promise((resolve) => {
+    state.queue.push({ method, params, resolve });
+    if (state.running) return;
+    state.running = true;
+    queueMicrotask(() => void drainRpcBatch(chainId, scope, state));
+  });
+}
+
+async function drainRpcBatch(chainId: number, scope: RpcScope, state: RpcBatchState) {
+  try {
+    while (state.queue.length > 0) {
+      const waitMs = state.nextDispatchAt - Date.now();
+      if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+      state.nextDispatchAt = Date.now() + RPC_BATCH_MIN_INTERVAL_MS;
+      const calls = state.queue.splice(0, RPC_BATCH_SIZE);
+      const results = await executeRpcBatch(chainId, scope, calls);
+      for (let index = 0; index < calls.length; index += 1)
+        calls[index].resolve(results[index] ?? { ok: false, error: "RPC batch omitted a result" });
+    }
+  } finally {
+    state.running = false;
+    if (state.queue.length > 0) {
+      state.running = true;
+      queueMicrotask(() => void drainRpcBatch(chainId, scope, state));
+    }
+  }
+}
+
+async function executeRpcBatch(chainId: number, scope: RpcScope, calls: PendingRpcCall[]): Promise<RpcCallResult[]> {
+  const results: Array<RpcCallResult | undefined> = new Array(calls.length);
+  const errors = new Array<string>(calls.length).fill("No RPC URL configured");
+  let remaining = calls.map((_, index) => index);
+
+  for (const url of rpcUrlsFor(chainId, scope)) {
+    if (remaining.length === 0) break;
+    const requests = remaining.map((index) => ({
+      jsonrpc: "2.0" as const,
+      id: index + 1,
+      method: calls[index].method,
+      params: calls[index].params,
+    }));
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(requests),
+        signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
+      });
+      const body = (await response.json()) as RpcResponse[] | RpcResponse;
+      if (!response.ok || !Array.isArray(body)) {
+        const message = Array.isArray(body) ? undefined : body.error?.message;
+        for (const index of remaining) errors[index] = message ?? `RPC HTTP ${response.status}`;
+        continue;
+      }
+      const byId = new Map(body.map((item) => [Number(item.id), item]));
+      const unresolved: number[] = [];
+      for (const index of remaining) {
+        const item = byId.get(index + 1);
+        if (item?.result !== undefined && item.result !== null) results[index] = { ok: true, value: item.result };
+        else {
+          errors[index] = item?.error?.message ?? "RPC batch omitted a result";
+          unresolved.push(index);
+        }
+      }
+      remaining = unresolved;
+    } catch (error) {
+      for (const index of remaining) errors[index] = errorMessage(error);
+    }
+  }
+
+  return results.map((result, index) => result ?? { ok: false, error: errors[index] });
 }
 
 function withPriceReference(

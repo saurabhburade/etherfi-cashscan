@@ -65,7 +65,8 @@ described above.
 all matching `Transfer` logs. Envio dynamically registers Safe addresses from
 the current and legacy factories, then applies indexed `from`/`to` topic filters
 to the wildcard ERC-20 event signature. Safe-to-Safe transfers update both
-accounts. This balance reconstruction requires no `eth_call`.
+accounts. Raw balance reconstruction requires no `eth_call`; its separate USD
+projection may use the bucketed, batched PriceProvider effect.
 
 This ledger does not cover native ETH, non-standard tokens that change balances
 without compliant `Transfer` logs, or activity before the configured factory

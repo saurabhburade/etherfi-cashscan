@@ -272,6 +272,22 @@ describe("Envio-native Cash Explorer acceptance contract", () => {
     expect(handlers).toContain("const nextUsd = nextAmount === 0n ? 0n : valuation?.amountUsd");
   });
 
+  it("seeds a cached current price whenever a token is detected", () => {
+    const discovery = handlers.slice(
+      handlers.indexOf("async function recordToken"),
+      handlers.indexOf("async function markTokenAnalytics"),
+    );
+    const seed = handlers.slice(
+      handlers.indexOf("async function seedDetectedTokenPrice"),
+      handlers.indexOf("async function canonicalTokenLeg"),
+    );
+    expect(discovery).toContain("await seedDetectedTokenPrice(context, event, address, existing)");
+    expect(discovery).toContain("await seedDetectedTokenPrice(context, event, address, token)");
+    expect(seed).toContain("current.expiresAt.getTime() >= observedAt.getTime()");
+    expect(seed).toContain("await resolveCanonicalValuation(context, event, tokenAddress, 0n, undefined, token)");
+    expect(handlers).toContain('"historical_constant_priced"');
+  });
+
   it("reuses an event-implied price when projecting an exact wallet balance", () => {
     expect(handlers).toContain(
       "applyExactWalletBalance(context, event, accountAddress, tokenAddress, exactWallet.amount, valuation)",
@@ -306,11 +322,14 @@ describe("Envio-native Cash Explorer acceptance contract", () => {
     expect(resolver).toContain("blockNumber: String(event.block.number)");
     expect(resolver).toContain("blockHash: event.block.hash");
     expect(resolver).toContain("blockTimestamp: String(event.block.timestamp)");
-    expect(effects).toContain('name: "cash_current_token_price_v4"');
+    expect(effects).toContain('name: "cash_current_token_price_v5"');
+    expect(effects).toContain('name: "cash_exact_token_price_v1"');
+    expect(effects).toContain("cacheKey: ({ tokenAddress, bucketStart })");
     expect(effects).toContain("exactBlockReference(input.blockHash)");
-    expect(resolver).toContain("sourceBlockNumber !== asBigInt(event.block.number)");
-    expect(resolver).toContain("sourceBlockHash.toLowerCase() !== event.block.hash.toLowerCase()");
-    expect(resolver).toContain("sourceTimestampSeconds !== asBigInt(event.block.timestamp)");
+    expect(resolver).toContain("context.effect(exactTokenPriceEffect, priceEffectInput)");
+    expect(resolver).toContain("sourceBlockNumber > eventBlockNumber");
+    expect(resolver).toContain("sourceTimestampSeconds > eventTimestampSeconds");
+    expect(resolver).toContain("sourceTimestampSeconds < bucketStartSeconds");
   });
 
   it("persists priced borrow, repay, and liquidation debt events", () => {
