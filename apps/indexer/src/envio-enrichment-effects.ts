@@ -9,10 +9,18 @@ import { decodeFunctionResult, encodeFunctionData, parseAbi } from "viem";
  * Envio's per-chain cache keys include every input below.
  */
 const PRICE_PROVIDER_ADDRESS = "0x44dd2372fe7b97c4b4d6a7d4decf72466485bacb" as const;
+// Verified creation transactions:
+// OP 0x358e17fc688ee91411dfaf920f44deb9d05da43411a106c67c0bc168f3d7e31b
+// Scroll 0x8012230fb0ff025344e789edbd30b87edff4b7508e5ee114bd729118e9affb40
+const PRICE_PROVIDER_DEPLOYMENTS = {
+  [CHAIN_IDS.optimism]: { blockNumber: 149_521_166n, timestampSeconds: 1_774_641_109n },
+  [CHAIN_IDS.scroll]: { blockNumber: 14_206_947n, timestampSeconds: 1_742_840_134n },
+} as const;
 const MULTICALL3_ADDRESS = "0xca11bde05977b3631167028862be2a173976ca11" as const;
 
 const priceProviderAbi = parseAbi(["function price(address token) view returns (uint256)"]);
 const PRICE_PROVIDER_DECIMALS = 6;
+const RPC_TIMEOUT_MS = 8_000;
 
 /** Ether.fi PriceProvider normalizes every USD result to six decimals. */
 export function priceProviderUsdE6ToE18(priceUsdE6: bigint): bigint {
@@ -31,6 +39,7 @@ const multicallAbi = parseAbi([
 ]);
 
 type Address = `0x${string}`;
+type RpcBlockReference = `0x${string}` | { blockHash: `0x${string}`; requireCanonical: true };
 type RpcResponse = { result?: unknown; error?: { message?: string } };
 export type EffectValue = { status: "resolved" | "partial" | "unavailable"; valueJson: string; error: string | null };
 type RpcScope = "current" | "archive";
@@ -58,10 +67,16 @@ export const historicalTokenPriceEffect = createEffect(
 
 export const currentTokenPriceEffect = createEffect(
   {
-    name: "cash_current_token_price_v1",
-    // Cache key: (chain, tokenAddress, fifteenMinuteBucket, anchorBlock).
-    // The scheduler supplies an exact block, so replay never calls "latest".
-    input: { tokenAddress: S.address, bucketStart: S.string, blockNumber: S.string, blockHash: S.string },
+    name: "cash_current_token_price_v4",
+    // Cache key: (chain, tokenAddress, fifteenMinuteBucket, event block
+    // number/hash/timestamp). Event provenance makes reorg replays distinct.
+    input: {
+      tokenAddress: S.address,
+      bucketStart: S.string,
+      blockNumber: S.string,
+      blockHash: S.string,
+      blockTimestamp: S.string,
+    },
     output: { status: S.string, valueJson: S.string, error: S.nullable(S.string) },
     cache: true,
     crossChain: false,
@@ -69,65 +84,29 @@ export const currentTokenPriceEffect = createEffect(
   },
   async ({ input, context }) => {
     const blockNumber = parseBlockNumber(input.blockNumber);
-    const result =
-      !isQuarterHourBucket(input.bucketStart) || blockNumber === null
-        ? unavailable("Invalid 15-minute price bucket or anchor block")
-        : // The anchor may be historical during a replay, so even a current
-          // price refresh needs an archive-capable endpoint for its exact tag.
-          await readPrice(context.chain.id, input.tokenAddress as Address, blockTag(blockNumber), "archive");
-    return cacheSuccessfulResult(context, result);
-  },
-);
-
-export const crossChainTokenPriceEffect = createEffect(
-  {
-    name: "cash_cross_chain_token_price_v1",
-    // Cache key: (reference chain, verified peer token, UTC 15-minute bucket).
-    // The reference block is resolved from this timestamp; a Scroll block
-    // number is never reused on Optimism (or vice versa).
-    input: { referenceChainId: S.string, referenceTokenAddress: S.address, bucketStart: S.string },
-    output: { status: S.string, valueJson: S.string, error: S.nullable(S.string) },
-    cache: true,
-    crossChain: true,
-    rateLimit: { calls: 2, per: "second" },
-  },
-  async ({ input, context }) => {
-    const referenceChainId = Number(input.referenceChainId);
-    const targetTimestamp = Date.parse(input.bucketStart);
+    const blockTimestamp = parseTimestampSeconds(input.blockTimestamp);
     if (
-      !Number.isSafeInteger(referenceChainId) ||
-      !priceProviderFor(referenceChainId) ||
-      !isQuarterHourBucket(input.bucketStart) ||
-      Number.isNaN(targetTimestamp)
+      blockNumber === null ||
+      blockTimestamp === null ||
+      !isBlockHash(input.blockHash) ||
+      !isTimestampInBucket(input.bucketStart, blockTimestamp)
     )
-      return cacheSuccessfulResult(context, unavailable("Invalid cross-chain price reference"));
+      return cacheSuccessfulResult(context, unavailable("Invalid exact current price input"));
+    if (!priceProviderAvailableAtBlock(context.chain.id, blockNumber))
+      // Contract absence at a finalized historical block is deterministic, so
+      // retain this negative exact-block result instead of retrying it.
+      return unavailable("PriceProvider was not deployed at the indexed event block");
 
-    const referenceBlock = await blockAtOrBeforeTimestamp(referenceChainId, BigInt(Math.floor(targetTimestamp / 1000)));
-    if (!referenceBlock)
-      return cacheSuccessfulResult(context, unavailable("Reference-chain block unavailable for price timestamp"));
-
-    const price = await readPrice(
-      referenceChainId,
-      input.referenceTokenAddress as Address,
-      blockTag(referenceBlock.number),
+    // One same-chain archive call, bound to the canonical event block hash.
+    // EIP-1898 removes the need for timestamp search or a header verification
+    // request while preventing a reorg replacement block from being accepted.
+    const result = await readPrice(
+      context.chain.id,
+      input.tokenAddress as Address,
+      exactBlockReference(input.blockHash),
       "archive",
     );
-    if (price.status !== "resolved") return cacheSuccessfulResult(context, price);
-    try {
-      const value = JSON.parse(price.valueJson) as Record<string, unknown>;
-      return cacheSuccessfulResult(
-        context,
-        resolved({
-          ...value,
-          referenceChainId,
-          referenceTokenAddress: input.referenceTokenAddress.toLowerCase(),
-          referenceBlockNumber: referenceBlock.number.toString(),
-          referenceBlockTimestamp: referenceBlock.timestamp.toString(),
-        }),
-      );
-    } catch (error) {
-      return cacheSuccessfulResult(context, unavailable(errorMessage(error)));
-    }
+    return cacheSuccessfulResult(context, withPriceReference(result, blockNumber, input.blockHash, blockTimestamp));
   },
 );
 
@@ -189,7 +168,7 @@ export function canonicalReservePlan(
 async function readPrice(
   chainId: number,
   tokenAddress: Address,
-  at: `0x${string}`,
+  at: RpcBlockReference,
   scope: RpcScope,
 ): Promise<EffectValue> {
   const provider = priceProviderFor(chainId);
@@ -208,7 +187,7 @@ async function readPrice(
     return resolved({
       priceUsdE6: priceUsdE6.toString(),
       priceUsdE18: priceProviderUsdE6ToE18(priceUsdE6).toString(),
-      blockTag: at,
+      ...(typeof at === "string" ? { blockTag: at } : { blockReference: at }),
     });
   } catch (error) {
     return unavailable(errorMessage(error));
@@ -334,6 +313,7 @@ async function rpcCall(
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+        signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
       });
       const body = (await response.json()) as RpcResponse;
       if (response.ok && body.result !== undefined && body.result !== null) return { ok: true, value: body.result };
@@ -345,43 +325,24 @@ async function rpcCall(
   return { ok: false, error: lastError };
 }
 
-async function blockAtOrBeforeTimestamp(
-  chainId: number,
-  targetTimestamp: bigint,
-): Promise<{ number: bigint; timestamp: bigint } | null> {
-  const latest = await rpcCall(chainId, "archive", "eth_blockNumber", []);
-  if (!latest.ok || typeof latest.value !== "string") return null;
-  let high: bigint;
+function withPriceReference(
+  result: EffectValue,
+  blockNumber: bigint,
+  blockHash: string,
+  blockTimestamp: bigint,
+): EffectValue {
+  if (result.status !== "resolved") return result;
   try {
-    high = BigInt(latest.value);
+    const value = JSON.parse(result.valueJson) as Record<string, unknown>;
+    return resolved({
+      ...value,
+      sourceBlockNumber: blockNumber.toString(),
+      sourceBlockHash: blockHash.toLowerCase(),
+      sourceTimestampSeconds: blockTimestamp.toString(),
+    });
   } catch {
-    return null;
+    return unavailable("PriceProvider returned an invalid cached payload");
   }
-  let low = 0n;
-  let best: { number: bigint; timestamp: bigint } | null = null;
-  while (low <= high) {
-    const middle = (low + high) / 2n;
-    const response = await rpcCall(chainId, "archive", "eth_getBlockByNumber", [blockTag(middle), false]);
-    if (!response.ok || !response.value || typeof response.value !== "object") return null;
-    const block = response.value as { number?: unknown; timestamp?: unknown };
-    if (typeof block.number !== "string" || typeof block.timestamp !== "string") return null;
-    let number: bigint;
-    let timestamp: bigint;
-    try {
-      number = BigInt(block.number);
-      timestamp = BigInt(block.timestamp);
-    } catch {
-      return null;
-    }
-    if (timestamp <= targetTimestamp) {
-      best = { number, timestamp };
-      low = middle + 1n;
-    } else {
-      if (middle === 0n) break;
-      high = middle - 1n;
-    }
-  }
-  return best;
 }
 
 /** Archive reads never fall back to public/latest endpoints. */
@@ -392,15 +353,18 @@ export function rpcUrlsFor(chainId: number, scope: RpcScope = "current"): string
         ? [
             process.env.OPTIMISM_ARCHIVE_RPC_URL,
             process.env.OPTIMISM_ARCHIVE_RPC_FALLBACK_URL,
-            "https://optimism.drpc.org",
-            "https://optimism-rpc.publicnode.com",
+            "https://optimism.rpc.sentio.xyz",
+            "https://mainnet.optimism.io",
+            "https://rpc-optimism.blockmachine.io",
           ]
         : chainId === CHAIN_IDS.scroll
           ? [
               process.env.SCROLL_ARCHIVE_RPC_URL,
               process.env.SCROLL_ARCHIVE_RPC_FALLBACK_URL,
-              "https://scroll.drpc.org",
+              "https://scroll.rpc.sentio.xyz",
+              "https://scroll.api.pocket.network",
               "https://scroll-rpc.publicnode.com",
+              "https://rpc-scroll.blockmachine.io",
             ]
           : []
       : chainId === CHAIN_IDS.optimism
@@ -414,6 +378,15 @@ export function rpcUrlsFor(chainId: number, scope: RpcScope = "current"): string
 /** Ether.fi deploys the same PriceProvider address on both Cash chains. */
 export function priceProviderFor(chainId: number): Address | null {
   return chainId === CHAIN_IDS.optimism || chainId === CHAIN_IDS.scroll ? PRICE_PROVIDER_ADDRESS : null;
+}
+
+export function priceProviderDeploymentFor(chainId: number): { blockNumber: bigint; timestampSeconds: bigint } | null {
+  return PRICE_PROVIDER_DEPLOYMENTS[chainId as keyof typeof PRICE_PROVIDER_DEPLOYMENTS] ?? null;
+}
+
+export function priceProviderAvailableAtBlock(chainId: number, blockNumber: bigint): boolean {
+  const deployment = priceProviderDeploymentFor(chainId);
+  return deployment !== null && blockNumber >= deployment.blockNumber;
 }
 
 export function exactBlockTag(blockNumber: bigint): `0x${string}` {
@@ -456,12 +429,31 @@ function parseBlockNumber(value: string): bigint | null {
     return null;
   }
 }
+function parseTimestampSeconds(value: string): bigint | null {
+  try {
+    return /^\d+$/.test(value) ? BigInt(value) : null;
+  } catch {
+    return null;
+  }
+}
 function blockTag(blockNumber: bigint): `0x${string}` {
   return `0x${blockNumber.toString(16)}`;
+}
+function exactBlockReference(blockHash: string): RpcBlockReference {
+  return { blockHash: blockHash.toLowerCase() as `0x${string}`, requireCanonical: true };
 }
 function isQuarterHourBucket(value: string) {
   const date = new Date(value);
   return !Number.isNaN(date.getTime()) && date.getTime() % 900_000 === 0;
+}
+function isTimestampInBucket(bucketStart: string, timestampSeconds: bigint): boolean {
+  const start = Date.parse(bucketStart);
+  if (!isQuarterHourBucket(bucketStart) || Number.isNaN(start)) return false;
+  const startSeconds = BigInt(Math.floor(start / 1000));
+  return timestampSeconds >= startSeconds && timestampSeconds < startSeconds + 900n;
+}
+function isBlockHash(value: string): value is `0x${string}` {
+  return /^0x[0-9a-fA-F]{64}$/.test(value);
 }
 function resolved(value: unknown): EffectValue {
   return { status: "resolved", valueJson: JSON.stringify(value), error: null };

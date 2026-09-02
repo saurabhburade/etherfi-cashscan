@@ -1242,6 +1242,22 @@ type CanonicalTokenPriceBucket
   logIndex: Int!
   sourceType: String! @index
 }
+type CanonicalAssetPriceBucket @index(fields: [["canonicalAsset", "ASC"], ["bucketId", "DESC"]]) {
+  # Stable cross-chain identity: canonicalAsset:fifteenMinuteBucketId.
+  id: ID!
+  canonicalAsset: String! @index
+  bucketId: BigInt! @index
+  bucketStart: Timestamp! @index
+  priceUsdE18: BigInt!
+  sourceChainId: Int! @index
+  sourceTokenAddress: String! @index
+  sourceBlockNumber: BigInt! @index
+  sourceBlockHash: String!
+  sourceLogIndex: Int!
+  sourceTimestamp: Timestamp! @index
+  sourceType: String! @index
+  sourceObservationId: String! @index
+}
 type PriceAnomaly {
   id: ID!
   chainId: Int! @index

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  canonicalAssetPriceBucketId,
   canonicalOracleSymbol,
   findDirectUsdFeed,
   tokenFromRegistry,
   tokenPriceBucketId,
+  verifiedCanonicalPriceAsset,
   verifiedCrossChainPricePeers,
 } from "../src/token-enrichment.js";
 
@@ -62,6 +64,10 @@ describe("token oracle discovery", () => {
       decimals: 6,
     });
     expect(verifiedCrossChainPricePeers(534352, "0x1111111111111111111111111111111111111111")).toEqual([]);
+    expect(verifiedCanonicalPriceAsset(534352, "0x06efdbff2a14a7c8e15944d1f4a48f9f95f663a4")).toBe("USDC");
+    expect(verifiedCanonicalPriceAsset(534352, "0x1111111111111111111111111111111111111111")).toBeNull();
     expect(tokenPriceBucketId(10, "0xAbC", "2026-01-01T10:00:00.000Z")).toBe("10:0xabc:2026-01-01T10:00:00.000Z");
+    expect(canonicalAssetPriceBucketId(canonicalOracleSymbol("USDC.e"), 1_893_408n)).toBe("USDC:1893408");
+    expect(canonicalAssetPriceBucketId("FAKE-usdc", 1_893_408n)).toBe("FAKE-usdc:1893408");
   });
 });

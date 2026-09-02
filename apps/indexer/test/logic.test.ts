@@ -7,9 +7,11 @@ import {
   classifyMovement,
   dailyMetricId,
   eventId,
+  fifteenMinuteBucketId,
   hourFromUnixSeconds,
   impliedUsdPriceE18,
   isEurRampToken,
+  isFreshNonFuturePrice,
   isLaterTokenSpend,
   priceDeviationOverHalf,
   rampAmountUsd,
@@ -27,6 +29,19 @@ describe("indexer identities", () => {
   it("creates UTC daily buckets", () => {
     expect(dailyMetricId(10, 1_704_067_200)).toBe("10:2024-01-01");
     expect(hourFromUnixSeconds(1_704_103_200)).toBe(10);
+  });
+
+  it("uses native bigint division for 15-minute bucket identities", () => {
+    const start = 1_704_067_200n;
+    expect(fifteenMinuteBucketId(start)).toBe(fifteenMinuteBucketId(start + 899n));
+    expect(fifteenMinuteBucketId(start + 900n)).toBe(fifteenMinuteBucketId(start) + 1n);
+    expect(fifteenMinuteBucketId(Number(start))).toBe(fifteenMinuteBucketId(start));
+  });
+
+  it("accepts only non-future prices from the preceding 15 minutes", () => {
+    expect(isFreshNonFuturePrice(1_000n, 100n)).toBe(true);
+    expect(isFreshNonFuturePrice(1_000n, 99n)).toBe(false);
+    expect(isFreshNonFuturePrice(1_000n, 1_001n)).toBe(false);
   });
 
   it("matches Dune spend profile buckets", () => {

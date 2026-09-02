@@ -1,10 +1,9 @@
 import { indexer } from "envio";
 import {
-  crossChainTokenPriceEffect,
   currentTokenPriceEffect,
   fifteenMinuteBucket,
   lendingStateSnapshotEffect,
-  priceProviderFor,
+  priceProviderAvailableAtBlock,
 } from "../envio-enrichment-effects.js";
 import { erc20MetadataEffect } from "../erc20-metadata-effect.js";
 import {
@@ -17,8 +16,10 @@ import {
   dailyMetricId,
   dayFromUnixSeconds,
   eventId,
+  fifteenMinuteBucketId,
   hourFromUnixSeconds,
   impliedUsdPriceE18,
+  isFreshNonFuturePrice,
   isLaterTokenSpend,
   priceDeviationOverHalf,
   rampAmountUsd,
@@ -27,7 +28,12 @@ import {
   uniqueLowercase,
   ZERO_ADDRESS,
 } from "../logic.js";
-import { tokenFromRegistry, tokenPriceBucketId, verifiedCrossChainPricePeers } from "../token-enrichment.js";
+import {
+  canonicalAssetPriceBucketId,
+  tokenFromRegistry,
+  tokenPriceBucketId,
+  verifiedCanonicalPriceAsset,
+} from "../token-enrichment.js";
 import { decodeSnapshotEffectResult } from "./state-enrichment.js";
 
 // Alias keeps the current Cash handlers visually grouped while preserving the
@@ -157,9 +163,13 @@ function validIndexedTokenPrice(price: any) {
   return Boolean(
     price?.priceUsdE18 &&
       price.priceUsdE18 > 0n &&
-      ["event_priced", "oracle_priced", "cross_chain_event_priced", "cross_chain_oracle_priced"].includes(
-        price.priceStatus,
-      ),
+      [
+        "event_priced",
+        "oracle_priced",
+        "canonical_bucket_priced",
+        "cross_chain_event_priced",
+        "cross_chain_oracle_priced",
+      ].includes(price.priceStatus),
   );
 }
 
@@ -711,25 +721,28 @@ type CanonicalValuation = {
   source: string;
 };
 
-type CrossChainPriceCandidate = {
+type CanonicalPriceCandidate = {
   priceUsdE18: bigint;
-  sourceType: "cross_chain_event" | "cross_chain_price_provider";
-  status: "cross_chain_event_priced" | "cross_chain_oracle_priced";
+  sourceType: "canonical_asset_bucket" | "cross_chain_event" | "cross_chain_price_provider";
+  status: "canonical_bucket_priced" | "cross_chain_event_priced" | "cross_chain_oracle_priced";
   referenceChainId: number;
   referenceTokenAddress: string;
   referenceBlockNumber: bigint;
+  referenceBlockHash: string;
+  referenceLogIndex: number;
   referenceObservedAt: Date;
+  referenceObservationId: string;
 };
 
-async function persistCrossChainPrice(
+async function persistCanonicalBucketPrice(
   context: any,
   event: BlockEvent,
   tokenAddress: string,
   tokenDecimals: number,
   amount: bigint,
   current: any,
-  candidate: CrossChainPriceCandidate,
-): Promise<CanonicalValuation> {
+  candidate: CanonicalPriceCandidate,
+): Promise<CanonicalValuation | null> {
   const observedAt = ts(event);
   const id = `${event.chainId}:${lower(tokenAddress)}`;
   const sourceId = `${id}:${candidate.sourceType}:${candidate.referenceChainId}:${candidate.referenceTokenAddress}`;
@@ -777,18 +790,10 @@ async function persistCrossChainPrice(
       observationId: current.observationId,
       candidateObservationId: observationId,
       verificationStatus: "unverified_deviation",
-      reason: "cross-chain candidate price deviates by more than 50 percent from the last indexed price",
+      reason: "canonical bucket candidate deviates by more than 50 percent from the last indexed price",
       observedAt,
     });
-    return current.priceUsdE18 > 0n
-      ? {
-          amountUsd: amountAtPrice(amount, current.priceUsdE18, tokenDecimals),
-          priceUsdE18: current.priceUsdE18,
-          tokenDecimals,
-          status: "cached_price_anomaly_rejected",
-          source: current.sourceType,
-        }
-      : { tokenDecimals, status: "unpriced", source: "price_anomaly" };
+    return null;
   }
 
   context.TokenPriceCurrent.set({
@@ -804,7 +809,7 @@ async function persistCrossChainPrice(
     sourceType: candidate.sourceType,
     valuationStatus: candidate.status,
     observedAt,
-    expiresAt: new Date(new Date(fifteenMinuteBucket(observedAt)).getTime() + 900_000),
+    expiresAt: new Date(candidate.referenceObservedAt.getTime() + 900_000),
     updatedAt: observedAt,
     updatedBlock: asBigInt(event.block.number),
     referenceChainId: candidate.referenceChainId,
@@ -821,7 +826,7 @@ async function persistCrossChainPrice(
   };
 }
 
-async function resolveCrossChainValuation(
+async function resolveCanonicalBucketValuation(
   context: any,
   event: BlockEvent,
   tokenAddress: string,
@@ -829,70 +834,109 @@ async function resolveCrossChainValuation(
   amount: bigint,
   current: any,
 ): Promise<CanonicalValuation | null> {
-  const peers = verifiedCrossChainPricePeers(event.chainId, tokenAddress);
-  if (peers.length === 0) return null;
+  const canonicalAsset = verifiedCanonicalPriceAsset(event.chainId, tokenAddress);
+  if (!canonicalAsset) return null;
   const observedAt = ts(event);
-  const bucketStart = fifteenMinuteBucket(observedAt);
-  const previousBucketStart = fifteenMinuteBucket(new Date(observedAt.getTime() - 900_000));
+  const bucketId = fifteenMinuteBucketId(event.block.timestamp);
 
-  let bucketCandidate: CrossChainPriceCandidate | null = null;
-  for (const peer of peers) {
-    for (const candidateBucket of [bucketStart, previousBucketStart]) {
-      const bucket = await context.CanonicalTokenPriceBucket.get(
-        tokenPriceBucketId(peer.chainId, peer.tokenAddress, candidateBucket),
-      );
-      if (
-        !bucket?.priceUsdE18 ||
-        bucket.priceUsdE18 <= 0n ||
-        bucket.observedAt.getTime() > observedAt.getTime() ||
-        observedAt.getTime() - bucket.observedAt.getTime() > 900_000
-      )
-        continue;
-      const candidate: CrossChainPriceCandidate = {
-        priceUsdE18: bucket.priceUsdE18,
-        sourceType: "cross_chain_event",
-        status: "cross_chain_event_priced",
-        referenceChainId: peer.chainId,
-        referenceTokenAddress: peer.tokenAddress,
-        referenceBlockNumber: bucket.blockNumber,
-        referenceObservedAt: bucket.observedAt,
-      };
-      if (!bucketCandidate || candidate.referenceObservedAt > bucketCandidate.referenceObservedAt)
-        bucketCandidate = candidate;
-    }
+  let bucketCandidate: CanonicalPriceCandidate | null = null;
+  for (const candidateBucketId of [bucketId, bucketId - 1n]) {
+    const bucket: any = await context.CanonicalAssetPriceBucket.get(
+      canonicalAssetPriceBucketId(canonicalAsset, candidateBucketId),
+    );
+    if (
+      bucket?.canonicalAsset !== canonicalAsset ||
+      !bucket?.priceUsdE18 ||
+      bucket.priceUsdE18 <= 0n ||
+      !isFreshNonFuturePrice(event.block.timestamp, BigInt(Math.floor(bucket.sourceTimestamp.getTime() / 1000)))
+    )
+      continue;
+    const crossChain = bucket.sourceChainId !== event.chainId;
+    const sourceWasEvent = bucket.sourceType === "event_implied";
+    const candidate: CanonicalPriceCandidate = {
+      priceUsdE18: bucket.priceUsdE18,
+      sourceType: crossChain
+        ? sourceWasEvent
+          ? "cross_chain_event"
+          : "cross_chain_price_provider"
+        : "canonical_asset_bucket",
+      status: crossChain
+        ? sourceWasEvent
+          ? "cross_chain_event_priced"
+          : "cross_chain_oracle_priced"
+        : "canonical_bucket_priced",
+      referenceChainId: bucket.sourceChainId,
+      referenceTokenAddress: bucket.sourceTokenAddress,
+      referenceBlockNumber: bucket.sourceBlockNumber,
+      referenceBlockHash: bucket.sourceBlockHash,
+      referenceLogIndex: bucket.sourceLogIndex,
+      referenceObservedAt: bucket.sourceTimestamp,
+      referenceObservationId: bucket.sourceObservationId,
+    };
+    if (!bucketCandidate || candidate.referenceObservedAt > bucketCandidate.referenceObservedAt)
+      bucketCandidate = candidate;
   }
   if (bucketCandidate)
-    return persistCrossChainPrice(context, event, tokenAddress, tokenDecimals, amount, current, bucketCandidate);
-
-  for (const peer of peers) {
-    const effect = await context.effect(crossChainTokenPriceEffect, {
-      referenceChainId: String(peer.chainId),
-      referenceTokenAddress: peer.tokenAddress,
-      bucketStart,
-    });
-    if (effect.status !== "resolved") continue;
-    try {
-      const parsed = JSON.parse(effect.valueJson) as {
-        priceUsdE18?: string;
-        referenceBlockNumber?: string;
-        referenceBlockTimestamp?: string;
-      };
-      const priceUsdE18 = BigInt(parsed.priceUsdE18 ?? "0");
-      const referenceBlockNumber = BigInt(parsed.referenceBlockNumber ?? "0");
-      const referenceBlockTimestamp = BigInt(parsed.referenceBlockTimestamp ?? "0");
-      if (priceUsdE18 <= 0n || referenceBlockTimestamp <= 0n) continue;
-      return persistCrossChainPrice(context, event, tokenAddress, tokenDecimals, amount, current, {
-        priceUsdE18,
-        sourceType: "cross_chain_price_provider",
-        status: "cross_chain_oracle_priced",
-        referenceChainId: peer.chainId,
-        referenceTokenAddress: peer.tokenAddress,
-        referenceBlockNumber,
-        referenceObservedAt: new Date(Number(referenceBlockTimestamp) * 1000),
-      });
-    } catch {}
-  }
+    return persistCanonicalBucketPrice(context, event, tokenAddress, tokenDecimals, amount, current, bucketCandidate);
   return null;
+}
+
+type CanonicalBucketSource = {
+  blockNumber: bigint;
+  blockHash: string;
+  logIndex: number;
+  observedAt: Date;
+  sourceType: "event_implied" | "price_provider";
+  observationId: string;
+};
+
+function canonicalBucketCandidateIsLater(
+  existing: any,
+  candidate: CanonicalBucketSource,
+  sourceChainId: number,
+  sourceTokenAddress: string,
+): boolean {
+  if (!existing) return true;
+  const existingTimestamp = existing.sourceTimestamp.getTime();
+  const candidateTimestamp = candidate.observedAt.getTime();
+  if (candidateTimestamp !== existingTimestamp) return candidateTimestamp > existingTimestamp;
+  if (candidate.blockNumber !== existing.sourceBlockNumber) return candidate.blockNumber > existing.sourceBlockNumber;
+  if (candidate.logIndex !== existing.sourceLogIndex) return candidate.logIndex > existing.sourceLogIndex;
+  if (sourceChainId !== existing.sourceChainId) return sourceChainId < existing.sourceChainId;
+  const normalizedTokenAddress = lower(sourceTokenAddress);
+  if (normalizedTokenAddress !== existing.sourceTokenAddress)
+    return normalizedTokenAddress < existing.sourceTokenAddress;
+  return candidate.observationId < existing.sourceObservationId;
+}
+
+async function publishCanonicalAssetPriceBucket(
+  context: any,
+  event: BlockEvent,
+  tokenAddress: string,
+  priceUsdE18: bigint,
+  source: CanonicalBucketSource,
+) {
+  const canonicalAsset = verifiedCanonicalPriceAsset(event.chainId, tokenAddress);
+  if (!canonicalAsset || priceUsdE18 <= 0n) return;
+  const numericBucketId = fifteenMinuteBucketId(BigInt(Math.floor(source.observedAt.getTime() / 1000)));
+  const id = canonicalAssetPriceBucketId(canonicalAsset, numericBucketId);
+  const existing = await context.CanonicalAssetPriceBucket.get(id);
+  if (!canonicalBucketCandidateIsLater(existing, source, event.chainId, tokenAddress)) return;
+  context.CanonicalAssetPriceBucket.set({
+    id,
+    canonicalAsset,
+    bucketId: numericBucketId,
+    bucketStart: new Date(Number(numericBucketId * 900n) * 1000),
+    priceUsdE18,
+    sourceChainId: event.chainId,
+    sourceTokenAddress: lower(tokenAddress),
+    sourceBlockNumber: source.blockNumber,
+    sourceBlockHash: lower(source.blockHash),
+    sourceLogIndex: source.logIndex,
+    sourceTimestamp: source.observedAt,
+    sourceType: source.sourceType,
+    sourceObservationId: source.observationId,
+  });
 }
 
 async function resolveCanonicalValuation(
@@ -938,34 +982,6 @@ async function resolveCanonicalValuation(
         observedAt,
         blockNumber: asBigInt(event.block.number),
       });
-      const peer = verifiedCrossChainPricePeers(event.chainId, tokenAddress)[0];
-      if (peer) {
-        const bucketStart = fifteenMinuteBucket(observedAt);
-        const bucketId = tokenPriceBucketId(event.chainId, tokenAddress, bucketStart);
-        const existingBucket = await context.CanonicalTokenPriceBucket.get(bucketId);
-        const shouldReplace =
-          !existingBucket ||
-          existingBucket.observedAt.getTime() < observedAt.getTime() ||
-          (existingBucket.observedAt.getTime() === observedAt.getTime() &&
-            (existingBucket.blockNumber < asBigInt(event.block.number) ||
-              (existingBucket.blockNumber === asBigInt(event.block.number) &&
-                existingBucket.logIndex < event.logIndex)));
-        if (shouldReplace)
-          context.CanonicalTokenPriceBucket.set({
-            id: bucketId,
-            canonicalAsset: peer.canonicalAsset,
-            chainId: event.chainId,
-            tokenAddress: lower(tokenAddress),
-            tokenId,
-            token_id: tokenId,
-            priceUsdE18,
-            observedAt,
-            bucketStart: new Date(bucketStart),
-            blockNumber: asBigInt(event.block.number),
-            logIndex: event.logIndex,
-            sourceType: "event_implied",
-          });
-      }
       const currentPrice = await context.TokenPriceCurrent.get(tokenId);
       if (currentPrice?.priceUsdE18 && priceDeviationOverHalf(priceUsdE18, currentPrice.priceUsdE18)) {
         context.PriceAnomaly.set({
@@ -979,7 +995,7 @@ async function resolveCanonicalValuation(
           reason: "event-implied price deviates by more than 50 percent from the last indexed price",
           observedAt,
         });
-      } else
+      } else {
         context.TokenPriceCurrent.set({
           id: tokenId,
           chainId: event.chainId,
@@ -997,6 +1013,43 @@ async function resolveCanonicalValuation(
           updatedAt: observedAt,
           updatedBlock: asBigInt(event.block.number),
         });
+        const canonicalAsset = verifiedCanonicalPriceAsset(event.chainId, tokenAddress);
+        if (canonicalAsset) {
+          const bucketStart = fifteenMinuteBucket(observedAt);
+          const bucketId = tokenPriceBucketId(event.chainId, tokenAddress, bucketStart);
+          const existingBucket = await context.CanonicalTokenPriceBucket.get(bucketId);
+          const shouldReplace =
+            !existingBucket ||
+            existingBucket.observedAt.getTime() < observedAt.getTime() ||
+            (existingBucket.observedAt.getTime() === observedAt.getTime() &&
+              (existingBucket.blockNumber < asBigInt(event.block.number) ||
+                (existingBucket.blockNumber === asBigInt(event.block.number) &&
+                  existingBucket.logIndex < event.logIndex)));
+          if (shouldReplace)
+            context.CanonicalTokenPriceBucket.set({
+              id: bucketId,
+              canonicalAsset,
+              chainId: event.chainId,
+              tokenAddress: lower(tokenAddress),
+              tokenId,
+              token_id: tokenId,
+              priceUsdE18,
+              observedAt,
+              bucketStart: new Date(bucketStart),
+              blockNumber: asBigInt(event.block.number),
+              logIndex: event.logIndex,
+              sourceType: "event_implied",
+            });
+        }
+        await publishCanonicalAssetPriceBucket(context, event, tokenAddress, priceUsdE18, {
+          blockNumber: asBigInt(event.block.number),
+          blockHash: event.block.hash,
+          logIndex: event.logIndex,
+          observedAt,
+          sourceType: "event_implied",
+          observationId,
+        });
+      }
     }
     return {
       amountUsd: emittedAmountUsd,
@@ -1013,8 +1066,10 @@ async function resolveCanonicalValuation(
   if (
     current?.priceUsdE18 &&
     current.priceUsdE18 > 0n &&
+    current.observedAt &&
+    current.observedAt.getTime() <= observedAt.getTime() &&
     current.expiresAt &&
-    current.expiresAt.getTime() > observedAt.getTime()
+    current.expiresAt.getTime() >= observedAt.getTime()
   ) {
     return {
       amountUsd: amountAtPrice(amount, current.priceUsdE18, token.decimals),
@@ -1024,19 +1079,27 @@ async function resolveCanonicalValuation(
       source: current.sourceType,
     };
   }
+  const canonicalBucket = await resolveCanonicalBucketValuation(
+    context,
+    event,
+    tokenAddress,
+    token.decimals,
+    amount,
+    current,
+  );
+  if (canonicalBucket) return canonicalBucket;
   const bucketStart = fifteenMinuteBucket(observedAt);
   const expiresAt = new Date(new Date(bucketStart).getTime() + 900_000);
-  const effect = priceProviderFor(event.chainId)
+  const effect = priceProviderAvailableAtBlock(event.chainId, asBigInt(event.block.number))
     ? await context.effect(currentTokenPriceEffect, {
         tokenAddress: lower(tokenAddress),
         bucketStart,
         blockNumber: String(event.block.number),
         blockHash: event.block.hash,
+        blockTimestamp: String(event.block.timestamp),
       })
     : { status: "unavailable", valueJson: "null" };
   if (effect.status !== "resolved") {
-    const crossChain = await resolveCrossChainValuation(context, event, tokenAddress, token.decimals, amount, current);
-    if (crossChain) return crossChain;
     context.TokenPriceCurrent.set({
       ...(current ?? {}),
       id,
@@ -1056,20 +1119,39 @@ async function resolveCanonicalValuation(
   }
 
   let priceUsdE18: bigint;
+  let sourceBlockNumber: bigint;
+  let sourceBlockHash: string;
+  let sourceTimestampSeconds: bigint;
+  let sourceObservedAt: Date;
   try {
-    const parsed = JSON.parse(effect.valueJson) as { priceUsdE18?: string };
+    const parsed = JSON.parse(effect.valueJson) as {
+      priceUsdE18?: string;
+      sourceBlockNumber?: string;
+      sourceBlockHash?: string;
+      sourceTimestampSeconds?: string;
+    };
     priceUsdE18 = BigInt(parsed.priceUsdE18 ?? "0");
+    sourceBlockNumber = BigInt(parsed.sourceBlockNumber ?? "");
+    sourceBlockHash = parsed.sourceBlockHash ?? "";
+    sourceTimestampSeconds = BigInt(parsed.sourceTimestampSeconds ?? "");
+    sourceObservedAt = new Date(Number(sourceTimestampSeconds) * 1000);
+    if (
+      !/^0x[0-9a-fA-F]{64}$/.test(sourceBlockHash) ||
+      Number.isNaN(sourceObservedAt.getTime()) ||
+      sourceBlockNumber !== asBigInt(event.block.number) ||
+      sourceBlockHash.toLowerCase() !== event.block.hash.toLowerCase() ||
+      sourceTimestampSeconds !== asBigInt(event.block.timestamp)
+    )
+      throw new Error();
   } catch {
-    const crossChain = await resolveCrossChainValuation(context, event, tokenAddress, token.decimals, amount, current);
-    return crossChain ?? { tokenDecimals: token.decimals, status: "unpriced", source: "invalid_effect_result" };
+    return { tokenDecimals: token.decimals, status: "unpriced", source: "invalid_effect_result" };
   }
   if (priceUsdE18 <= 0n) {
-    const crossChain = await resolveCrossChainValuation(context, event, tokenAddress, token.decimals, amount, current);
-    return crossChain ?? { tokenDecimals: token.decimals, status: "unpriced", source: "price_provider_zero" };
+    return { tokenDecimals: token.decimals, status: "unpriced", source: "price_provider_zero" };
   }
 
   const sourceId = `${event.chainId}:${lower(tokenAddress)}:price_provider`;
-  const observationId = `${sourceId}:${String(event.block.number)}`;
+  const observationId = `${sourceId}:${sourceBlockNumber}`;
   context.TokenPriceSource.set({
     id: sourceId,
     chainId: event.chainId,
@@ -1092,8 +1174,8 @@ async function resolveCanonicalValuation(
     priceUsdE18,
     valuationStatus: "oracle_priced",
     priceStatus: "oracle_priced",
-    observedAt,
-    blockNumber: asBigInt(event.block.number),
+    observedAt: sourceObservedAt,
+    blockNumber: sourceBlockNumber,
   });
 
   if (current?.priceUsdE18 && priceDeviationOverHalf(priceUsdE18, current.priceUsdE18)) {
@@ -1108,15 +1190,7 @@ async function resolveCanonicalValuation(
       reason: "candidate price deviates by more than 50 percent from the last indexed price",
       observedAt,
     });
-    return current.priceUsdE18 > 0n
-      ? {
-          amountUsd: amountAtPrice(amount, current.priceUsdE18, token.decimals),
-          priceUsdE18: current.priceUsdE18,
-          tokenDecimals: token.decimals,
-          status: "cached_price_anomaly_rejected",
-          source: current.sourceType,
-        }
-      : { tokenDecimals: token.decimals, status: "unpriced", source: "price_anomaly" };
+    return { tokenDecimals: token.decimals, status: "unpriced", source: "price_anomaly" };
   }
 
   context.TokenPriceCurrent.set({
@@ -1131,10 +1205,18 @@ async function resolveCanonicalValuation(
     priceStatus: "oracle_priced",
     sourceType: "price_provider",
     valuationStatus: "oracle_priced",
-    observedAt,
-    expiresAt,
+    observedAt: sourceObservedAt,
+    expiresAt: new Date(sourceObservedAt.getTime() + 900_000),
     updatedAt: observedAt,
     updatedBlock: asBigInt(event.block.number),
+  });
+  await publishCanonicalAssetPriceBucket(context, event, tokenAddress, priceUsdE18, {
+    blockNumber: sourceBlockNumber,
+    blockHash: sourceBlockHash,
+    logIndex: -1,
+    observedAt: sourceObservedAt,
+    sourceType: "price_provider",
+    observationId,
   });
   return {
     amountUsd: amountAtPrice(amount, priceUsdE18, token.decimals),
@@ -1221,7 +1303,7 @@ async function canonicalTokenLeg(
   const metricId = `${event.chainId}:${accountAddress}:${tokenAddress}`;
   const exactWallet = await context.SafeTokenBalance.get(metricId);
   if (exactWallet && valuation.priceUsdE18)
-    await applyExactWalletBalance(context, event, accountAddress, tokenAddress, exactWallet.amount);
+    await applyExactWalletBalance(context, event, accountAddress, tokenAddress, exactWallet.amount, valuation);
   const existing = await context.AccountTokenMetric.get(metricId);
   const current = existing ?? initialAccountTokenMetric(event, accountAddress, tokenAddress);
   if (!existing) {
@@ -1402,6 +1484,7 @@ async function applyExactWalletBalance(
   rawAccount: string,
   rawToken: string,
   nextAmount: bigint,
+  knownValuation?: CanonicalValuation,
 ) {
   const accountAddress = await canonicalAccount(context, event, rawAccount);
   const tokenAddress = lower(rawToken);
@@ -1409,12 +1492,18 @@ async function applyExactWalletBalance(
   const existing = await context.AccountTokenMetric.get(metricId);
   const metric = existing ?? initialAccountTokenMetric(event, accountAddress, tokenAddress);
   if (nextAmount === 0n) await recordToken(context, event, tokenAddress);
-  // A transfer can be the first time a token is observed for a Safe. Resolve
-  // its exact-block price here so transfer-only balances create
-  // TokenPriceCurrent instead of remaining unpriced forever. The resolver
-  // reuses a valid 15-minute observation before invoking the cached RPC effect.
+  // Event handlers that already resolved a price pass it through here. Revalue
+  // the exact wallet amount with that price instead of scheduling a duplicate
+  // effect. Transfer-only balances still refresh through the bucketed effect.
   const valuation =
-    nextAmount > 0n ? await resolveCanonicalValuation(context, event, tokenAddress, nextAmount) : undefined;
+    nextAmount <= 0n
+      ? undefined
+      : knownValuation?.priceUsdE18
+        ? {
+            ...knownValuation,
+            amountUsd: amountAtPrice(nextAmount, knownValuation.priceUsdE18, knownValuation.tokenDecimals),
+          }
+        : await resolveCanonicalValuation(context, event, tokenAddress, nextAmount);
   const nextUsd = nextAmount === 0n ? 0n : valuation?.amountUsd;
   const previousAmount = metric.currentBalanceAmount ?? 0n;
   const previousUsd = metric.currentBalanceUsd;

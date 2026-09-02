@@ -137,6 +137,26 @@ const entities: readonly EntityContract[] = [
     population: "event",
   },
   {
+    name: "CanonicalAssetPriceBucket",
+    fields: [
+      "id",
+      "canonicalAsset",
+      "bucketId",
+      "bucketStart",
+      "priceUsdE18",
+      "sourceChainId",
+      "sourceTokenAddress",
+      "sourceBlockNumber",
+      "sourceBlockHash",
+      "sourceLogIndex",
+      "sourceTimestamp",
+      "sourceType",
+      "sourceObservationId",
+    ],
+    indexed: ["canonicalAsset", "bucketId", "sourceChainId", "sourceTokenAddress", "sourceTimestamp"],
+    population: "event-and-effect",
+  },
+  {
     name: "PriceAnomaly",
     fields: ["id", "tokenId", "candidateObservationId", "verificationStatus"],
     indexed: ["tokenId", "verificationStatus"],
@@ -221,10 +241,9 @@ describe("Envio-native Cash Explorer acceptance contract", () => {
     if (
       !/createEffect\s*\(/.test(effects) ||
       !/cache\s*:\s*true/.test(effects) ||
-      !/crossChain\s*:\s*false/.test(effects) ||
-      !/crossChain\s*:\s*true/.test(effects)
+      !/crossChain\s*:\s*false/.test(effects)
     )
-      failures.push("RPC effects must be cached and chain-scoped");
+      failures.push("RPC effects must be cached and isolated to their indexed chain");
     if (!/blockNumber|blockTag/.test(effects))
       failures.push("RPC enrichment must request the event block, never an implicit latest block");
     expect(failures, `Fresh deployment correctness seams are incomplete:\n${failures.join("\n")}`).toEqual([]);
@@ -249,10 +268,41 @@ describe("Envio-native Cash Explorer acceptance contract", () => {
   });
 
   it("creates current token prices for transfer-only Safe balances", () => {
-    expect(handlers).toContain(
-      "nextAmount > 0n ? await resolveCanonicalValuation(context, event, tokenAddress, nextAmount) : undefined",
-    );
+    expect(handlers).toContain("await resolveCanonicalValuation(context, event, tokenAddress, nextAmount)");
     expect(handlers).toContain("const nextUsd = nextAmount === 0n ? 0n : valuation?.amountUsd");
+  });
+
+  it("reuses an event-implied price when projecting an exact wallet balance", () => {
+    expect(handlers).toContain(
+      "applyExactWalletBalance(context, event, accountAddress, tokenAddress, exactWallet.amount, valuation)",
+    );
+    expect(handlers).toContain("knownValuation?.priceUsdE18");
+    expect(handlers).toContain("amountAtPrice(nextAmount, knownValuation.priceUsdE18, knownValuation.tokenDecimals)");
+  });
+
+  it("does not issue cross-chain price RPC effects", () => {
+    expect(handlers).not.toContain("crossChainTokenPriceEffect");
+    expect(effects).not.toContain('name: "cash_cross_chain_token_price_v1"');
+  });
+
+  it("checks the common canonical bucket before invoking the same-chain price effect", () => {
+    const resolver = handlers.slice(
+      handlers.indexOf("async function resolveCanonicalValuation"),
+      handlers.indexOf("async function canonicalTokenLeg"),
+    );
+    expect(resolver.indexOf("resolveCanonicalBucketValuation(")).toBeGreaterThanOrEqual(0);
+    expect(resolver.indexOf("context.effect(currentTokenPriceEffect")).toBeGreaterThan(
+      resolver.indexOf("resolveCanonicalBucketValuation("),
+    );
+    expect(handlers).toContain("context.CanonicalAssetPriceBucket.set(");
+    expect(resolver).toContain("blockNumber: String(event.block.number)");
+    expect(resolver).toContain("blockHash: event.block.hash");
+    expect(resolver).toContain("blockTimestamp: String(event.block.timestamp)");
+    expect(effects).toContain('name: "cash_current_token_price_v4"');
+    expect(effects).toContain("exactBlockReference(input.blockHash)");
+    expect(resolver).toContain("sourceBlockNumber !== asBigInt(event.block.number)");
+    expect(resolver).toContain("sourceBlockHash.toLowerCase() !== event.block.hash.toLowerCase()");
+    expect(resolver).toContain("sourceTimestampSeconds !== asBigInt(event.block.timestamp)");
   });
 
   it("persists priced borrow, repay, and liquidation debt events", () => {

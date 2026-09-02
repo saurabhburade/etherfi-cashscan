@@ -24,6 +24,17 @@ export function hourFromUnixSeconds(value: number | bigint): number {
   return new Date(Number(value) * 1000).getUTCHours();
 }
 
+/** A stable, numeric 15-minute UTC interval identity for a Unix timestamp. */
+export function fifteenMinuteBucketId(timestamp: number | bigint): bigint {
+  return BigInt(timestamp) / 900n;
+}
+
+export function isFreshNonFuturePrice(eventTimestamp: number | bigint, sourceTimestamp: number | bigint): boolean {
+  const eventSeconds = BigInt(eventTimestamp);
+  const sourceSeconds = BigInt(sourceTimestamp);
+  return sourceSeconds <= eventSeconds && eventSeconds - sourceSeconds <= 900n;
+}
+
 export function spendBucket(value: bigint, decimals = 6): { label: string; sortOrder: number } {
   const scale = 10n ** BigInt(decimals);
   if (value <= 5n * scale) return { label: "$1-$5", sortOrder: 0 };

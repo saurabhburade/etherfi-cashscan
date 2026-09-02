@@ -124,7 +124,8 @@ Every balance is chain-qualified and keyed by destination safe and token.
   historical USD flows.
 - token metadata is resolved once per chain/address through a cached Envio RPC
   effect when absent from the verified registry. Event-emitted USD is primary;
-  Optimism PriceProvider reads are cached in 15-minute buckets at exact blocks.
+  PriceProvider reads use deterministic 15-minute bucket-boundary blocks so
+  parallel events in one bucket share a cached effect.
 - Gateway and Spoke logs retain immutable provenance, correlate to one economic
   action, and materialize event-derived positions plus cached exact-block Aave
   snapshots when an archive endpoint is configured.

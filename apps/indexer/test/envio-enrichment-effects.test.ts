@@ -4,6 +4,8 @@ import {
   canonicalReservePlan,
   exactBlockTag,
   fifteenMinuteBucket,
+  priceProviderAvailableAtBlock,
+  priceProviderDeploymentFor,
   priceProviderFor,
   priceProviderUsdE6ToE18,
   rpcUrlsFor,
@@ -29,7 +31,7 @@ describe("Envio enrichment effect keys", () => {
     expect(rpcUrlsFor(1)).toEqual([]);
   });
 
-  it("uses exact block tags with dRPC defaults and PublicNode fallbacks", () => {
+  it("uses exact block tags with benchmarked archive fallbacks", () => {
     expect(exactBlockTag(12_345n)).toBe("0x3039");
     const current = process.env.OPTIMISM_RPC_URL;
     const archive = process.env.OPTIMISM_ARCHIVE_RPC_URL;
@@ -42,8 +44,17 @@ describe("Envio enrichment effect keys", () => {
     delete process.env.SCROLL_ARCHIVE_RPC_URL;
     delete process.env.SCROLL_ARCHIVE_RPC_FALLBACK_URL;
     try {
-      expect(rpcUrlsFor(10, "archive")).toEqual(["https://optimism.drpc.org", "https://optimism-rpc.publicnode.com"]);
-      expect(rpcUrlsFor(534352, "archive")).toEqual(["https://scroll.drpc.org", "https://scroll-rpc.publicnode.com"]);
+      expect(rpcUrlsFor(10, "archive")).toEqual([
+        "https://optimism.rpc.sentio.xyz",
+        "https://mainnet.optimism.io",
+        "https://rpc-optimism.blockmachine.io",
+      ]);
+      expect(rpcUrlsFor(534352, "archive")).toEqual([
+        "https://scroll.rpc.sentio.xyz",
+        "https://scroll.api.pocket.network",
+        "https://scroll-rpc.publicnode.com",
+        "https://rpc-scroll.blockmachine.io",
+      ]);
     } finally {
       if (current === undefined) delete process.env.OPTIMISM_RPC_URL;
       else process.env.OPTIMISM_RPC_URL = current;
@@ -64,18 +75,42 @@ describe("Envio enrichment effect keys", () => {
     expect(priceProviderFor(1)).toBeNull();
   });
 
+  it("records the verified PriceProvider deployment boundaries", () => {
+    expect(priceProviderDeploymentFor(10)).toEqual({
+      blockNumber: 149_521_166n,
+      timestampSeconds: 1_774_641_109n,
+    });
+    expect(priceProviderDeploymentFor(534352)).toEqual({
+      blockNumber: 14_206_947n,
+      timestampSeconds: 1_742_840_134n,
+    });
+    expect(priceProviderDeploymentFor(1)).toBeNull();
+    expect(priceProviderAvailableAtBlock(10, 149_521_165n)).toBe(false);
+    expect(priceProviderAvailableAtBlock(10, 149_521_166n)).toBe(true);
+  });
+
   it("normalizes the PriceProvider's six-decimal USD result to E18", () => {
     expect(priceProviderUsdE6ToE18(2_342_321_528n)).toBe(2_342_321_528_000_000_000_000n);
   });
 
-  it("defines timestamp-aligned cross-chain pricing without reusing a source block number", async () => {
+  it("keys current prices by exact event provenance and performs one hash-bound archive call", async () => {
     const source = await import("node:fs/promises").then((fs) =>
       fs.readFile(new URL("../src/envio-enrichment-effects.ts", import.meta.url), "utf8"),
     );
-    expect(source).toContain('name: "cash_cross_chain_token_price_v1"');
-    expect(source).toContain("crossChain: true");
-    expect(source).toContain("blockAtOrBeforeTimestamp(referenceChainId");
-    expect(source).not.toMatch(/crossChainTokenPriceEffect[\s\S]{0,800}input\.blockNumber/);
+    const currentPriceEffect = source.slice(
+      source.indexOf("export const currentTokenPriceEffect"),
+      source.indexOf("export const lendingStateSnapshotEffect"),
+    );
+    expect(currentPriceEffect).toContain('name: "cash_current_token_price_v4"');
+    expect(currentPriceEffect).toContain("blockNumber: S.string");
+    expect(currentPriceEffect).toContain("blockHash: S.string");
+    expect(currentPriceEffect).toContain("blockTimestamp: S.string");
+    expect(currentPriceEffect).toContain("exactBlockReference(input.blockHash)");
+    expect(currentPriceEffect).toContain("withPriceReference(result, blockNumber, input.blockHash, blockTimestamp)");
+    expect(currentPriceEffect).not.toContain("eth_blockNumber");
+    expect(currentPriceEffect).not.toContain("eth_getBlockByNumber");
+    expect(source).not.toContain("blockAtOrBeforeTimestamp");
+    expect(source).not.toContain("blockAnchorCache");
   });
 
   it("marks unavailable and partial results non-cacheable so they can retry", () => {

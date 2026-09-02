@@ -22,7 +22,7 @@ materialization seams below.
 | `LendingMarket`, `LendingReserve`, `LendingEvent`, `LendingEventLeg` | Gateway and Aave V4 Spoke logs | Event-derived; event-priced USD preferred | Maps existing `LendingReserveState`/`LendingSourceEvent` without removing them. |
 | `LendingPosition`, `LendingPositionSnapshot` | Lending logs plus exact block state | Handler state plus block-exact cached effect | Supersedes worker-created position snapshots. |
 | `LendingAccountSnapshot` | Exact block lending aggregate | Effect-derived, chain-scoped and cached | Supersedes archive snapshot worker output. |
-| `TokenPriceSource`, `TokenPriceObservation`, `TokenPriceCurrent`, `CanonicalTokenPriceBucket`, `PriceAnomaly` | Spend-implied prices first; same-chain oracle second; verified cross-chain event/oracle fallback last | Event-derived plus cached block-exact effect | Supersedes price backfill/refresh and anomaly worker tables. |
+| `TokenPriceSource`, `TokenPriceObservation`, `TokenPriceCurrent`, `CanonicalTokenPriceBucket`, `CanonicalAssetPriceBucket`, `PriceAnomaly` | Spend-implied prices first; fresh local/common indexed prices second; same-chain oracle last | Event-derived plus cached block-exact effect | Supersedes price backfill/refresh and anomaly worker tables. |
 
 For every canonical event source, the ID is `chainId:transactionHash:logIndex`.
 A token or lending leg appends its deterministic index. IDs and addresses are
@@ -48,14 +48,24 @@ but are not substitutes for the canonical entity names above.
 ## Effects and unsupported off-chain work
 
 Event-priced USD is preferred whenever the log supplies a value. Otherwise the
-handler tries the same-chain PriceProvider at the event block. Only after that
-fails may a registry-verified peer token supply either an event-implied price
-from the preceding 15 minutes or a cross-chain PriceProvider observation. The
-cross-chain block is resolved from the UTC price-bucket timestamp; a block
-number from one chain is never reused on another. Every accepted cross-chain
-observation retains its reference chain, token, block, and timestamp, and a
-candidate that deviates by more than 50 percent cannot replace the prior valid
-observation. Unavailable calls remain nullable.
+handler first reads a valid local price, then the current or preceding common
+`CanonicalAssetPriceBucket` using the numeric ID `unixSeconds / 900`. Common
+rows are available only for exact token addresses in the checked-in registry;
+runtime symbols never authorize price sharing. A row must be positive,
+non-future, and no more than 15 minutes old.
+
+Only a common-cache miss or rejected candidate invokes the same-chain
+PriceProvider once at the indexed event's exact block. The `eth_call` uses the
+event block hash as an EIP-1898 canonical block reference; there is no
+timestamp-to-block search or separate header request. The cached effect key
+includes the chain, token, UTC 15-minute bucket, and event block number, hash,
+and timestamp, so reorg replays cannot reuse stale provenance. Successful
+accepted fetches update the chain-local price entities and the common PostgreSQL
+bucket with source chain, token, block hash/number, log index, timestamp, type,
+and observation ID. Handlers never issue a cross-chain historical RPC call.
+Known pre-deployment event blocks skip guaranteed failures, candidates more than
+50 percent away from the prior valid price are rejected, and unavailable calls
+remain nullable.
 
 RPC enrichment is allowed only through a cached Envio effect. Ordinary lending
 activity is coalesced per Safe/market/bucket, while liquidation and deficit
