@@ -15,6 +15,7 @@
       "!!**/coverage",
       "!!**/dist",
       "!!**/node_modules",
+      "!!apps/indexer/src/historical-price-buckets.json",
       "!**/next-env.d.ts"
     ]
   },

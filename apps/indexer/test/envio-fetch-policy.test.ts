@@ -14,6 +14,13 @@ describe("Envio mixed-source fetch policy", () => {
     expect(patch).toContain('"ENVIO_MAX_IN_FLIGHT_CHUNKS_PER_PARTITION"');
     expect(patch).toContain("rateLimitedUntilMs");
     expect(patch).toContain("immediately switching to a fallback source");
+    expect(patch).toContain("Source.ProviderUnavailable");
+    expect(patch).toContain("Some(-32016)");
+    expect(patch).toContain("~propagateErrors=true");
+    expect(patch).toContain("LazyLoader.timeoutAfter(15_000)");
+    expect(patch).toContain("WithSuggestedToBlock(_) as retry");
+    expect(patch).toContain("Attach rejection handlers to both boundary requests immediately");
+    expect(patch).toContain("let (latestFetchedBlockInfo, optFirstBlockParent) = await Promise.all2");
   });
 
   it("provides several independent sync fallbacks on each indexed chain", () => {

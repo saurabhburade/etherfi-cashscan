@@ -5,7 +5,7 @@ index ab23da20d3d46fe33b13ef908f2fc40a7a53da48..740131205a9746453394d1b796d09ace
 @@ -6,9 +6,23 @@
  let targetBufferSize = envSafe->EnvSafe.get("ENVIO_INDEXING_MAX_BUFFER_SIZE", S.option(S.int))
  let maxAddrInPartition = envSafe->EnvSafe.get("MAX_PARTITION_SIZE", S.int, ~fallback=5_000)
- 
+
 -// Most parallel in-flight queries a single chain may have at once, across all
 -// its partitions (consumed as FetchState.maxChainConcurrency).
 -let maxChainConcurrency = 100
@@ -26,7 +26,7 @@ index ab23da20d3d46fe33b13ef908f2fc40a7a53da48..740131205a9746453394d1b796d09ace
 +      ~fallback=1,
 +    ),
 +  )
- 
+
  // Switch a single contract to client-side address filtering
  // once its registered address count crosses this threshold. Keeping addresses
 diff --git a/src/Env.res.mjs b/src/Env.res.mjs
@@ -42,22 +42,22 @@ index c4a316843a7abe7141e70d57a3c1d83f76a94df1..1e528de6ef7cf20f6fcdd312e0f214b7
  import * as Stdlib_JsError from "@rescript/runtime/lib/es6/Stdlib_JsError.js";
  import * as HyperSyncClient from "./sources/HyperSyncClient.res.mjs";
 @@ -17,7 +18,11 @@ let targetBufferSize = EnvSafe.get(envSafe, "ENVIO_INDEXING_MAX_BUFFER_SIZE", S$
- 
+
  let maxAddrInPartition = EnvSafe.get(envSafe, "MAX_PARTITION_SIZE", S$RescriptSchema.int, undefined, 5000, undefined, undefined);
- 
+
 -let clientFilterAddressThreshold = EnvSafe.get(envSafe, "ENVIO_CLIENT_FILTER_ADDRESS_THRESHOLD", S$RescriptSchema.int, undefined, (maxAddrInPartition * 100 | 0) / 2 | 0, undefined, undefined);
 +let maxChainConcurrency = Primitive_int.max(1, EnvSafe.get(envSafe, "ENVIO_MAX_CHAIN_CONCURRENCY", S$RescriptSchema.int, undefined, 4, undefined, undefined));
 +
 +let maxInFlightChunksPerPartition = Primitive_int.max(1, EnvSafe.get(envSafe, "ENVIO_MAX_IN_FLIGHT_CHUNKS_PER_PARTITION", S$RescriptSchema.int, undefined, 1, undefined, undefined));
 +
 +let clientFilterAddressThreshold = EnvSafe.get(envSafe, "ENVIO_CLIENT_FILTER_ADDRESS_THRESHOLD", S$RescriptSchema.int, undefined, (maxAddrInPartition * maxChainConcurrency | 0) / 2 | 0, undefined, undefined);
- 
+
  let inMemoryObjectsTarget = EnvSafe.get(envSafe, "ENVIO_IN_MEMORY_OBJECTS_TARGET", S$RescriptSchema.int, undefined, 100000, undefined, undefined);
- 
+
 @@ -216,12 +221,11 @@ let ThrottleWrites = {
- 
+
  EnvSafe.close(envSafe);
- 
+
 -let maxChainConcurrency = 100;
 -
  export {
@@ -78,11 +78,11 @@ index 4123e06e4d5684cfc8d606df12cc10d97584e3fe..9238fe6960415c6d49a90cba0da31962
  // partition's pipeline.
 -let maxInFlightChunksPerPartition = 12
 +let maxInFlightChunksPerPartition = Env.maxInFlightChunksPerPartition
- 
+
  // Most parallel in-flight queries a single chain may have at once, across all
  // its partitions. Bounds source load on chains with many partitions, where the
 diff --git a/src/FetchState.res.mjs b/src/FetchState.res.mjs
-index dd22e8a0b88df6df7a9c4f18e98b5d8a962fd452..b46790fc963f3cc8b334db88b82860333fee5080 100644
+index dd22e8a0b88df6df7a9c4f18e98b5d8a962fd452..806900504bc9d715740c4dcafcce2bb169172073 100644
 --- a/src/FetchState.res.mjs
 +++ b/src/FetchState.res.mjs
 @@ -1438,7 +1438,7 @@ function walkPartitionPending(p, partitionId, inFlightCount, candidates, headBlo
@@ -90,30 +90,1049 @@ index dd22e8a0b88df6df7a9c4f18e98b5d8a962fd452..b46790fc963f3cc8b334db88b8286033
      if (pq.fromBlock > cursor) {
        let beforeLen = candidates.length;
 -      pushGapFillQueries(candidates, partitionId, cursor, Utils.$$Math.minOptInt(pq.fromBlock - 1 | 0, queryEndBlock), headBlockNumber, chainTargetBlock, maybeChunkRange, (12 - inFlightCount | 0) - chunksUsedThisCall | 0, p, partitionBudget, p.selection, p.addresses);
-+      pushGapFillQueries(candidates, partitionId, cursor, Utils.$$Math.minOptInt(pq.fromBlock - 1 | 0, queryEndBlock), headBlockNumber, chainTargetBlock, maybeChunkRange, (maxInFlightChunksPerPartition - inFlightCount | 0) - chunksUsedThisCall | 0, p, partitionBudget, p.selection, p.addresses);
++      pushGapFillQueries(candidates, partitionId, cursor, Utils.$$Math.minOptInt(pq.fromBlock - 1 | 0, queryEndBlock), headBlockNumber, chainTargetBlock, maybeChunkRange, (Env.maxInFlightChunksPerPartition - inFlightCount | 0) - chunksUsedThisCall | 0, p, partitionBudget, p.selection, p.addresses);
        chunksUsedThisCall = chunksUsedThisCall + (candidates.length - beforeLen | 0) | 0;
      }
      let toBlock = pq.toBlock;
+@@ -1495,7 +1495,7 @@ function pushForwardCandidates(candidates, inRangeStates, inRangeCount, chainTar
+     let match$1 = p.eventDensity;
+     if (match !== undefined && match$1 !== undefined && match$1 > 0) {
+       let chunkSize = Js_math.ceil_int(match * 1.8);
+-      let maxChunksRemaining = (12 - fs.inFlightCount | 0) - fs.chunksUsedThisCall | 0;
++      let maxChunksRemaining = (Env.maxInFlightChunksPerPartition - fs.inFlightCount | 0) - fs.chunksUsedThisCall | 0;
+       let chunkStartCeiling = Primitive_int.min(maxBlock, chainTargetBlock);
+       let created = 0;
+       let chunkFromBlock = fs.cursor;
 @@ -1643,7 +1643,7 @@ function getNextQuery(param, chainTargetBlock, chainTargetItems) {
        tmp = eb !== undefined ? fs.cursor <= eb : true;
      }
      if (tmp) {
 -      return (fs.inFlightCount + fs.chunksUsedThisCall | 0) < 12;
-+      return (fs.inFlightCount + fs.chunksUsedThisCall | 0) < maxInFlightChunksPerPartition;
++      return (fs.inFlightCount + fs.chunksUsedThisCall | 0) < Env.maxInFlightChunksPerPartition;
      } else {
        return false;
      }
 @@ -2084,7 +2084,7 @@ function updateKnownHeight(fetchState, knownHeight) {
- 
+
  let blockItemLogIndex = 16777216;
- 
+
 -let maxInFlightChunksPerPartition = 12;
 +let maxInFlightChunksPerPartition = Env.maxInFlightChunksPerPartition;
- 
+
  let maxChainConcurrency = Env.maxChainConcurrency;
- 
+
+diff --git a/src/LazyLoader.res b/src/LazyLoader.res
+index 28492cd5d819e9eb50f731ee1b72c8130ec65f2d..b0235fa3eb47ecb40723ade21131b4f4ecc210e0 100644
+--- a/src/LazyLoader.res
++++ b/src/LazyLoader.res
+@@ -10,10 +10,13 @@ type rec asyncMap<'key, 'value> = {
+   _retryDelayMillis: int,
+   // How long to wait before cancelling a load request
+   _timeoutMillis: int,
++  // Let callers handle failures when they can switch to another backend.
++  _propagateErrors: bool,
+   // The promises we return to callers. We satisfy them asynchronously.
+   externalPromises: Utils.Map.t<'key, promise<'value>>,
+   // The handled used to populate the external promises once we have loaded their data.
+   resolvers: Utils.Map.t<'key, 'value => unit>,
++  rejecters: Utils.Map.t<'key, exn => unit>,
+   // The keys currently being loaded
+   inProgress: Utils.Set.t<'key>,
+   // Keys  for items that we have not started loading yet.
+@@ -33,14 +36,17 @@ let make = (
+   ~loaderPoolSize: int=10,
+   ~retryDelayMillis=5_000,
+   ~timeoutMillis=300_000,
++  ~propagateErrors=false,
+ ) => // After 5 minutes (unclear what is best to do here - crash or just keep printing the error)
+ {
+   _cacheSize: cacheSize,
+   _loaderPoolSize: loaderPoolSize,
+   _retryDelayMillis: retryDelayMillis,
+   _timeoutMillis: timeoutMillis,
++  _propagateErrors: propagateErrors,
+   externalPromises: Utils.Map.make(),
+   resolvers: Utils.Map.make(),
++  rejecters: Utils.Map.make(),
+   inProgress: Utils.Set.make(),
+   loaderQueue: SDSL.Queue.make(),
+   loadedKeys: SDSL.Queue.make(),
+@@ -69,6 +75,7 @@ let rec loadNext = async (am: asyncMap<'key, 'value>, k: 'key) => {
+     ->Utils.Map.get(k)
+     ->Option.forEach(r => {
+       let _ = am.resolvers->Utils.Map.delete(k)
++      let _ = am.rejecters->Utils.Map.delete(k)
+       r(val)
+     })
+
+@@ -102,8 +109,25 @@ let rec loadNext = async (am: asyncMap<'key, 'value>, k: 'key) => {
+       | None => ()
+       | Some(onError) => onError(am, ~exn=err)
+       }
+-      await Utils.delay(am._retryDelayMillis)
+-      awaitTaskPromiseAndLoadNextWithTimeout()
++      if am._propagateErrors {
++        let _ = am.resolvers->Utils.Map.delete(k)
++        am.rejecters
++        ->Utils.Map.get(k)
++        ->Option.forEach(reject => {
++          let _ = am.rejecters->Utils.Map.delete(k)
++          reject(err)
++        })
++        let _ = am.externalPromises->Utils.Map.delete(k)
++        let _ = am.inProgress->Utils.Set.delete(k)
++        switch am.loaderQueue->SDSL.Queue.pop {
++        | None => ()
++        | Some(next) => loadNext(am, next)->ignore
++        }
++        Promise.resolve()
++      } else {
++        await Utils.delay(am._retryDelayMillis)
++        awaitTaskPromiseAndLoadNextWithTimeout()
++      }
+     }
+   )
+ }
+@@ -113,9 +137,10 @@ let get = (am: asyncMap<'key, 'value>, k: 'key): promise<'value> => {
+   | Some(x) => x
+   | None => {
+       // Create a promise to deliver the eventual value asynchronously
+-      let promise = Promise.make((resolve, _) => {
++      let promise = Promise.make((resolve, reject) => {
+         // Expose the resolver externally, so that we can run it from the loader.
+         let _ = am.resolvers->Utils.Map.set(k, resolve)
++        let _ = am.rejecters->Utils.Map.set(k, reject)
+       })
+       // Cache the promise to de-duplicate requests
+       let _ = am.externalPromises->Utils.Map.set(k, promise)
+diff --git a/src/LazyLoader.res.mjs b/src/LazyLoader.res.mjs
+index 7c4bdcddf0dd750c430227a5a7e8bbb6d0e94a28..2ce1e1ccd924ff535b68150b7358bcc4a1d0ce81 100644
+--- a/src/LazyLoader.res.mjs
++++ b/src/LazyLoader.res.mjs
+@@ -8,18 +8,21 @@ import * as Primitive_exceptions from "@rescript/runtime/lib/es6/Primitive_excep
+
+ let LoaderTimeout = /* @__PURE__ */Primitive_exceptions.create("LazyLoader.LoaderTimeout");
+
+-function make(loaderFn, onError, cacheSizeOpt, loaderPoolSizeOpt, retryDelayMillisOpt, timeoutMillisOpt) {
++function make(loaderFn, onError, cacheSizeOpt, loaderPoolSizeOpt, retryDelayMillisOpt, timeoutMillisOpt, propagateErrorsOpt) {
+   let cacheSize = cacheSizeOpt !== undefined ? cacheSizeOpt : 10000;
+   let loaderPoolSize = loaderPoolSizeOpt !== undefined ? loaderPoolSizeOpt : 10;
+   let retryDelayMillis = retryDelayMillisOpt !== undefined ? retryDelayMillisOpt : 5000;
+   let timeoutMillis = timeoutMillisOpt !== undefined ? timeoutMillisOpt : 300000;
++  let propagateErrors = propagateErrorsOpt !== undefined ? propagateErrorsOpt : false;
+   return {
+     _cacheSize: cacheSize,
+     _loaderPoolSize: loaderPoolSize,
+     _retryDelayMillis: retryDelayMillis,
+     _timeoutMillis: timeoutMillis,
++    _propagateErrors: propagateErrors,
+     externalPromises: new Map(),
+     resolvers: new Map(),
++    rejecters: new Map(),
+     inProgress: new Set(),
+     loaderQueue: new JsSdsl.Queue(),
+     loadedKeys: new JsSdsl.Queue(),
+@@ -48,6 +51,7 @@ async function loadNext(am, k) {
+     ]);
+     Stdlib_Option.forEach(am.resolvers.get(k), r => {
+       am.resolvers.delete(k);
++      am.rejecters.delete(k);
+       r(val);
+     });
+     am.inProgress.delete(k);
+@@ -75,8 +79,23 @@ async function loadNext(am, k) {
+     if (onError !== undefined) {
+       onError(am, err);
+     }
+-    await Utils.delay(am._retryDelayMillis);
+-    tmp = awaitTaskPromiseAndLoadNextWithTimeout();
++    if (am._propagateErrors) {
++      am.resolvers.delete(k);
++      Stdlib_Option.forEach(am.rejecters.get(k), reject => {
++        am.rejecters.delete(k);
++        reject(err);
++      });
++      am.externalPromises.delete(k);
++      am.inProgress.delete(k);
++      let next = am.loaderQueue.pop();
++      if (next !== undefined) {
++        loadNext(am, Primitive_option.valFromOption(next));
++      }
++      tmp = Promise.resolve();
++    } else {
++      await Utils.delay(am._retryDelayMillis);
++      tmp = awaitTaskPromiseAndLoadNextWithTimeout();
++    }
+   }
+   if (exit === 1) {
+     tmp = Promise.resolve();
+@@ -89,8 +108,9 @@ function get(am, k) {
+   if (x !== undefined) {
+     return x;
+   }
+-  let promise = new Promise((resolve, param) => {
++  let promise = new Promise((resolve, reject) => {
+     am.resolvers.set(k, resolve);
++    am.rejecters.set(k, reject);
+   });
+   am.externalPromises.set(k, promise);
+   if (am.inProgress.size < am._loaderPoolSize) {
+diff --git a/src/sources/RpcSource.res b/src/sources/RpcSource.res
+index a0bdce8b71b14cd3a6f37859ac04c135a4281910..ed8f5a5c3375d647e35bd6220c6c25cb76cb1454 100644
+--- a/src/sources/RpcSource.res
++++ b/src/sources/RpcSource.res
+@@ -40,6 +40,109 @@ let parseBlockInfo = (json: JSON.t): blockInfo => {
+   }
+ }
+
++// Pull the underlying provider message out of both the regular JSON-RPC client
++// and the native event pager's serialized retry error.
++let getErrorMessage = (exn: exn): option<string> =>
++  switch exn {
++  | Rpc.JsonRpcError({message}) => Some(message)
++  | LazyLoader.LoaderTimeout(message) => Some(message)
++  | JsExn(e) =>
++    switch e->JsExn.message {
++    | Some(msg) =>
++      switch msg->JSON.parseOrThrow->JSON.Decode.object {
++      | exception _ => Some(msg)
++      | None => Some(msg)
++      | Some(obj) =>
++        switch obj->Dict.get("errorMessage") {
++        | Some(String(message)) => Some(message)
++        | _ => Some(msg)
++        }
++      }
++    | None => None
++    }
++  | _ => None
++  }
++
++type providerFailureKind = RpcRateLimit | RpcUnavailable
++
++let containsAny = (message: string, needles: array<string>) => {
++  let normalized = message->String.toLowerCase
++  needles->Array.some(needle => normalized->String.includes(needle))
++}
++
++let classifyProviderFailure = (exn: exn): option<(providerFailureKind, string)> => {
++  let message = exn->getErrorMessage
++  let code = switch exn {
++  | Rpc.JsonRpcError({code}) => Some(code)
++  | _ => None
++  }
++  let rateLimitedByMessage =
++    message->Option.mapOr(false, message =>
++      containsAny(message, [
++        "rate limit",
++        "rate-limit",
++        "too many requests",
++        "requests per second",
++        "request capacity",
++        "quota exceeded",
++        "compute units per second",
++        "response status \"429\"",
++      ])
++    )
++  // Optimism uses -32016 for throttling, but providers can reuse JSON-RPC
++  // server codes for range-size errors. Require the accompanying throttle
++  // message; an actual HTTP/JSON-RPC 429 is unambiguous by itself.
++  let rateLimitedByCode = switch code {
++  | Some(429) => true
++  | Some(-32016) => rateLimitedByMessage
++  | _ => false
++  }
++  let rateLimited = rateLimitedByCode || rateLimitedByMessage
++  if rateLimited {
++    Some((RpcRateLimit, message->Option.getOr("RPC rate limit exceeded")))
++  } else {
++    let unavailable = switch exn {
++    | LazyLoader.LoaderTimeout(_) => true
++    | _ =>
++      message->Option.mapOr(false, message =>
++        containsAny(message, [
++          "timeout",
++          "timed out",
++          "fetch failed",
++          "socket hang up",
++          "econnreset",
++          "econnrefused",
++          "enotfound",
++          "network error",
++          "service unavailable",
++          "bad gateway",
++          "gateway timeout",
++          "internal server error",
++          "http 500",
++          "http 502",
++          "http 503",
++          "http 504",
++          "response status \"500\"",
++          "response status \"502\"",
++          "response status \"503\"",
++          "response status \"504\"",
++        ])
++      )
++    }
++    unavailable
++      ? Some((RpcUnavailable, message->Option.getOr("RPC provider unavailable")))
++      : None
++  }
++}
++
++let reraiseProviderFailure = (exn: exn) =>
++  switch exn->classifyProviderFailure {
++  | Some((RpcRateLimit, _)) => throw(Source.RateLimited({resetMs: 30_000}))
++  | Some((RpcUnavailable, message)) =>
++    throw(Source.ProviderUnavailable({cooldownMs: 10_000, message}))
++  | None => ()
++  }
++
+ let getKnownRawBlockWithBackoff = async (
+   ~client,
+   ~sourceName,
+@@ -56,6 +159,7 @@ let getKnownRawBlockWithBackoff = async (
+     switch await getKnownRawBlock(~client, ~blockNumber) {
+     | exception err =>
+       recordRequest(~method="eth_getBlockByNumber", ~seconds=timerRef->Performance.secondsSince)
++      err->reraiseProviderFailure
+       Logging.warn({
+         "err": err->Utils.prettifyExn,
+         "msg": `Issue while running fetching batch of events from the RPC. Will wait ${currentBackoff.contents->Int.toString}ms and try again.`,
+@@ -72,31 +176,6 @@ let getKnownRawBlockWithBackoff = async (
+   }
+   result.contents->Option.getOrThrow
+ }
+-// Pulls the underlying provider error message back out of a caught exn, for
+-// logging/debugging. Provider JSON-RPC errors surface as `Rpc.JsonRpcError`;
+-// the paging retry decision (see `parseGetNextPageRetryError` below) surfaces
+-// as a napi `JsExn` whose message is the JSON payload `EvmRpcClient.getNextPage`
+-// throws, carrying the classified message (if any) under `errorMessage`.
+-let getErrorMessage = (exn: exn): option<string> =>
+-  switch exn {
+-  | Rpc.JsonRpcError({message}) => Some(message)
+-  | JsExn(e) =>
+-    switch e->JsExn.message {
+-    | Some(msg) =>
+-      switch msg->JSON.parseOrThrow->JSON.Decode.object {
+-      | exception _ => None
+-      | None => None
+-      | Some(obj) =>
+-        switch obj->Dict.get("errorMessage") {
+-        | Some(String(message)) => Some(message)
+-        | _ => None
+-        }
+-      }
+-    | None => None
+-    }
+-  | _ => None
+-  }
+-
+ // `EvmRpcClient.getNextPage` throws a napi error whose message is a JSON
+ // payload describing the retry decision:
+ // `{"kind":"Retry","attemptedToBlock":int,"errorMessage":string|null,
+@@ -675,6 +754,8 @@ let make = (
+
+   let makeTransactionLoader = () =>
+     LazyLoader.make(
++      ~propagateErrors=true,
++      ~timeoutMillis=15_000,
+       ~loaderFn=transactionHash => {
+         let timerRef = Performance.now()
+         Rpc.GetTransactionByHash.rawRoute
+@@ -687,11 +768,10 @@ let make = (
+           res
+         })
+       },
+-      ~onError=(am, ~exn) => {
+-        Logging.error({
++      ~onError=(_am, ~exn) => {
++        Logging.warn({
+           "err": exn->Utils.prettifyExn,
+-          "msg": `Top level promise timeout reached. Please review other errors or warnings in the code. This function will retry in ${(am._retryDelayMillis / 1000)
+-              ->Int.toString} seconds. It is highly likely that your indexer isn't syncing on one or more chains currently. Also take a look at the "suggestedFix" in the metadata of this command`,
++          "msg": "RPC transaction loader failed. Returning the error to the source manager so another source can be attempted.",
+           "source": name,
+           "chainId": chainId,
+           "metadata": {
+@@ -706,6 +786,8 @@ let make = (
+
+   let makeBlockLoader = () =>
+     LazyLoader.make(
++      ~propagateErrors=true,
++      ~timeoutMillis=15_000,
+       ~loaderFn=blockNumber => {
+         getKnownRawBlockWithBackoff(
+           ~client,
+@@ -716,11 +798,10 @@ let make = (
+           ~recordRequest,
+         )
+       },
+-      ~onError=(am, ~exn) => {
+-        Logging.error({
++      ~onError=(_am, ~exn) => {
++        Logging.warn({
+           "err": exn->Utils.prettifyExn,
+-          "msg": `Top level promise timeout reached. Please review other errors or warnings in the code. This function will retry in ${(am._retryDelayMillis / 1000)
+-              ->Int.toString} seconds. It is highly likely that your indexer isn't syncing on one or more chains currently. Also take a look at the "suggestedFix" in the metadata of this command`,
++          "msg": "RPC block loader failed. Returning the error to the source manager so another source can be attempted.",
+           "source": name,
+           "chainId": chainId,
+           "metadata": {
+@@ -735,6 +816,8 @@ let make = (
+
+   let makeReceiptLoader = () =>
+     LazyLoader.make(
++      ~propagateErrors=true,
++      ~timeoutMillis=15_000,
+       ~loaderFn=transactionHash => {
+         let timerRef = Performance.now()
+         Rpc.GetTransactionReceipt.rawRoute
+@@ -747,11 +830,10 @@ let make = (
+           res
+         })
+       },
+-      ~onError=(am, ~exn) => {
+-        Logging.error({
++      ~onError=(_am, ~exn) => {
++        Logging.warn({
+           "err": exn->Utils.prettifyExn,
+-          "msg": `Top level promise timeout reached. Please review other errors or warnings in the code. This function will retry in ${(am._retryDelayMillis / 1000)
+-              ->Int.toString} seconds. It is highly likely that your indexer isn't syncing on one or more chains currently. Also take a look at the "suggestedFix" in the metadata of this command`,
++          "msg": "RPC receipt loader failed. Returning the error to the source manager so another source can be attempted.",
+           "source": name,
+           "chainId": chainId,
+           "metadata": {
+@@ -768,13 +850,34 @@ let make = (
+   let transactionLoader = ref(makeTransactionLoader())
+   let receiptLoader = ref(makeReceiptLoader())
+
++  let getBlockJson = async blockNumber =>
++    try await blockLoader.contents->LazyLoader.get(blockNumber) catch {
++    | exn =>
++      exn->reraiseProviderFailure
++      exn->throw
++    }
++
++  let getTransactionJson = async transactionHash =>
++    try await transactionLoader.contents->LazyLoader.get(transactionHash) catch {
++    | exn =>
++      exn->reraiseProviderFailure
++      exn->throw
++    }
++
++  let getReceiptJson = async transactionHash =>
++    try await receiptLoader.contents->LazyLoader.get(transactionHash) catch {
++    | exn =>
++      exn->reraiseProviderFailure
++      exn->throw
++    }
++
+   let getEventBlockOrThrow = makeThrowingGetEventBlock(
+-    ~getBlockJson=blockNumber => blockLoader.contents->LazyLoader.get(blockNumber),
++    ~getBlockJson,
+     ~lowercaseAddresses,
+   )
+   let getEventTransactionOrThrow = makeThrowingGetEventTransaction(
+     ~getTransactionJson=async transactionHash => {
+-      switch await transactionLoader.contents->LazyLoader.get(transactionHash) {
++      switch await getTransactionJson(transactionHash) {
+       | Some(json) => json
+       | None =>
+         throw(
+@@ -783,7 +886,7 @@ let make = (
+       }
+     },
+     ~getReceiptJson=async transactionHash => {
+-      switch await receiptLoader.contents->LazyLoader.get(transactionHash) {
++      switch await getReceiptJson(transactionHash) {
+       | Some(json) => json
+       | None =>
+         throw(
+@@ -815,13 +918,6 @@ let make = (
+     | None => knownHeight
+     }
+
+-    let firstBlockParentPromise =
+-      fromBlock > 0
+-        ? blockLoader.contents
+-          ->LazyLoader.get(fromBlock - 1)
+-          ->Promise.thenResolve(json => Some(parseBlockInfo(json)))
+-        : Promise.resolve(None)
+-
+     if selection.onEventRegistrations->Utils.Array.isEmpty {
+       throw(
+         Source.GetItemsError(
+@@ -832,7 +928,7 @@ let make = (
+       )
+     }
+
+-    let {items, toBlock: queriedToBlock, requestStats} = try await rpcClient.getNextPage(
++    let pagePromise = rpcClient.getNextPage(
+       {
+         fromBlock,
+         toBlockCeiling: toBlock,
+@@ -841,15 +937,26 @@ let make = (
+         clientFilteredContracts: selection.clientFilteredContracts,
+       },
+       addressSet,
+-    ) catch {
++    )
++    let {items, toBlock: queriedToBlock, requestStats} = try await Promise.race([
++      pagePromise,
++      LazyLoader.timeoutAfter(15_000),
++    ]) catch {
+     | exn =>
+       switch exn->parseGetNextPageRetryError {
++      | Some((attemptedToBlock, WithSuggestedToBlock(_) as retry, requestStats)) =>
++        requestStats->Array.forEach(stat =>
++          recordRequest(~method=stat.method, ~seconds=stat.seconds)
++        )
++        throw(Source.GetItemsError(FailedGettingItems({exn, attemptedToBlock, retry})))
+       | Some((attemptedToBlock, retry, requestStats)) =>
++        exn->reraiseProviderFailure
+         requestStats->Array.forEach(stat =>
+           recordRequest(~method=stat.method, ~seconds=stat.seconds)
+         )
+         throw(Source.GetItemsError(FailedGettingItems({exn, attemptedToBlock, retry})))
+       | None =>
++        exn->reraiseProviderFailure
+         throw(
+           Source.GetItemsError(
+             FailedGettingItems({
+@@ -869,9 +976,15 @@ let make = (
+     }
+     requestStats->Array.forEach(stat => recordRequest(~method=stat.method, ~seconds=stat.seconds))
+
+-    let latestFetchedBlockInfo = await blockLoader.contents
+-    ->LazyLoader.get(queriedToBlock)
+-    ->Promise.thenResolve(parseBlockInfo)
++    // Attach rejection handlers to both boundary requests immediately. Starting
++    // one speculatively before the log page was awaited left a rejected promise
++    // temporarily detached, which Node treated as an unhandled rejection.
++    let (latestFetchedBlockInfo, optFirstBlockParent) = await Promise.all2((
++      getBlockJson(queriedToBlock)->Promise.thenResolve(parseBlockInfo),
++      fromBlock > 0
++        ? getBlockJson(fromBlock - 1)->Promise.thenResolve(json => Some(parseBlockInfo(json)))
++        : Promise.resolve(None),
++    ))
+
+     let parsedQueueItems = await items
+     ->Array.map(({log, onEventRegistrationIndex, params: decoded}: EvmRpcClient.rpcEventItem) => {
+@@ -892,6 +1005,8 @@ let make = (
+               ),
+             ),
+           )) catch {
++          | Source.RateLimited(_) as exn => throw(exn)
++          | Source.ProviderUnavailable(_) as exn => throw(exn)
+           | TransactionDataNotFound({message}) =>
+             let backoffMillis = switch retry {
+             | 0 => 100
+@@ -944,8 +1059,6 @@ let make = (
+     })
+     ->Promise.all
+
+-    let optFirstBlockParent = await firstBlockParentPromise
+-
+     let totalTimeElapsed = startFetchingBatchTimeRef->Performance.secondsSince
+
+     // Every fetched block carries `hash` and `parentHash`, so each one yields
+@@ -997,7 +1110,7 @@ let make = (
+
+   let getBlockHashes = (~blockNumbers, ~logger as _currentlyUnusedLogger) => {
+     blockNumbers
+-    ->Array.map(blockNum => blockLoader.contents->LazyLoader.get(blockNum))
++    ->Array.map(blockNum => getBlockJson(blockNum))
+     ->Promise.all
+     ->Promise.thenResolve(rawBlocks => {
+       let result =
+@@ -1037,10 +1150,11 @@ let make = (
+     getHeightOrThrow: async () => {
+       let timerRef = Performance.now()
+       let height = try {
+-        await rpcClient.getHeight()
++        await Promise.race([rpcClient.getHeight(), LazyLoader.timeoutAfter(15_000)])
+       } catch {
+       | exn =>
+         recordRequest(~method="eth_blockNumber", ~seconds=timerRef->Performance.secondsSince)
++        exn->reraiseProviderFailure
+         exn->throw
+       }
+       recordRequest(~method="eth_blockNumber", ~seconds=timerRef->Performance.secondsSince)
+diff --git a/src/sources/RpcSource.res.mjs b/src/sources/RpcSource.res.mjs
+index 60b22bbcc3d2461f6a2b87fee95faf266ed1bf4d..9f39771e07b83cf80a2636290ed5927a363775f2 100644
+--- a/src/sources/RpcSource.res.mjs
++++ b/src/sources/RpcSource.res.mjs
+@@ -45,6 +45,115 @@ function parseBlockInfo(json) {
+   };
+ }
+
++function getErrorMessage(exn) {
++  if (exn.RE_EXN_ID === Rpc.JsonRpcError) {
++    return exn._1.message;
++  }
++  if (exn.RE_EXN_ID === LazyLoader.LoaderTimeout) {
++    return exn._1;
++  }
++  if (exn.RE_EXN_ID !== "JsExn") {
++    return;
++  }
++  let msg = Stdlib_JsExn.message(exn._1);
++  if (msg === undefined) {
++    return;
++  }
++  let obj;
++  try {
++    obj = Stdlib_JSON.Decode.object(JSON.parse(msg));
++  } catch (exn$1) {
++    return msg;
++  }
++  if (obj === undefined) {
++    return msg;
++  }
++  let match = obj["errorMessage"];
++  if (typeof match === "string") {
++    return match;
++  } else {
++    return msg;
++  }
++}
++
++function containsAny(message, needles) {
++  let normalized = message.toLowerCase();
++  return needles.some(needle => normalized.includes(needle));
++}
++
++function classifyProviderFailure(exn) {
++  let message = getErrorMessage(exn);
++  let code = exn.RE_EXN_ID === Rpc.JsonRpcError ? exn._1.code : undefined;
++  let rateLimitedByMessage = Stdlib_Option.mapOr(message, false, message => containsAny(message, [
++    "rate limit",
++    "rate-limit",
++    "too many requests",
++    "requests per second",
++    "request capacity",
++    "quota exceeded",
++    "compute units per second",
++    "response status \"429\""
++  ]));
++  let rateLimitedByCode = code !== undefined ? (
++      code !== -32016 ? code === 429 : rateLimitedByMessage
++    ) : false;
++  let rateLimited = rateLimitedByCode || rateLimitedByMessage;
++  if (rateLimited) {
++    return [
++      "RpcRateLimit",
++      Stdlib_Option.getOr(message, "RPC rate limit exceeded")
++    ];
++  }
++  let unavailable = exn.RE_EXN_ID === LazyLoader.LoaderTimeout ? true : Stdlib_Option.mapOr(message, false, message => containsAny(message, [
++      "timeout",
++      "timed out",
++      "fetch failed",
++      "socket hang up",
++      "econnreset",
++      "econnrefused",
++      "enotfound",
++      "network error",
++      "service unavailable",
++      "bad gateway",
++      "gateway timeout",
++      "internal server error",
++      "http 500",
++      "http 502",
++      "http 503",
++      "http 504",
++      "response status \"500\"",
++      "response status \"502\"",
++      "response status \"503\"",
++      "response status \"504\""
++    ]));
++  if (unavailable) {
++    return [
++      "RpcUnavailable",
++      Stdlib_Option.getOr(message, "RPC provider unavailable")
++    ];
++  }
++}
++
++function reraiseProviderFailure(exn) {
++  let match = classifyProviderFailure(exn);
++  if (match === undefined) {
++    return;
++  }
++  if (match[0] === "RpcRateLimit") {
++    throw {
++      RE_EXN_ID: Source.RateLimited,
++      resetMs: 30000,
++      Error: new Error()
++    };
++  }
++  throw {
++    RE_EXN_ID: Source.ProviderUnavailable,
++    cooldownMs: 10000,
++    message: match[1],
++    Error: new Error()
++  };
++}
++
+ async function getKnownRawBlockWithBackoff(client, sourceName, chainId, blockNumber, backoffMsOnFailure, recordRequest) {
+   let currentBackoff = backoffMsOnFailure;
+   let result;
+@@ -58,6 +167,7 @@ async function getKnownRawBlockWithBackoff(client, sourceName, chainId, blockNum
+     } catch (raw_err) {
+       let err = Primitive_exceptions.internalToException(raw_err);
+       recordRequest("eth_getBlockByNumber", Performance.secondsSince(timerRef));
++      reraiseProviderFailure(err);
+       Logging.warn({
+         err: Utils.prettifyExn(err),
+         msg: `Issue while running fetching batch of events from the RPC. Will wait ` + currentBackoff.toString() + `ms and try again.`,
+@@ -76,32 +186,6 @@ async function getKnownRawBlockWithBackoff(client, sourceName, chainId, blockNum
+   return Stdlib_Option.getOrThrow(result, undefined);
+ }
+
+-function getErrorMessage(exn) {
+-  if (exn.RE_EXN_ID === Rpc.JsonRpcError) {
+-    return exn._1.message;
+-  }
+-  if (exn.RE_EXN_ID !== "JsExn") {
+-    return;
+-  }
+-  let msg = Stdlib_JsExn.message(exn._1);
+-  if (msg === undefined) {
+-    return;
+-  }
+-  let obj;
+-  try {
+-    obj = Stdlib_JSON.Decode.object(JSON.parse(msg));
+-  } catch (exn$1) {
+-    return;
+-  }
+-  if (obj === undefined) {
+-    return;
+-  }
+-  let match = obj["errorMessage"];
+-  if (typeof match === "string") {
+-    return match;
+-  }
+-}
+-
+ function parseGetNextPageRetryError(exn) {
+   if (exn.RE_EXN_ID !== "JsExn") {
+     return;
+@@ -754,42 +838,42 @@ function make(param) {
+       recordRequest("eth_getTransactionByHash", Performance.secondsSince(timerRef));
+       return res;
+     });
+-  }, (am, exn) => Logging.error({
++  }, (_am, exn) => Logging.warn({
+     err: Utils.prettifyExn(exn),
+-    msg: `Top level promise timeout reached. Please review other errors or warnings in the code. This function will retry in ` + (am._retryDelayMillis / 1000 | 0).toString() + ` seconds. It is highly likely that your indexer isn't syncing on one or more chains currently. Also take a look at the "suggestedFix" in the metadata of this command`,
++    msg: "RPC transaction loader failed. Returning the error to the source manager so another source can be attempted.",
+     source: name,
+     chainId: chainId,
+     metadata: {
+       asyncTaskName: "transactionLoader: fetching transaction data - `getTransaction` rpc call",
+       suggestedFix: "This likely means the RPC url you are using is not responding correctly. Please try another RPC endipoint."
+     }
+-  }), undefined, undefined, undefined, undefined);
+-  let makeBlockLoader = () => LazyLoader.make(blockNumber => getKnownRawBlockWithBackoff(client, name, chainId, blockNumber, 1000, recordRequest), (am, exn) => Logging.error({
++  }), undefined, undefined, undefined, 15000, true);
++  let makeBlockLoader = () => LazyLoader.make(blockNumber => getKnownRawBlockWithBackoff(client, name, chainId, blockNumber, 1000, recordRequest), (_am, exn) => Logging.warn({
+     err: Utils.prettifyExn(exn),
+-    msg: `Top level promise timeout reached. Please review other errors or warnings in the code. This function will retry in ` + (am._retryDelayMillis / 1000 | 0).toString() + ` seconds. It is highly likely that your indexer isn't syncing on one or more chains currently. Also take a look at the "suggestedFix" in the metadata of this command`,
++    msg: "RPC block loader failed. Returning the error to the source manager so another source can be attempted.",
+     source: name,
+     chainId: chainId,
+     metadata: {
+       asyncTaskName: "blockLoader: fetching block data - `getBlock` rpc call",
+       suggestedFix: "This likely means the RPC url you are using is not responding correctly. Please try another RPC endipoint."
+     }
+-  }), undefined, undefined, undefined, undefined);
++  }), undefined, undefined, undefined, 15000, true);
+   let makeReceiptLoader = () => LazyLoader.make(transactionHash => {
+     let timerRef = Performance.now();
+     return Rest.fetch(Rpc.GetTransactionReceipt.rawRoute, transactionHash, client).then(res => {
+       recordRequest("eth_getTransactionReceipt", Performance.secondsSince(timerRef));
+       return res;
+     });
+-  }, (am, exn) => Logging.error({
++  }, (_am, exn) => Logging.warn({
+     err: Utils.prettifyExn(exn),
+-    msg: `Top level promise timeout reached. Please review other errors or warnings in the code. This function will retry in ` + (am._retryDelayMillis / 1000 | 0).toString() + ` seconds. It is highly likely that your indexer isn't syncing on one or more chains currently. Also take a look at the "suggestedFix" in the metadata of this command`,
++    msg: "RPC receipt loader failed. Returning the error to the source manager so another source can be attempted.",
+     source: name,
+     chainId: chainId,
+     metadata: {
+       asyncTaskName: "receiptLoader: fetching transaction receipt - `getTransactionReceipt` rpc call",
+       suggestedFix: "This likely means the RPC url you are using is not responding correctly. Please try another RPC endipoint."
+     }
+-  }), undefined, undefined, undefined, undefined);
++  }), undefined, undefined, undefined, 15000, true);
+   let blockLoader = {
+     contents: makeBlockLoader()
+   };
+@@ -799,9 +883,36 @@ function make(param) {
+   let receiptLoader = {
+     contents: makeReceiptLoader()
+   };
+-  let getEventBlockOrThrow = makeThrowingGetEventBlock(blockNumber => LazyLoader.get(blockLoader.contents, blockNumber), lowercaseAddresses);
++  let getBlockJson = async blockNumber => {
++    try {
++      return await LazyLoader.get(blockLoader.contents, blockNumber);
++    } catch (raw_exn) {
++      let exn = Primitive_exceptions.internalToException(raw_exn);
++      reraiseProviderFailure(exn);
++      throw exn;
++    }
++  };
++  let getTransactionJson = async transactionHash => {
++    try {
++      return await LazyLoader.get(transactionLoader.contents, transactionHash);
++    } catch (raw_exn) {
++      let exn = Primitive_exceptions.internalToException(raw_exn);
++      reraiseProviderFailure(exn);
++      throw exn;
++    }
++  };
++  let getReceiptJson = async transactionHash => {
++    try {
++      return await LazyLoader.get(receiptLoader.contents, transactionHash);
++    } catch (raw_exn) {
++      let exn = Primitive_exceptions.internalToException(raw_exn);
++      reraiseProviderFailure(exn);
++      throw exn;
++    }
++  };
++  let getEventBlockOrThrow = makeThrowingGetEventBlock(getBlockJson, lowercaseAddresses);
+   let getEventTransactionOrThrow = makeThrowingGetEventTransaction(async transactionHash => {
+-    let json = await LazyLoader.get(transactionLoader.contents, transactionHash);
++    let json = await getTransactionJson(transactionHash);
+     if (json !== undefined) {
+       return json;
+     }
+@@ -811,7 +922,7 @@ function make(param) {
+       Error: new Error()
+     };
+   }, async transactionHash => {
+-    let json = await LazyLoader.get(receiptLoader.contents, transactionHash);
++    let json = await getReceiptJson(transactionHash);
+     if (json !== undefined) {
+       return json;
+     }
+@@ -824,7 +935,6 @@ function make(param) {
+   let getItemsOrThrow = async (fromBlock, toBlock, addressSet, knownHeight, partitionId, selection, param, retry, param$1) => {
+     let startFetchingBatchTimeRef = Performance.now();
+     let toBlock$1 = toBlock !== undefined ? Primitive_int.min(toBlock, knownHeight) : knownHeight;
+-    let firstBlockParentPromise = fromBlock > 0 ? LazyLoader.get(blockLoader.contents, fromBlock - 1 | 0).then(json => parseBlockInfo(json)) : Promise.resolve(undefined);
+     if (Utils.$$Array.isEmpty(selection.onEventRegistrations)) {
+       throw {
+         RE_EXN_ID: Source.GetItemsError,
+@@ -835,49 +945,84 @@ function make(param) {
+         Error: new Error()
+       };
+     }
++    let pagePromise = rpcClient.getNextPage({
++      fromBlock: fromBlock,
++      toBlockCeiling: toBlock$1,
++      partitionId: partitionId,
++      registrationIndexes: selection.onEventRegistrations.map(reg => reg.index),
++      clientFilteredContracts: selection.clientFilteredContracts
++    }, addressSet);
+     let match;
+     try {
+-      match = await rpcClient.getNextPage({
+-        fromBlock: fromBlock,
+-        toBlockCeiling: toBlock$1,
+-        partitionId: partitionId,
+-        registrationIndexes: selection.onEventRegistrations.map(reg => reg.index),
+-        clientFilteredContracts: selection.clientFilteredContracts
+-      }, addressSet);
++      match = await Promise.race([
++        pagePromise,
++        LazyLoader.timeoutAfter(15000)
++      ]);
+     } catch (raw_exn) {
+       let exn = Primitive_exceptions.internalToException(raw_exn);
+       let match$1 = parseGetNextPageRetryError(exn);
+       if (match$1 !== undefined) {
+-        match$1[2].forEach(stat => recordRequest(stat.method, stat.seconds));
++        let retry$1 = match$1[1];
++        let attemptedToBlock = match$1[0];
++        let exit = 0;
++        switch (retry$1.TAG) {
++          case "WithSuggestedToBlock" :
++            match$1[2].forEach(stat => recordRequest(stat.method, stat.seconds));
++            throw {
++              RE_EXN_ID: Source.GetItemsError,
++              _1: {
++                TAG: "FailedGettingItems",
++                exn: exn,
++                attemptedToBlock: attemptedToBlock,
++                retry: retry$1
++              },
++              Error: new Error()
++            };
++          case "WithBackoff" :
++          case "ImpossibleForTheQuery" :
++            exit = 1;
++            break;
++        }
++        if (exit === 1) {
++          reraiseProviderFailure(exn);
++          match$1[2].forEach(stat => recordRequest(stat.method, stat.seconds));
++          throw {
++            RE_EXN_ID: Source.GetItemsError,
++            _1: {
++              TAG: "FailedGettingItems",
++              exn: exn,
++              attemptedToBlock: attemptedToBlock,
++              retry: retry$1
++            },
++            Error: new Error()
++          };
++        }
++      } else {
++        reraiseProviderFailure(exn);
+         throw {
+           RE_EXN_ID: Source.GetItemsError,
+           _1: {
+             TAG: "FailedGettingItems",
+             exn: exn,
+-            attemptedToBlock: match$1[0],
+-            retry: match$1[1]
++            attemptedToBlock: toBlock$1,
++            retry: {
++              TAG: "WithBackoff",
++              message: "Unexpected issue while fetching events from the RPC client. Attempt a retry.",
++              backoffMillis: retry !== 0 ? 1000 * retry | 0 : 500
++            }
+           },
+           Error: new Error()
+         };
+       }
+-      throw {
+-        RE_EXN_ID: Source.GetItemsError,
+-        _1: {
+-          TAG: "FailedGettingItems",
+-          exn: exn,
+-          attemptedToBlock: toBlock$1,
+-          retry: {
+-            TAG: "WithBackoff",
+-            message: "Unexpected issue while fetching events from the RPC client. Attempt a retry.",
+-            backoffMillis: retry !== 0 ? 1000 * retry | 0 : 500
+-          }
+-        },
+-        Error: new Error()
+-      };
+     }
+     let items = match.items;
+     match.requestStats.forEach(stat => recordRequest(stat.method, stat.seconds));
+-    let latestFetchedBlockInfo = await LazyLoader.get(blockLoader.contents, match.toBlock).then(parseBlockInfo);
++    let match$2 = await Promise.all([
++      getBlockJson(match.toBlock).then(parseBlockInfo),
++      fromBlock > 0 ? getBlockJson(fromBlock - 1 | 0).then(json => parseBlockInfo(json)) : Promise.resolve(undefined)
++    ]);
++    let optFirstBlockParent = match$2[1];
++    let latestFetchedBlockInfo = match$2[0];
+     let parsedQueueItems = await Promise.all(items.map(param => {
+       let decoded = param.params;
+       let log = param.log;
+@@ -892,6 +1037,12 @@ function make(param) {
+           ]);
+         } catch (raw_exn) {
+           let exn = Primitive_exceptions.internalToException(raw_exn);
++          if (exn.RE_EXN_ID === Source.RateLimited) {
++            throw exn;
++          }
++          if (exn.RE_EXN_ID === Source.ProviderUnavailable) {
++            throw exn;
++          }
+           if (exn.RE_EXN_ID === TransactionDataNotFound) {
+             let backoffMillis = retry !== 0 ? 500 * retry | 0 : 100;
+             throw {
+@@ -942,7 +1093,6 @@ function make(param) {
+         };
+       })();
+     }));
+-    let optFirstBlockParent = await firstBlockParentPromise;
+     let totalTimeElapsed = Performance.secondsSince(startFetchingBatchTimeRef);
+     let blockHashes = [];
+     let pushBlockInfo = b => {
+@@ -989,7 +1139,7 @@ function make(param) {
+     transactionLoader.contents = makeTransactionLoader();
+     receiptLoader.contents = makeReceiptLoader();
+   };
+-  let getBlockHashes = (blockNumbers, _currentlyUnusedLogger) => Stdlib_Promise.$$catch(Promise.all(blockNumbers.map(blockNum => LazyLoader.get(blockLoader.contents, blockNum))).then(rawBlocks => {
++  let getBlockHashes = (blockNumbers, _currentlyUnusedLogger) => Stdlib_Promise.$$catch(Promise.all(blockNumbers.map(getBlockJson)).then(rawBlocks => {
+     let result = {
+       TAG: "Ok",
+       _0: rawBlocks.map(json => {
+@@ -1024,9 +1174,14 @@ function make(param) {
+       let timerRef = Performance.now();
+       let height;
+       try {
+-        height = await rpcClient.getHeight();
+-      } catch (exn) {
++        height = await Promise.race([
++          rpcClient.getHeight(),
++          LazyLoader.timeoutAfter(15000)
++        ]);
++      } catch (raw_exn) {
++        let exn = Primitive_exceptions.internalToException(raw_exn);
+         recordRequest("eth_blockNumber", Performance.secondsSince(timerRef));
++        reraiseProviderFailure(exn);
+         throw exn;
+       }
+       recordRequest("eth_blockNumber", Performance.secondsSince(timerRef));
+@@ -1045,8 +1200,11 @@ export {
+   TransactionDataNotFound,
+   getKnownRawBlock,
+   parseBlockInfo,
+-  getKnownRawBlockWithBackoff,
+   getErrorMessage,
++  containsAny,
++  classifyProviderFailure,
++  reraiseProviderFailure,
++  getKnownRawBlockWithBackoff,
+   parseGetNextPageRetryError,
+   lowercaseAddressSchema,
+   checksumAddressSchema,
+diff --git a/src/sources/Source.res b/src/sources/Source.res
+index 51f14ddae630e1048166bbb97e245701e02f2e1d..abec2d9b7fbc20dd90707c984ef2963008c742d4 100644
+--- a/src/sources/Source.res
++++ b/src/sources/Source.res
+@@ -51,6 +51,10 @@ type getItemsRetry =
+   | ImpossibleForTheQuery({message: string})
+
+ exception RateLimited({resetMs: int})
++// The provider itself is temporarily unavailable (timeout, connection failure,
++// or a transient server error). This is distinct from a query that needs a
++// smaller block range and should make SourceManager try another source.
++exception ProviderUnavailable({cooldownMs: int, message: string})
+
+ type getItemsError =
+   | UnsupportedSelection({message: string})
+diff --git a/src/sources/Source.res.mjs b/src/sources/Source.res.mjs
+index 6b6b66c6828ec45996c82c844d0a20e46480d0e9..a42c80620afd99708f60b75d247890265ca22550 100644
+--- a/src/sources/Source.res.mjs
++++ b/src/sources/Source.res.mjs
+@@ -4,10 +4,13 @@ import * as Primitive_exceptions from "@rescript/runtime/lib/es6/Primitive_excep
+
+ let RateLimited = /* @__PURE__ */Primitive_exceptions.create("Source.RateLimited");
+
++let ProviderUnavailable = /* @__PURE__ */Primitive_exceptions.create("Source.ProviderUnavailable");
++
+ let GetItemsError = /* @__PURE__ */Primitive_exceptions.create("Source.GetItemsError");
+
+ export {
+   RateLimited,
++  ProviderUnavailable,
+   GetItemsError,
+ }
+ /* No side effect */
 diff --git a/src/sources/SourceManager.res b/src/sources/SourceManager.res
-index dd28bf4cc23a6886369ede3c1675fcd40d9b74bf..f099eb6d6278ab7a6dd3c193d2e1e7d377c87aaf 100644
+index dd28bf4cc23a6886369ede3c1675fcd40d9b74bf..9d6841f1e929249e307601f8db8809bc82de5ab2 100644
 --- a/src/sources/SourceManager.res
 +++ b/src/sources/SourceManager.res
 @@ -14,6 +14,9 @@ type sourceState = {
@@ -125,7 +1144,7 @@ index dd28bf4cc23a6886369ede3c1675fcd40d9b74bf..f099eb6d6278ab7a6dd3c193d2e1e7d3
 +  mutable rateLimitedUntilMs: option<float>,
    requestStats: dict<requestStatAgg>,
  }
- 
+
 @@ -279,6 +282,7 @@ let make = (
        pendingHeightResolvers: [],
        disabled: false,
@@ -134,7 +1153,49 @@ index dd28bf4cc23a6886369ede3c1675fcd40d9b74bf..f099eb6d6278ab7a6dd3c193d2e1e7d3
        requestStats: Dict.make(),
      }),
      activeSource: initialActiveSource,
-@@ -533,10 +537,18 @@ let getNextSources = (sourceManager, ~isRealtime, ~excludedSources=?) => {
+@@ -403,6 +407,7 @@ let getSourceNewHeight = async (
+   ~status: ref<status>,
+   ~logger,
+   ~reducedPolling,
++  ~onProviderFailure,
+ ) => {
+   let source = sourceState.source
+   let initialHeight = sourceState.knownHeight
+@@ -434,6 +439,16 @@ let getSourceNewHeight = async (
+             sourceState->recordRequestStats(res.requestStats)
+             h := res.height
+           } catch {
++          | Source.RateLimited({resetMs}) =>
++            sourceState.rateLimitedUntilMs = Some(
++              Date.now() +. Pervasives.min(resetMs, 300_000)->Int.toFloat,
++            )
++            onProviderFailure()
++          | Source.ProviderUnavailable({cooldownMs}) =>
++            sourceState.rateLimitedUntilMs = Some(
++              Date.now() +. Pervasives.min(cooldownMs, 60_000)->Int.toFloat,
++            )
++            onProviderFailure()
+           | _ => ()
+           }
+           if h.contents <= knownHeight && !(newHeight.contents > initialHeight) {
+@@ -491,6 +506,16 @@ let getSourceNewHeight = async (
+           }
+         }
+       } catch {
++      | Source.RateLimited({resetMs}) =>
++        let waitMs = Pervasives.min(resetMs, 300_000)
++        sourceState.rateLimitedUntilMs = Some(Date.now() +. waitMs->Int.toFloat)
++        onProviderFailure()
++        await Utils.delay(waitMs)
++      | Source.ProviderUnavailable({cooldownMs}) =>
++        let waitMs = Pervasives.min(cooldownMs, 60_000)
++        sourceState.rateLimitedUntilMs = Some(Date.now() +. waitMs->Int.toFloat)
++        onProviderFailure()
++        await Utils.delay(waitMs)
+       | exn =>
+         let retryInterval = sourceManager.getHeightRetryInterval(~retry=retry.contents)
+         logger->Logging.childTrace({
+@@ -533,10 +558,18 @@ let getNextSources = (sourceManager, ~isRealtime, ~excludedSources=?) => {
        | None => false
        }
        if !isExcluded {
@@ -154,7 +1215,43 @@ index dd28bf4cc23a6886369ede3c1675fcd40d9b74bf..f099eb6d6278ab7a6dd3c193d2e1e7d3
          switch getSourceRole(
            ~sourceFor=sourceState.source.sourceFor,
            ~isRealtime,
-@@ -779,8 +791,29 @@ let executeQuery = async (
+@@ -601,6 +634,13 @@ let waitForNewBlock = async (sourceManager: t, ~knownHeight, ~isRealtime, ~reduc
+
+   let mainSources = sourceManager->getNextSources(~isRealtime)
+
++  let providerFailureResolvers = []
++  let providerFailureSignal = Promise.make((resolve, _reject) => {
++    providerFailureResolvers->Array.push(resolve)->ignore
++  })
++  let onProviderFailure = () =>
++    providerFailureResolvers->Array.forEach(resolve => resolve())
++
+   let status = ref(Active)
+
+   // Use a much longer stall timeout when reduced polling is active
+@@ -626,11 +666,12 @@ let waitForNewBlock = async (sourceManager: t, ~knownHeight, ~isRealtime, ~reduc
+           ~status,
+           ~logger,
+           ~reducedPolling,
++          ~onProviderFailure,
+         ),
+       )
+     })
+     ->Array.concat([
+-      Utils.delay(stallTimeout)->Promise.then(() => {
++      Promise.race([Utils.delay(stallTimeout), providerFailureSignal])->Promise.then(() => {
+         // Build fallback: non-disabled sources not in mainSources with a valid role, even with recent lastFailedAt
+         let fallbackSources = []
+         sourcesState->Array.forEach(sourceState => {
+@@ -677,6 +718,7 @@ let waitForNewBlock = async (sourceManager: t, ~knownHeight, ~isRealtime, ~reduc
+                 ~status,
+                 ~logger,
+                 ~reducedPolling,
++                ~onProviderFailure,
+               ),
+             )
+           }),
+@@ -779,8 +821,55 @@ let executeQuery = async (
        responseRef := Some(response)
      } catch {
      | Source.RateLimited({resetMs}) =>
@@ -183,10 +1280,36 @@ index dd28bf4cc23a6886369ede3c1675fcd40d9b74bf..f099eb6d6278ab7a6dd3c193d2e1e7d3
 +        await sourceManager->waitForRateLimitReset(~resetMs=waitMs, ~retry, ~logger)
 +        retryRef := retryRef.contents + 1
 +      }
- 
++
++    | Source.ProviderUnavailable({cooldownMs, message}) =>
++      let waitMs = Pervasives.min(cooldownMs, 60_000)
++      let now = Date.now()
++      let cooldownDeadline = now +. waitMs->Int.toFloat
++      sourceState.rateLimitedUntilMs = Some(
++        switch sourceState.rateLimitedUntilMs {
++        | Some(existing) => Pervasives.max(existing, cooldownDeadline)
++        | None => cooldownDeadline
++        },
++      )
++      let nextSource =
++        sourceManager->getNextSource(~isRealtime, ~excludedSources=?excludedSourcesRef.contents)
++      switch nextSource {
++      | Some(next) if next !== sourceState =>
++        logger->Logging.childWarn({
++          "msg": "RPC source is unavailable; immediately switching to a fallback source.",
++          "reason": message,
++          "cooldownMs": waitMs,
++          "fallbackSource": next.source.name,
++        })
++        retryRef := 0
++      | _ =>
++        await sourceManager->waitForRateLimitReset(~resetMs=waitMs, ~retry, ~logger)
++        retryRef := retryRef.contents + 1
++      }
+
      | Source.GetItemsError(error) =>
        switch error {
-@@ -921,8 +954,26 @@ let getBlockHashes = async (sourceManager: t, ~blockNumbers: array<int>, ~isReal
+@@ -921,8 +1010,49 @@ let getBlockHashes = async (sourceManager: t, ~blockNumbers: array<int>, ~isReal
        }
      } catch {
      | Source.RateLimited({resetMs}) =>
@@ -212,11 +1335,34 @@ index dd28bf4cc23a6886369ede3c1675fcd40d9b74bf..f099eb6d6278ab7a6dd3c193d2e1e7d3
 +        await sourceManager->waitForRateLimitReset(~resetMs=waitMs, ~retry, ~logger)
 +        retryRef := retryRef.contents + 1
 +      }
- 
++
++    | Source.ProviderUnavailable({cooldownMs, message}) =>
++      let waitMs = Pervasives.min(cooldownMs, 60_000)
++      let cooldownDeadline = Date.now() +. waitMs->Int.toFloat
++      sourceState.rateLimitedUntilMs = Some(
++        switch sourceState.rateLimitedUntilMs {
++        | Some(existing) => Pervasives.max(existing, cooldownDeadline)
++        | None => cooldownDeadline
++        },
++      )
++      switch sourceManager->getNextSource(~isRealtime) {
++      | Some(next) if next !== sourceState =>
++        logger->Logging.childWarn({
++          "msg": "RPC source is unavailable; immediately switching to a fallback source.",
++          "reason": message,
++          "cooldownMs": waitMs,
++          "fallbackSource": next.source.name,
++        })
++        retryRef := 0
++      | _ =>
++        await sourceManager->waitForRateLimitReset(~resetMs=waitMs, ~retry, ~logger)
++        retryRef := retryRef.contents + 1
++      }
+
      | exn =>
        let backoffMillis = switch retry {
 diff --git a/src/sources/SourceManager.res.mjs b/src/sources/SourceManager.res.mjs
-index c2e2f3cd381da5f3d3df062221c24caff26f956e..19a5b92d257dcb1c13b192ae83a721ab1ecff41d 100644
+index c2e2f3cd381da5f3d3df062221c24caff26f956e..8498299a5c3b4430243a9c7645f96d16db7c4505 100644
 --- a/src/sources/SourceManager.res.mjs
 +++ b/src/sources/SourceManager.res.mjs
 @@ -230,6 +230,7 @@ function make(sources, isRealtime, newBlockStallTimeoutOpt, newBlockStallTimeout
@@ -227,29 +1373,120 @@ index c2e2f3cd381da5f3d3df062221c24caff26f956e..19a5b92d257dcb1c13b192ae83a721ab
        requestStats: {}
      })),
      statusStart: Performance.now(),
-@@ -465,7 +466,20 @@ function getNextSources(sourceManager, isRealtime, excludedSources) {
+@@ -333,7 +334,7 @@ function disableSource(sourceManager, sourceState) {
+   return true;
+ }
+
+-async function getSourceNewHeight(sourceManager, sourceState, knownHeight, stallTimeout, isRealtime, status, logger, reducedPolling) {
++async function getSourceNewHeight(sourceManager, sourceState, knownHeight, stallTimeout, isRealtime, status, logger, reducedPolling, onProviderFailure) {
+   let source = sourceState.source;
+   let initialHeight = sourceState.knownHeight;
+   let newHeight = {
+@@ -359,8 +360,15 @@ async function getSourceNewHeight(sourceManager, sourceState, knownHeight, stall
+             let res = await source.getHeightOrThrow();
+             recordRequestStats(sourceState, res.requestStats);
+             h = res.height;
+-          } catch (exn) {
+-
++          } catch (raw_exn) {
++            let exn = Primitive_exceptions.internalToException(raw_exn);
++            if (exn.RE_EXN_ID === Source.RateLimited) {
++              sourceState.rateLimitedUntilMs = Date.now() + Primitive_int.min(exn.resetMs, 300000);
++              onProviderFailure();
++            } else if (exn.RE_EXN_ID === Source.ProviderUnavailable) {
++              sourceState.rateLimitedUntilMs = Date.now() + Primitive_int.min(exn.cooldownMs, 60000);
++              onProviderFailure();
++            }
+           }
+           if (h <= knownHeight && newHeight.contents <= initialHeight) {
+             await Utils.delay(source.pollingInterval);
+@@ -415,14 +423,26 @@ async function getSourceNewHeight(sourceManager, sourceState, knownHeight, stall
+         }
+       } catch (raw_exn) {
+         let exn = Primitive_exceptions.internalToException(raw_exn);
+-        let retryInterval = sourceManager.getHeightRetryInterval(retry);
+-        Logging.childTrace(logger, {
+-          msg: `Height retrieval from ` + source.name + ` source failed. Retrying in ` + retryInterval.toString() + `ms.`,
+-          source: source.name,
+-          err: Utils.prettifyExn(exn)
+-        });
+-        retry = retry + 1 | 0;
+-        await Utils.delay(retryInterval);
++        if (exn.RE_EXN_ID === Source.RateLimited) {
++          let waitMs = Primitive_int.min(exn.resetMs, 300000);
++          sourceState.rateLimitedUntilMs = Date.now() + waitMs;
++          onProviderFailure();
++          await Utils.delay(waitMs);
++        } else if (exn.RE_EXN_ID === Source.ProviderUnavailable) {
++          let waitMs$1 = Primitive_int.min(exn.cooldownMs, 60000);
++          sourceState.rateLimitedUntilMs = Date.now() + waitMs$1;
++          onProviderFailure();
++          await Utils.delay(waitMs$1);
++        } else {
++          let retryInterval = sourceManager.getHeightRetryInterval(retry);
++          Logging.childTrace(logger, {
++            msg: `Height retrieval from ` + source.name + ` source failed. Retrying in ` + retryInterval.toString() + `ms.`,
++            source: source.name,
++            err: Utils.prettifyExn(exn)
++          });
++          retry = retry + 1 | 0;
++          await Utils.delay(retryInterval);
++        }
+       }
+     }
+   };
+@@ -465,7 +485,12 @@ function getNextSources(sourceManager, isRealtime, excludedSources) {
        let isExcluded = excludedSources !== undefined ? Primitive_option.valFromOption(excludedSources).has(sourceState) : false;
        if (!isExcluded) {
          let failedAt = sourceState.lastFailedAt;
 -        let isWorking = failedAt !== undefined ? now - failedAt >= sourceManager.recoveryTimeout : true;
 +        let failureRecovered = failedAt !== undefined ? now - failedAt >= sourceManager.recoveryTimeout : true;
 +        let untilMs = sourceState.rateLimitedUntilMs;
-+        let rateLimitCleared;
-+        if (untilMs !== undefined) {
-+          if (now >= untilMs) {
-+            sourceState.rateLimitedUntilMs = undefined;
-+            rateLimitCleared = true;
-+          } else {
-+            rateLimitCleared = false;
-+          }
-+        } else {
-+          rateLimitCleared = true;
-+        }
++        let rateLimitCleared = untilMs !== undefined ? (
++            now >= untilMs ? (sourceState.rateLimitedUntilMs = undefined, true) : false
++          ) : true;
 +        let isWorking = failureRecovered && rateLimitCleared;
          let match = getSourceRole(sourceState.source.sourceFor, isRealtime, sourceManager.hasRealtime);
          if (match !== undefined) {
            if (match === "Primary") {
-@@ -614,8 +628,23 @@ async function executeQuery(sourceManager, query, knownHeight, isRealtime) {
+@@ -518,6 +543,13 @@ async function waitForNewBlock(sourceManager, knownHeight, isRealtime, reducedPo
+     sourceManager.waitingLogged = true;
+   }
+   let mainSources = getNextSources(sourceManager, isRealtime, undefined);
++  let providerFailureResolvers = [];
++  let providerFailureSignal = new Promise((resolve, _reject) => {
++    providerFailureResolvers.push(resolve);
++  });
++  let onProviderFailure = () => {
++    providerFailureResolvers.forEach(resolve => resolve());
++  };
+   let status = {
+     contents: "Active"
+   };
+@@ -526,8 +558,11 @@ async function waitForNewBlock(sourceManager, knownHeight, isRealtime, reducedPo
+     );
+   let match = await Promise.race(mainSources.map(async sourceState => [
+     sourceState.source,
+-    await getSourceNewHeight(sourceManager, sourceState, knownHeight, stallTimeout, isRealtime, status, logger, reducedPolling)
+-  ]).concat([Utils.delay(stallTimeout).then(() => {
++    await getSourceNewHeight(sourceManager, sourceState, knownHeight, stallTimeout, isRealtime, status, logger, reducedPolling, onProviderFailure)
++  ]).concat([Promise.race([
++      Utils.delay(stallTimeout),
++      providerFailureSignal
++    ]).then(() => {
+       let fallbackSources = [];
+       sourcesState.forEach(sourceState => {
+         if (!sourceState.disabled && !mainSources.includes(sourceState) && Stdlib_Option.isSome(getSourceRole(sourceState.source.sourceFor, isRealtime, sourceManager.hasRealtime))) {
+@@ -545,7 +580,7 @@ async function waitForNewBlock(sourceManager, knownHeight, isRealtime, reducedPo
+       }
+       return Promise.race(fallbackSources.map(async sourceState => [
+         sourceState.source,
+-        await getSourceNewHeight(sourceManager, sourceState, knownHeight, stallTimeout, isRealtime, status, logger, reducedPolling)
++        await getSourceNewHeight(sourceManager, sourceState, knownHeight, stallTimeout, isRealtime, status, logger, reducedPolling, onProviderFailure)
+       ]));
+     })]));
+   let newBlockHeight = match[1];
+@@ -614,15 +649,57 @@ async function executeQuery(sourceManager, query, knownHeight, isRealtime) {
      } catch (raw_error) {
        let error = Primitive_exceptions.internalToException(raw_error);
        if (error.RE_EXN_ID === Source.RateLimited) {
@@ -261,6 +1498,7 @@ index c2e2f3cd381da5f3d3df062221c24caff26f956e..19a5b92d257dcb1c13b192ae83a721ab
 +        let existing = sourceState.rateLimitedUntilMs;
 +        sourceState.rateLimitedUntilMs = existing !== undefined ? Primitive_float.max(existing, cooldownDeadline) : cooldownDeadline;
 +        let nextSource = getNextSource(sourceManager, isRealtime, excludedSourcesRef);
++        let exit = 0;
 +        if (nextSource !== undefined && nextSource !== sourceState) {
 +          Logging.childWarn(logger$2, {
 +            msg: "Source is rate-limited; immediately switching to a fallback source.",
@@ -269,13 +1507,77 @@ index c2e2f3cd381da5f3d3df062221c24caff26f956e..19a5b92d257dcb1c13b192ae83a721ab
 +          });
 +          retryRef = 0;
 +        } else {
++          exit = 1;
++        }
++        if (exit === 1) {
 +          await waitForRateLimitReset(sourceManager, waitMs, retry, logger$2);
++          retryRef = retryRef + 1 | 0;
++        }
++      } else if (error.RE_EXN_ID === Source.ProviderUnavailable) {
++        let waitMs$1 = Primitive_int.min(error.cooldownMs, 60000);
++        let now$1 = Date.now();
++        let cooldownDeadline$1 = now$1 + waitMs$1;
++        let existing$1 = sourceState.rateLimitedUntilMs;
++        sourceState.rateLimitedUntilMs = existing$1 !== undefined ? Primitive_float.max(existing$1, cooldownDeadline$1) : cooldownDeadline$1;
++        let nextSource$1 = getNextSource(sourceManager, isRealtime, excludedSourcesRef);
++        let exit$1 = 0;
++        if (nextSource$1 !== undefined && nextSource$1 !== sourceState) {
++          Logging.childWarn(logger$2, {
++            msg: "RPC source is unavailable; immediately switching to a fallback source.",
++            reason: error.message,
++            cooldownMs: waitMs$1,
++            fallbackSource: nextSource$1.source.name
++          });
++          retryRef = 0;
++        } else {
++          exit$1 = 1;
++        }
++        if (exit$1 === 1) {
++          await waitForRateLimitReset(sourceManager, waitMs$1, retry, logger$2);
 +          retryRef = retryRef + 1 | 0;
 +        }
        } else if (error.RE_EXN_ID === Source.GetItemsError) {
          let error$1 = error._1;
-         let exit = 0;
-@@ -755,8 +784,22 @@ async function getBlockHashes(sourceManager, blockNumbers, isRealtime) {
+-        let exit = 0;
++        let exit$2 = 0;
+         switch (error$1.TAG) {
+           case "UnsupportedSelection" :
+           case "FailedGettingFieldSelection" :
+-            exit = 1;
++            exit$2 = 1;
+             break;
+           case "FailedGettingItems" :
+             let match = error$1.retry;
+@@ -651,13 +728,13 @@ async function executeQuery(sourceManager, query, knownHeight, isRealtime) {
+                 });
+                 let shouldSwitch = retry !== 0 && retry !== 1 ? retry % 2 === 0 : false;
+                 if (shouldSwitch) {
+-                  let now = Date.now();
+-                  sourceState.lastFailedAt = now;
+-                  let nextSource = getNextSource(sourceManager, isRealtime, excludedSourcesRef);
++                  let now$2 = Date.now();
++                  sourceState.lastFailedAt = now$2;
++                  let nextSource$2 = getNextSource(sourceManager, isRealtime, excludedSourcesRef);
+                   let hasWorkingAlternative;
+-                  if (nextSource !== undefined) {
+-                    let failedAt = nextSource.lastFailedAt;
+-                    hasWorkingAlternative = failedAt !== undefined ? now - failedAt >= sourceManager.recoveryTimeout : true;
++                  if (nextSource$2 !== undefined) {
++                    let failedAt = nextSource$2.lastFailedAt;
++                    hasWorkingAlternative = failedAt !== undefined ? now$2 - failedAt >= sourceManager.recoveryTimeout : true;
+                   } else {
+                     hasWorkingAlternative = false;
+                   }
+@@ -690,7 +767,7 @@ async function executeQuery(sourceManager, query, knownHeight, isRealtime) {
+             }
+             break;
+         }
+-        if (exit === 1) {
++        if (exit$2 === 1) {
+           let notAlreadyDisabled = disableSource(sourceManager, sourceState);
+           if (notAlreadyDisabled) {
+             switch (error$1.TAG) {
+@@ -755,8 +832,48 @@ async function getBlockHashes(sourceManager, blockNumbers, isRealtime) {
      } catch (raw_exn) {
        let exn = Primitive_exceptions.internalToException(raw_exn);
        if (exn.RE_EXN_ID === Source.RateLimited) {
@@ -285,16 +1587,42 @@ index c2e2f3cd381da5f3d3df062221c24caff26f956e..19a5b92d257dcb1c13b192ae83a721ab
 +        let cooldownDeadline = Date.now() + waitMs;
 +        let existing = sourceState.rateLimitedUntilMs;
 +        sourceState.rateLimitedUntilMs = existing !== undefined ? Primitive_float.max(existing, cooldownDeadline) : cooldownDeadline;
-+        let nextSource = getNextSource(sourceManager, isRealtime, undefined);
-+        if (nextSource !== undefined && nextSource !== sourceState) {
++        let next = getNextSource(sourceManager, isRealtime, undefined);
++        let exit = 0;
++        if (next !== undefined && next !== sourceState) {
 +          Logging.childWarn(logger$1, {
 +            msg: "Source is rate-limited; immediately switching to a fallback source.",
 +            waitMs: waitMs,
-+            fallbackSource: nextSource.source.name
++            fallbackSource: next.source.name
 +          });
 +          retryRef = 0;
 +        } else {
++          exit = 1;
++        }
++        if (exit === 1) {
 +          await waitForRateLimitReset(sourceManager, waitMs, retry, logger$1);
++          retryRef = retryRef + 1 | 0;
++        }
++      } else if (exn.RE_EXN_ID === Source.ProviderUnavailable) {
++        let waitMs$1 = Primitive_int.min(exn.cooldownMs, 60000);
++        let cooldownDeadline$1 = Date.now() + waitMs$1;
++        let existing$1 = sourceState.rateLimitedUntilMs;
++        sourceState.rateLimitedUntilMs = existing$1 !== undefined ? Primitive_float.max(existing$1, cooldownDeadline$1) : cooldownDeadline$1;
++        let next$1 = getNextSource(sourceManager, isRealtime, undefined);
++        let exit$1 = 0;
++        if (next$1 !== undefined && next$1 !== sourceState) {
++          Logging.childWarn(logger$1, {
++            msg: "RPC source is unavailable; immediately switching to a fallback source.",
++            reason: exn.message,
++            cooldownMs: waitMs$1,
++            fallbackSource: next$1.source.name
++          });
++          retryRef = 0;
++        } else {
++          exit$1 = 1;
++        }
++        if (exit$1 === 1) {
++          await waitForRateLimitReset(sourceManager, waitMs$1, retry, logger$1);
 +          retryRef = retryRef + 1 | 0;
 +        }
        } else {

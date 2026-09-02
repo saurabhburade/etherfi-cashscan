@@ -6,6 +6,7 @@ import {
   priceProviderAvailableAtBlock,
 } from "../envio-enrichment-effects.js";
 import { erc20MetadataEffect } from "../erc20-metadata-effect.js";
+import { historicalPriceAt } from "../historical-price-buckets.js";
 import {
   accountId,
   amountAtPrice,
@@ -1088,6 +1089,84 @@ async function resolveCanonicalValuation(
     current,
   );
   if (canonicalBucket) return canonicalBucket;
+  const historicalPrice = historicalPriceAt(event.chainId, tokenAddress, event.block.timestamp);
+  if (historicalPrice) {
+    const sourceId = `${id}:historical_constant`;
+    const observationId = `${eventId(event.chainId, event.transaction.hash, event.logIndex)}:${lower(tokenAddress)}:historical_constant`;
+    context.TokenPriceSource.set({
+      id: sourceId,
+      chainId: event.chainId,
+      tokenId: id,
+      tokenAddress: lower(tokenAddress),
+      token_id: id,
+      sourceKind: "historical_constant",
+      sourceType: historicalPrice.source,
+      sourceIdentifier: historicalPrice.sourceIdentifier,
+      sourceAddress: historicalPrice.sourceAddresses[0],
+      updatedAt: observedAt,
+    });
+    context.TokenPriceObservation.set({
+      id: observationId,
+      chainId: event.chainId,
+      tokenId: id,
+      tokenAddress: lower(tokenAddress),
+      token_id: id,
+      sourceId,
+      priceUsdE18: historicalPrice.priceUsdE18,
+      valuationStatus: "historical_constant_priced",
+      priceStatus: "historical_constant_priced",
+      observedAt: historicalPrice.bucketStart,
+      blockNumber: asBigInt(event.block.number),
+      referenceChainId: historicalPrice.sourceChainId,
+      referenceTokenAddress: historicalPrice.sourceAddresses[0],
+      referenceObservedAt: historicalPrice.bucketStart,
+    });
+    if (
+      current?.priceUsdE18 &&
+      current.observationId &&
+      priceDeviationOverHalf(historicalPrice.priceUsdE18, current.priceUsdE18)
+    ) {
+      context.PriceAnomaly.set({
+        id: `${observationId}:deviation`,
+        chainId: event.chainId,
+        tokenId: id,
+        tokenAddress: lower(tokenAddress),
+        observationId: current.observationId,
+        candidateObservationId: observationId,
+        verificationStatus: "unverified_deviation",
+        reason: "historical constant candidate deviates by more than 50 percent from the last indexed price",
+        observedAt,
+      });
+      return { tokenDecimals: token.decimals, status: "unpriced", source: "price_anomaly" };
+    }
+    context.TokenPriceCurrent.set({
+      id,
+      chainId: event.chainId,
+      tokenAddress: lower(tokenAddress),
+      token_id: id,
+      tokenId: id,
+      observationId,
+      priceUsdE18: historicalPrice.priceUsdE18,
+      priceUsd: historicalPrice.priceUsdE18,
+      priceStatus: "historical_constant_priced",
+      sourceType: historicalPrice.source,
+      valuationStatus: "historical_constant_priced",
+      observedAt: historicalPrice.bucketStart,
+      expiresAt: historicalPrice.bucketEnd,
+      updatedAt: observedAt,
+      updatedBlock: asBigInt(event.block.number),
+      referenceChainId: historicalPrice.sourceChainId,
+      referenceTokenAddress: historicalPrice.sourceAddresses[0],
+      referenceObservedAt: historicalPrice.bucketStart,
+    });
+    return {
+      amountUsd: amountAtPrice(amount, historicalPrice.priceUsdE18, token.decimals),
+      priceUsdE18: historicalPrice.priceUsdE18,
+      tokenDecimals: token.decimals,
+      status: "historical_constant_priced",
+      source: historicalPrice.source,
+    };
+  }
   const bucketStart = fifteenMinuteBucket(observedAt);
   const expiresAt = new Date(new Date(bucketStart).getTime() + 900_000);
   const effect = priceProviderAvailableAtBlock(event.chainId, asBigInt(event.block.number))

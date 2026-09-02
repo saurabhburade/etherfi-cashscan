@@ -54,6 +54,12 @@ describe("token oracle discovery", () => {
       decimalsVerified: true,
       metadataStatus: "static_verified",
     });
+    expect(tokenFromRegistry(534352, "0xca0bfd5f735924e34cc567146989e467ffbbce1a")).toMatchObject({
+      symbol: "weETH",
+      decimals: 18,
+      decimalsVerified: true,
+      metadataStatus: "static_verified",
+    });
   });
 
   it("maps only registry-verified peers across Cash chains", () => {

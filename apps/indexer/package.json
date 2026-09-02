@@ -13,6 +13,8 @@
     "dev": "envio dev",
     "format": "biome format --write .",
     "format:check": "biome format .",
+    "generate:historical-prices": "node scripts/generate-historical-price-buckets.mjs",
+    "generate:historical-prices:full": "REGENERATE_ORACLE_BUCKETS=1 node scripts/generate-historical-price-buckets.mjs",
     "start": "envio start",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "biome lint .",

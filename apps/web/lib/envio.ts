@@ -1123,6 +1123,12 @@ export function tokenAnalyticsRows(tokens: TokenRecord[], metrics: Row[], prices
   const priceById = new Map(
     prices.map((price) => [tokenAnalyticsId(Number(price.chainId), String(price.tokenAddress).toLowerCase()), price]),
   );
+  const verifiedPriceAliases = new Map([
+    [
+      tokenAnalyticsId(534352, "0xca0bfd5f735924e34cc567146989e467ffbbce1a"),
+      tokenAnalyticsId(534352, "0x01f0a31698c4d065659b9bdc21b3610292a1c506"),
+    ],
+  ]);
 
   return metrics
     .filter((metric) => {
@@ -1134,7 +1140,12 @@ export function tokenAnalyticsRows(tokens: TokenRecord[], metrics: Row[], prices
       const chainId = Number(metric.chainId);
       const tokenAddress = String(metric.tokenAddress).toLowerCase();
       const token = tokenById.get(tokenAnalyticsId(chainId, tokenAddress));
-      const currentPrice = priceById.get(tokenAnalyticsId(chainId, tokenAddress));
+      const priceId = tokenAnalyticsId(chainId, tokenAddress);
+      const exactPrice = priceById.get(priceId);
+      const currentPrice =
+        BigInt(String(exactPrice?.priceUsdE18 ?? "0")) > 0n
+          ? exactPrice
+          : priceById.get(verifiedPriceAliases.get(priceId) ?? "");
       const currentPriceUsd =
         BigInt(String(currentPrice?.priceUsdE18 ?? "0")) > 0n
           ? fixedPoint(String(currentPrice?.priceUsdE18), 18)

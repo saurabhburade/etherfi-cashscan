@@ -294,6 +294,14 @@ describe("Envio-native Cash Explorer acceptance contract", () => {
     expect(resolver.indexOf("context.effect(currentTokenPriceEffect")).toBeGreaterThan(
       resolver.indexOf("resolveCanonicalBucketValuation("),
     );
+    expect(resolver.indexOf("historicalPriceAt(")).toBeGreaterThan(
+      resolver.indexOf("resolveCanonicalBucketValuation("),
+    );
+    expect(resolver.indexOf("historicalPriceAt(")).toBeLessThan(
+      resolver.indexOf("context.effect(currentTokenPriceEffect"),
+    );
+    expect(resolver).toContain('sourceKind: "historical_constant"');
+    expect(resolver).toContain('status: "historical_constant_priced"');
     expect(handlers).toContain("context.CanonicalAssetPriceBucket.set(");
     expect(resolver).toContain("blockNumber: String(event.block.number)");
     expect(resolver).toContain("blockHash: event.block.hash");

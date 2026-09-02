@@ -60,6 +60,7 @@ const TOKEN_REGISTRY: Readonly<Record<number, Readonly<Record<string, TokenMetad
     "0x06efdbff2a14a7c8e15944d1f4a48f9f95f663a4": { name: "USD Coin", symbol: "USDC", decimals: 6 },
     "0xf55bec9cafdbe8730f096aa55dad6d22d44099df": { name: "Tether USD", symbol: "USDT", decimals: 6 },
     "0x01f0a31698c4d065659b9bdc21b3610292a1c506": { name: "Wrapped eETH", symbol: "weETH", decimals: 18 },
+    "0xca0bfd5f735924e34cc567146989e467ffbbce1a": { name: "Wrapped eETH", symbol: "weETH", decimals: 18 },
     "0x5300000000000000000000000000000000000004": { name: "Wrapped Ether", symbol: "WETH", decimals: 18 },
     "0xd83e3d560ba6f05094d9d8b3eb8aaea571d1864e": { name: "Wrapped HYPE", symbol: "wHYPE", decimals: 18 },
   },

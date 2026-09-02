@@ -377,6 +377,46 @@ describe("token analytics metric contract", () => {
 
     expect(rows[0]?.reserveUsd).toBeCloseTo(111.848622, 6);
   });
+
+  it("uses the verified modern weETH price for the legacy Scroll contract", () => {
+    const legacyAddress = "0xca0bfd5f735924e34cc567146989e467ffbbce1a";
+    const modernAddress = "0x01f0a31698c4d065659b9bdc21b3610292a1c506";
+    const rows = tokenAnalyticsRows(
+      [
+        {
+          chainId: 534352,
+          address: legacyAddress,
+          name: "Wrapped eETH",
+          symbol: "weETH",
+          decimals: 18,
+          decimalsVerified: true,
+          oracleDecimals: 0,
+          oracleHeartbeat: 0,
+          price: "0",
+          priceUpdatedAt: "0",
+        },
+      ] as TokenRecord[],
+      [{ chainId: 534352, tokenAddress: legacyAddress, safeAccountCount: "2", safeInflow: "2484991027313909862" }],
+      [
+        {
+          chainId: 534352,
+          tokenAddress: legacyAddress,
+          priceUsdE18: null,
+          priceStatus: "unavailable",
+        },
+        {
+          chainId: 534352,
+          tokenAddress: modernAddress,
+          priceUsdE18: "2849444799360000000000",
+          priceStatus: "historical_constant_priced",
+        },
+      ],
+    );
+
+    expect(rows[0]?.reserveUsd).toBe(0);
+    expect(rows[0]?.topUpUsd).toBe(0);
+    expect(rows[0]?.safeInflow).toBe("2484991027313909862");
+  });
 });
 
 describe("deriveCashSafeData", () => {
