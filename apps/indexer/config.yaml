@@ -131,8 +131,6 @@ chains:
     rpc:
       - url: ${OPTIMISM_RPC_URL:-https://optimism-rpc.publicnode.com}
         for: realtime
-      # Envio activates these in order when the primary chain source stalls.
-      # Sentio sustained 600 req/min; the next providers add independent redundancy.
       - url: https://optimism.rpc.sentio.xyz
         for: fallback
       - url: https://mainnet.optimism.io

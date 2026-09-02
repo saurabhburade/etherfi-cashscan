@@ -1,0 +1,302 @@
+diff --git a/src/Env.res b/src/Env.res
+index ab23da20d3d46fe33b13ef908f2fc40a7a53da48..740131205a9746453394d1b796d09acef7ab88d7 100644
+--- a/src/Env.res
++++ b/src/Env.res
+@@ -6,9 +6,23 @@
+ let targetBufferSize = envSafe->EnvSafe.get("ENVIO_INDEXING_MAX_BUFFER_SIZE", S.option(S.int))
+ let maxAddrInPartition = envSafe->EnvSafe.get("MAX_PARTITION_SIZE", S.int, ~fallback=5_000)
+ 
+-// Most parallel in-flight queries a single chain may have at once, across all
+-// its partitions (consumed as FetchState.maxChainConcurrency).
+-let maxChainConcurrency = 100
++// Keep source pressure bounded so a backfill does not burst enough concurrent
++// requests to immediately exhaust HyperSync or public RPC rate limits.
++let maxChainConcurrency =
++  Pervasives.max(
++    1,
++    envSafe->EnvSafe.get("ENVIO_MAX_CHAIN_CONCURRENCY", S.int, ~fallback=4),
++  )
++
++let maxInFlightChunksPerPartition =
++  Pervasives.max(
++    1,
++    envSafe->EnvSafe.get(
++      "ENVIO_MAX_IN_FLIGHT_CHUNKS_PER_PARTITION",
++      S.int,
++      ~fallback=1,
++    ),
++  )
+ 
+ // Switch a single contract to client-side address filtering
+ // once its registered address count crosses this threshold. Keeping addresses
+diff --git a/src/Env.res.mjs b/src/Env.res.mjs
+index c4a316843a7abe7141e70d57a3c1d83f76a94df1..1e528de6ef7cf20f6fcdd312e0f214b73f2249f4 100644
+--- a/src/Env.res.mjs
++++ b/src/Env.res.mjs
+@@ -3,6 +3,7 @@
+ import * as EnvSafe from "./EnvSafe.res.mjs";
+ import * as Logging from "./Logging.res.mjs";
+ import * as Postgres from "./bindings/Postgres.res.mjs";
++import * as Primitive_int from "@rescript/runtime/lib/es6/Primitive_int.js";
+ import * as Stdlib_Option from "@rescript/runtime/lib/es6/Stdlib_Option.js";
+ import * as Stdlib_JsError from "@rescript/runtime/lib/es6/Stdlib_JsError.js";
+ import * as HyperSyncClient from "./sources/HyperSyncClient.res.mjs";
+@@ -17,7 +18,11 @@ let targetBufferSize = EnvSafe.get(envSafe, "ENVIO_INDEXING_MAX_BUFFER_SIZE", S$
+ 
+ let maxAddrInPartition = EnvSafe.get(envSafe, "MAX_PARTITION_SIZE", S$RescriptSchema.int, undefined, 5000, undefined, undefined);
+ 
+-let clientFilterAddressThreshold = EnvSafe.get(envSafe, "ENVIO_CLIENT_FILTER_ADDRESS_THRESHOLD", S$RescriptSchema.int, undefined, (maxAddrInPartition * 100 | 0) / 2 | 0, undefined, undefined);
++let maxChainConcurrency = Primitive_int.max(1, EnvSafe.get(envSafe, "ENVIO_MAX_CHAIN_CONCURRENCY", S$RescriptSchema.int, undefined, 4, undefined, undefined));
++
++let maxInFlightChunksPerPartition = Primitive_int.max(1, EnvSafe.get(envSafe, "ENVIO_MAX_IN_FLIGHT_CHUNKS_PER_PARTITION", S$RescriptSchema.int, undefined, 1, undefined, undefined));
++
++let clientFilterAddressThreshold = EnvSafe.get(envSafe, "ENVIO_CLIENT_FILTER_ADDRESS_THRESHOLD", S$RescriptSchema.int, undefined, (maxAddrInPartition * maxChainConcurrency | 0) / 2 | 0, undefined, undefined);
+ 
+ let inMemoryObjectsTarget = EnvSafe.get(envSafe, "ENVIO_IN_MEMORY_OBJECTS_TARGET", S$RescriptSchema.int, undefined, 100000, undefined, undefined);
+ 
+@@ -216,12 +221,11 @@ let ThrottleWrites = {
+ 
+ EnvSafe.close(envSafe);
+ 
+-let maxChainConcurrency = 100;
+-
+ export {
+   targetBufferSize,
+   maxAddrInPartition,
+   maxChainConcurrency,
++  maxInFlightChunksPerPartition,
+   clientFilterAddressThreshold,
+   inMemoryObjectsTarget,
+   serverPort,
+diff --git a/src/FetchState.res b/src/FetchState.res
+index 4123e06e4d5684cfc8d606df12cc10d97584e3fe..9238fe6960415c6d49a90cba0da31962ed41a377 100644
+--- a/src/FetchState.res
++++ b/src/FetchState.res
+@@ -1935,7 +1935,7 @@ let startFetchingQueries = ({optimizedPartitions}: t, ~queries: array<query>) =>
+ // Only queries still being fetched count — a fetched chunk parked behind a gap
+ // doesn't hold a slot, so a slow query at the queue head can't starve the
+ // partition's pipeline.
+-let maxInFlightChunksPerPartition = 12
++let maxInFlightChunksPerPartition = Env.maxInFlightChunksPerPartition
+ 
+ // Most parallel in-flight queries a single chain may have at once, across all
+ // its partitions. Bounds source load on chains with many partitions, where the
+diff --git a/src/FetchState.res.mjs b/src/FetchState.res.mjs
+index dd22e8a0b88df6df7a9c4f18e98b5d8a962fd452..b46790fc963f3cc8b334db88b82860333fee5080 100644
+--- a/src/FetchState.res.mjs
++++ b/src/FetchState.res.mjs
+@@ -1438,7 +1438,7 @@ function walkPartitionPending(p, partitionId, inFlightCount, candidates, headBlo
+     let pq = p.mutPendingQueries[pqIdx];
+     if (pq.fromBlock > cursor) {
+       let beforeLen = candidates.length;
+-      pushGapFillQueries(candidates, partitionId, cursor, Utils.$$Math.minOptInt(pq.fromBlock - 1 | 0, queryEndBlock), headBlockNumber, chainTargetBlock, maybeChunkRange, (12 - inFlightCount | 0) - chunksUsedThisCall | 0, p, partitionBudget, p.selection, p.addresses);
++      pushGapFillQueries(candidates, partitionId, cursor, Utils.$$Math.minOptInt(pq.fromBlock - 1 | 0, queryEndBlock), headBlockNumber, chainTargetBlock, maybeChunkRange, (maxInFlightChunksPerPartition - inFlightCount | 0) - chunksUsedThisCall | 0, p, partitionBudget, p.selection, p.addresses);
+       chunksUsedThisCall = chunksUsedThisCall + (candidates.length - beforeLen | 0) | 0;
+     }
+     let toBlock = pq.toBlock;
+@@ -1643,7 +1643,7 @@ function getNextQuery(param, chainTargetBlock, chainTargetItems) {
+       tmp = eb !== undefined ? fs.cursor <= eb : true;
+     }
+     if (tmp) {
+-      return (fs.inFlightCount + fs.chunksUsedThisCall | 0) < 12;
++      return (fs.inFlightCount + fs.chunksUsedThisCall | 0) < maxInFlightChunksPerPartition;
+     } else {
+       return false;
+     }
+@@ -2084,7 +2084,7 @@ function updateKnownHeight(fetchState, knownHeight) {
+ 
+ let blockItemLogIndex = 16777216;
+ 
+-let maxInFlightChunksPerPartition = 12;
++let maxInFlightChunksPerPartition = Env.maxInFlightChunksPerPartition;
+ 
+ let maxChainConcurrency = Env.maxChainConcurrency;
+ 
+diff --git a/src/sources/SourceManager.res b/src/sources/SourceManager.res
+index dd28bf4cc23a6886369ede3c1675fcd40d9b74bf..f099eb6d6278ab7a6dd3c193d2e1e7d377c87aaf 100644
+--- a/src/sources/SourceManager.res
++++ b/src/sources/SourceManager.res
+@@ -14,6 +14,9 @@ type sourceState = {
+   // Timestamp (ms) when this source last failed during executeQuery.
+   // Used to decide when to attempt recovery to this source.
+   mutable lastFailedAt: option<float>,
++  // Server-provided rate-limit deadline. Kept separate from lastFailedAt so a
++  // successful request that was already in flight cannot cancel the cooldown.
++  mutable rateLimitedUntilMs: option<float>,
+   requestStats: dict<requestStatAgg>,
+ }
+ 
+@@ -279,6 +282,7 @@ let make = (
+       pendingHeightResolvers: [],
+       disabled: false,
+       lastFailedAt: None,
++      rateLimitedUntilMs: None,
+       requestStats: Dict.make(),
+     }),
+     activeSource: initialActiveSource,
+@@ -533,10 +537,18 @@ let getNextSources = (sourceManager, ~isRealtime, ~excludedSources=?) => {
+       | None => false
+       }
+       if !isExcluded {
+-        let isWorking = switch sourceState.lastFailedAt {
++        let failureRecovered = switch sourceState.lastFailedAt {
+         | Some(failedAt) => now -. failedAt >= sourceManager.recoveryTimeout
+         | None => true
+         }
++        let rateLimitCleared = switch sourceState.rateLimitedUntilMs {
++        | Some(untilMs) if now >= untilMs =>
++          sourceState.rateLimitedUntilMs = None
++          true
++        | Some(_) => false
++        | None => true
++        }
++        let isWorking = failureRecovered && rateLimitCleared
+         switch getSourceRole(
+           ~sourceFor=sourceState.source.sourceFor,
+           ~isRealtime,
+@@ -779,8 +791,29 @@ let executeQuery = async (
+       responseRef := Some(response)
+     } catch {
+     | Source.RateLimited({resetMs}) =>
+-      await sourceManager->waitForRateLimitReset(~resetMs, ~retry, ~logger)
+-      retryRef := retryRef.contents + 1
++      let waitMs = Pervasives.min(resetMs, 300_000)
++      let now = Date.now()
++      let cooldownDeadline = now +. waitMs->Int.toFloat
++      sourceState.rateLimitedUntilMs = Some(
++        switch sourceState.rateLimitedUntilMs {
++        | Some(existing) => Pervasives.max(existing, cooldownDeadline)
++        | None => cooldownDeadline
++        },
++      )
++      let nextSource =
++        sourceManager->getNextSource(~isRealtime, ~excludedSources=?excludedSourcesRef.contents)
++      switch nextSource {
++      | Some(next) if next !== sourceState =>
++        logger->Logging.childWarn({
++          "msg": "Source is rate-limited; immediately switching to a fallback source.",
++          "waitMs": waitMs,
++          "fallbackSource": next.source.name,
++        })
++        retryRef := 0
++      | _ =>
++        await sourceManager->waitForRateLimitReset(~resetMs=waitMs, ~retry, ~logger)
++        retryRef := retryRef.contents + 1
++      }
+ 
+     | Source.GetItemsError(error) =>
+       switch error {
+@@ -921,8 +954,26 @@ let getBlockHashes = async (sourceManager: t, ~blockNumbers: array<int>, ~isReal
+       }
+     } catch {
+     | Source.RateLimited({resetMs}) =>
+-      await sourceManager->waitForRateLimitReset(~resetMs, ~retry, ~logger)
+-      retryRef := retryRef.contents + 1
++      let waitMs = Pervasives.min(resetMs, 300_000)
++      let cooldownDeadline = Date.now() +. waitMs->Int.toFloat
++      sourceState.rateLimitedUntilMs = Some(
++        switch sourceState.rateLimitedUntilMs {
++        | Some(existing) => Pervasives.max(existing, cooldownDeadline)
++        | None => cooldownDeadline
++        },
++      )
++      switch sourceManager->getNextSource(~isRealtime) {
++      | Some(next) if next !== sourceState =>
++        logger->Logging.childWarn({
++          "msg": "Source is rate-limited; immediately switching to a fallback source.",
++          "waitMs": waitMs,
++          "fallbackSource": next.source.name,
++        })
++        retryRef := 0
++      | _ =>
++        await sourceManager->waitForRateLimitReset(~resetMs=waitMs, ~retry, ~logger)
++        retryRef := retryRef.contents + 1
++      }
+ 
+     | exn =>
+       let backoffMillis = switch retry {
+diff --git a/src/sources/SourceManager.res.mjs b/src/sources/SourceManager.res.mjs
+index c2e2f3cd381da5f3d3df062221c24caff26f956e..19a5b92d257dcb1c13b192ae83a721ab1ecff41d 100644
+--- a/src/sources/SourceManager.res.mjs
++++ b/src/sources/SourceManager.res.mjs
+@@ -230,6 +230,7 @@ function make(sources, isRealtime, newBlockStallTimeoutOpt, newBlockStallTimeout
+       pendingHeightResolvers: [],
+       disabled: false,
+       lastFailedAt: undefined,
++      rateLimitedUntilMs: undefined,
+       requestStats: {}
+     })),
+     statusStart: Performance.now(),
+@@ -465,7 +466,20 @@ function getNextSources(sourceManager, isRealtime, excludedSources) {
+       let isExcluded = excludedSources !== undefined ? Primitive_option.valFromOption(excludedSources).has(sourceState) : false;
+       if (!isExcluded) {
+         let failedAt = sourceState.lastFailedAt;
+-        let isWorking = failedAt !== undefined ? now - failedAt >= sourceManager.recoveryTimeout : true;
++        let failureRecovered = failedAt !== undefined ? now - failedAt >= sourceManager.recoveryTimeout : true;
++        let untilMs = sourceState.rateLimitedUntilMs;
++        let rateLimitCleared;
++        if (untilMs !== undefined) {
++          if (now >= untilMs) {
++            sourceState.rateLimitedUntilMs = undefined;
++            rateLimitCleared = true;
++          } else {
++            rateLimitCleared = false;
++          }
++        } else {
++          rateLimitCleared = true;
++        }
++        let isWorking = failureRecovered && rateLimitCleared;
+         let match = getSourceRole(sourceState.source.sourceFor, isRealtime, sourceManager.hasRealtime);
+         if (match !== undefined) {
+           if (match === "Primary") {
+@@ -614,8 +628,23 @@ async function executeQuery(sourceManager, query, knownHeight, isRealtime) {
+     } catch (raw_error) {
+       let error = Primitive_exceptions.internalToException(raw_error);
+       if (error.RE_EXN_ID === Source.RateLimited) {
+-        await waitForRateLimitReset(sourceManager, error.resetMs, retry, logger$2);
+-        retryRef = retryRef + 1 | 0;
++        let waitMs = Primitive_int.min(error.resetMs, 300000);
++        let now = Date.now();
++        let cooldownDeadline = now + waitMs;
++        let existing = sourceState.rateLimitedUntilMs;
++        sourceState.rateLimitedUntilMs = existing !== undefined ? Primitive_float.max(existing, cooldownDeadline) : cooldownDeadline;
++        let nextSource = getNextSource(sourceManager, isRealtime, excludedSourcesRef);
++        if (nextSource !== undefined && nextSource !== sourceState) {
++          Logging.childWarn(logger$2, {
++            msg: "Source is rate-limited; immediately switching to a fallback source.",
++            waitMs: waitMs,
++            fallbackSource: nextSource.source.name
++          });
++          retryRef = 0;
++        } else {
++          await waitForRateLimitReset(sourceManager, waitMs, retry, logger$2);
++          retryRef = retryRef + 1 | 0;
++        }
+       } else if (error.RE_EXN_ID === Source.GetItemsError) {
+         let error$1 = error._1;
+         let exit = 0;
+@@ -755,8 +784,22 @@ async function getBlockHashes(sourceManager, blockNumbers, isRealtime) {
+     } catch (raw_exn) {
+       let exn = Primitive_exceptions.internalToException(raw_exn);
+       if (exn.RE_EXN_ID === Source.RateLimited) {
+-        await waitForRateLimitReset(sourceManager, exn.resetMs, retry, logger$1);
+-        retryRef = retryRef + 1 | 0;
++        let waitMs = Primitive_int.min(exn.resetMs, 300000);
++        let cooldownDeadline = Date.now() + waitMs;
++        let existing = sourceState.rateLimitedUntilMs;
++        sourceState.rateLimitedUntilMs = existing !== undefined ? Primitive_float.max(existing, cooldownDeadline) : cooldownDeadline;
++        let nextSource = getNextSource(sourceManager, isRealtime, undefined);
++        if (nextSource !== undefined && nextSource !== sourceState) {
++          Logging.childWarn(logger$1, {
++            msg: "Source is rate-limited; immediately switching to a fallback source.",
++            waitMs: waitMs,
++            fallbackSource: nextSource.source.name
++          });
++          retryRef = 0;
++        } else {
++          await waitForRateLimitReset(sourceManager, waitMs, retry, logger$1);
++          retryRef = retryRef + 1 | 0;
++        }
+       } else {
+         let backoffMillis = retry !== 0 ? 1000 * retry | 0 : 500;
+         let log = retry >= 4 ? Logging.childWarn : Logging.childTrace;

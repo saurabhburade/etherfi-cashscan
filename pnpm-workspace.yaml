@@ -12,3 +12,6 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - miniflare@5.20260831.0-alpha
   - wrangler@4.128.0
+
+patchedDependencies:
+  envio@3.6.1: patches/envio@3.6.1.patch
