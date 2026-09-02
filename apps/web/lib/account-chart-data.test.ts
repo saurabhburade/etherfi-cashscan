@@ -143,11 +143,18 @@ describe("account chart data", () => {
     );
 
     expect(points[0]).toEqual(
-      expect.objectContaining({ depositedUsd: 0, spentUsd: 4, cumulativeVolumeUsd: 4.1, hasUnpricedFlow: true }),
+      expect.objectContaining({
+        depositedUsd: 0,
+        spentUsd: 4,
+        cumulativeSpendUsd: 4,
+        cumulativeCashbackUsd: 0.1,
+        hasUnpricedSpend: false,
+        hasUnpricedCashback: false,
+      }),
     );
   });
 
-  it("includes every displayed daily account flow in cumulative volume", () => {
+  it("builds independent cumulative spend and cashback totals", () => {
     const points = accountDailyChartPoints(
       detail({
         days: [
@@ -186,8 +193,8 @@ describe("account chart data", () => {
     );
 
     expect(points).toEqual([
-      expect.objectContaining({ cashbackUsd: 2, borrowedUsd: 6, repaidUsd: 1, cumulativeVolumeUsd: 21 }),
-      expect.objectContaining({ cumulativeVolumeUsd: 25 }),
+      expect.objectContaining({ cashbackUsd: 2, spentUsd: 4, cumulativeSpendUsd: 4, cumulativeCashbackUsd: 2 }),
+      expect.objectContaining({ cumulativeSpendUsd: 6, cumulativeCashbackUsd: 2 }),
     ]);
   });
 });

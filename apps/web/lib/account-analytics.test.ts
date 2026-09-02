@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   type AccountAnalyticsMetric,
   accountAnalyticsEnabled,
+  accountDaysFromEvents,
+  accountDaysWithEventFallback,
   accountPriceUsd,
   accountUsd,
   aggregateAccountDays,
@@ -165,6 +167,84 @@ describe("account analytics feature contract", () => {
     expect(rows.map(({ day, spentUsd, transactionCount }) => ({ day, spentUsd, transactionCount }))).toEqual([
       { day: "2026-01-01", spentUsd: 50, transactionCount: 2 },
       { day: "2026-01-02", spentUsd: 40, transactionCount: 1 },
+    ]);
+  });
+
+  it("reconstructs missing daily Cash flows from canonical account events", () => {
+    const rows = accountDaysFromEvents([
+      {
+        id: "deposit",
+        economicActionId: "deposit-action",
+        chainId: 534352,
+        category: "deposit",
+        fundingMode: null,
+        status: "completed",
+        amountUsd: 100,
+        timestamp: "2025-01-01T01:00:00Z",
+      },
+      {
+        id: "spend",
+        economicActionId: "spend-action",
+        chainId: 534352,
+        category: "spend",
+        fundingMode: "debit",
+        status: "completed",
+        amountUsd: 40,
+        timestamp: "2025-01-01T02:00:00Z",
+      },
+      {
+        id: "pending-withdrawal",
+        economicActionId: "withdrawal-action",
+        chainId: 534352,
+        category: "withdrawal",
+        fundingMode: null,
+        status: "pending",
+        amountUsd: 25,
+        timestamp: "2025-01-01T03:00:00Z",
+      },
+    ]);
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        day: "2025-01-01",
+        depositedUsd: 100,
+        spentUsd: 40,
+        debitSpendUsd: 40,
+        withdrawnUsd: 0,
+        transactionCount: 2,
+        pricingCoverageRatio: 1,
+      }),
+    ]);
+  });
+
+  it("uses event-derived days only where an indexed account-day row is missing", () => {
+    const row = {
+      chainId: 534352,
+      tokenId: null,
+      depositedUsd: 0,
+      spentUsd: 10,
+      creditSpendUsd: 0,
+      debitSpendUsd: 10,
+      withdrawnUsd: 0,
+      cashbackUsd: 0,
+      borrowedUsd: 0,
+      repaidUsd: 0,
+      closingBalanceUsd: null,
+      closingBalanceStatus: "not_reconstructed",
+      transactionCount: 1,
+      pricingCoverageRatio: 1,
+    };
+    const rows = accountDaysWithEventFallback(
+      [{ ...row, day: "2025-01-01", spentUsd: 50 }],
+      [
+        { ...row, day: "2025-01-01", spentUsd: 10 },
+        { ...row, day: "2025-01-02", spentUsd: 20 },
+      ],
+    );
+
+    expect(rows.map(({ day, spentUsd }) => ({ day, spentUsd }))).toEqual([
+      { day: "2025-01-01", spentUsd: 50 },
+      { day: "2025-01-02", spentUsd: 20 },
     ]);
   });
 

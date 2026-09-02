@@ -110,7 +110,30 @@ export function AccountAnalyticsCharts({ detail }: { detail: AccountAnalyticsDet
           note="Cash mode 0 is Credit; mode 1 is Debit."
           subtitle="credit vs debit"
         />
-        <DailyCashFlowChart data={daily} />
+        <AccountDailySeriesChart
+          cumulativeDataKey="cumulativeSpendUsd"
+          cumulativeLabel="Cumulative spend"
+          dailyDataKey="spentUsd"
+          dailyColor="var(--chart-2)"
+          dailyLabel="Daily spend"
+          data={daily}
+          empty="No daily spend is indexed for this account."
+          filename="etherfi-account-spending.svg"
+          label="Spend Volume"
+          unpricedKey="hasUnpricedSpend"
+        />
+        <AccountDailySeriesChart
+          cumulativeDataKey="cumulativeCashbackUsd"
+          cumulativeLabel="Cumulative cashback"
+          dailyDataKey="cashbackUsd"
+          dailyColor="var(--chart-3)"
+          dailyLabel="Daily cashback"
+          data={daily}
+          empty="No daily cashback is indexed for this account."
+          filename="etherfi-account-cashback.svg"
+          label="Cashbacks"
+          unpricedKey="hasUnpricedCashback"
+        />
       </div>
     </section>
   );
@@ -195,46 +218,66 @@ function AccountDoughnut({
   );
 }
 
-function DailyCashFlowChart({ data }: { data: ReturnType<typeof accountDailyChartPoints> }) {
+type DailyChartPoint = ReturnType<typeof accountDailyChartPoints>[number];
+
+function AccountDailySeriesChart({
+  cumulativeDataKey,
+  cumulativeLabel,
+  dailyDataKey,
+  dailyColor,
+  dailyLabel,
+  data,
+  empty,
+  filename,
+  label,
+  unpricedKey,
+}: {
+  cumulativeDataKey: "cumulativeSpendUsd" | "cumulativeCashbackUsd";
+  cumulativeLabel: string;
+  dailyDataKey: "spentUsd" | "cashbackUsd";
+  dailyColor: string;
+  dailyLabel: string;
+  data: ReturnType<typeof accountDailyChartPoints>;
+  empty: string;
+  filename: string;
+  label: string;
+  unpricedKey: "hasUnpricedSpend" | "hasUnpricedCashback";
+}) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const total = data.at(-1)?.cumulativeVolumeUsd ?? 0;
-  const hasUnpriced = data.some((row) => row.hasUnpricedFlow);
+  const total = data.at(-1)?.[cumulativeDataKey] ?? 0;
+  const hasData = data.some((row) => row[dailyDataKey] > 0);
+  const hasUnpriced = data.some((row) => row[unpricedKey]);
   return (
-    <article className="overflow-hidden rounded-2xl bg-secondary/50 text-secondary-foreground lg:col-span-2">
+    <article className="overflow-hidden rounded-2xl bg-secondary/50 text-secondary-foreground">
       <div className="flex items-start justify-between gap-3 px-5 pt-5 sm:px-6 sm:pt-6">
         <div>
-          <span className="text-sm font-semibold text-muted-foreground">Cash Flow Volume</span>
+          <span className="text-sm font-semibold text-muted-foreground">{label}</span>
           <h3 className="mt-2 text-xl font-normal tracking-[-.03em]">{money(total)}</h3>
         </div>
         <ChartExportActions
           containerRef={chartContainerRef}
-          filename="etherfi-account-daily-cash-flows.svg"
-          title="Ether.fi: Daily account volume"
+          filename={filename}
+          title={`Ether.fi: ${label}`}
           value={money(total)}
         />
       </div>
-      {data.length ? (
+      {hasData ? (
         <div className="mt-2" ref={chartContainerRef}>
           <BarChart
-            aspectRatio="3 / 1"
-            barGap={0.2}
+            aspectRatio="2 / 1"
+            barGap={0.24}
             data={data}
             margin={{ top: 24, right: 18, bottom: 72, left: 64 }}
             xDataKey="date"
           >
             <Grid fadeHorizontal={false} numTicksRows={5} stroke="var(--chart-grid)" yAxisId="cumulative" />
-            <Bar dataKey="depositedUsd" fill="var(--chart-1)" lineCap={3} />
-            <Bar dataKey="spentUsd" fill="var(--chart-2)" lineCap={3} />
-            <Bar dataKey="withdrawnUsd" fill="var(--chart-4)" lineCap={3} />
-            <Bar dataKey="cashbackUsd" fill="var(--chart-5)" lineCap={3} />
-            <Bar dataKey="borrowedUsd" fill="var(--chart-6)" lineCap={3} />
-            <Bar dataKey="repaidUsd" fill="var(--chart-7)" lineCap={3} />
+            <Bar dataKey={dailyDataKey} fill={dailyColor} lineCap={3} />
             <Area
-              dataKey="cumulativeVolumeUsd"
-              fill="var(--chart-3)"
+              dataKey={cumulativeDataKey}
+              fill="var(--chart-1)"
               fillOpacity={0.08}
               showHighlight
-              stroke="var(--chart-3)"
+              stroke="var(--chart-1)"
               strokeWidth={2}
               yAxisId="cumulative"
             />
@@ -242,41 +285,28 @@ function DailyCashFlowChart({ data }: { data: ReturnType<typeof accountDailyChar
             <CartesianXAxis numTicks={3} />
             <ChartLegend
               items={[
-                { color: "var(--chart-1)", label: "Deposits / top-ups" },
-                { color: "var(--chart-2)", label: "Spend" },
-                { color: "var(--chart-4)", label: "Withdrawals" },
-                { color: "var(--chart-5)", label: "Cashback" },
-                { color: "var(--chart-6)", label: "Borrowed" },
-                { color: "var(--chart-7)", label: "Repaid" },
-                { color: "var(--chart-3)", label: "Cumulative volume" },
+                { color: dailyColor, label: dailyLabel },
+                { color: "var(--chart-1)", label: cumulativeLabel },
               ]}
             />
             <ChartTooltip
-              rows={(point) => [
-                {
-                  color: "var(--chart-1)",
-                  label: "Deposits / top-ups",
-                  value: money(Number(point.depositedUsd ?? 0)),
-                },
-                { color: "var(--chart-2)", label: "Spend", value: money(Number(point.spentUsd ?? 0)) },
-                {
-                  color: "var(--chart-4)",
-                  label: "Withdrawals",
-                  value: money(Number(point.withdrawnUsd ?? 0)),
-                },
-                { color: "var(--chart-5)", label: "Cashback", value: money(Number(point.cashbackUsd ?? 0)) },
-                { color: "var(--chart-6)", label: "Borrowed", value: money(Number(point.borrowedUsd ?? 0)) },
-                { color: "var(--chart-7)", label: "Repaid", value: money(Number(point.repaidUsd ?? 0)) },
-                {
-                  color: "var(--chart-3)",
-                  label: "Cumulative volume",
-                  value: money(Number(point.cumulativeVolumeUsd ?? 0)),
-                },
-              ]}
+              rows={(point) => {
+                const chartPoint = point as DailyChartPoint;
+                return [
+                  { color: dailyColor, label: dailyLabel, value: money(Number(chartPoint[dailyDataKey] ?? 0)) },
+                  {
+                    color: "var(--chart-1)",
+                    label: cumulativeLabel,
+                    value: money(Number(chartPoint[cumulativeDataKey] ?? 0)),
+                  },
+                ];
+              }}
             />
           </BarChart>
           {hasUnpriced ? (
-            <p className="px-5 pb-5 text-xs text-amber-500 sm:px-6">Some daily flows are unpriced and omitted.</p>
+            <p className="px-5 pb-5 text-xs text-amber-500 sm:px-6">
+              Some {dailyLabel.toLowerCase()} is unpriced and omitted.
+            </p>
           ) : null}
         </div>
       ) : (
@@ -284,7 +314,7 @@ function DailyCashFlowChart({ data }: { data: ReturnType<typeof accountDailyChar
           className="grid aspect-[2.1/1] place-items-center px-6 text-center text-sm text-muted-foreground"
           ref={chartContainerRef}
         >
-          No daily Cash flows are indexed for this account.
+          {empty}
         </div>
       )}
     </article>

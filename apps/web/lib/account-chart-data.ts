@@ -16,8 +16,10 @@ export type AccountDailyChartPoint = {
   cashbackUsd: number;
   borrowedUsd: number;
   repaidUsd: number;
-  cumulativeVolumeUsd: number;
-  hasUnpricedFlow: boolean;
+  cumulativeSpendUsd: number;
+  cumulativeCashbackUsd: number;
+  hasUnpricedSpend: boolean;
+  hasUnpricedCashback: boolean;
 };
 
 const colors = [
@@ -82,7 +84,8 @@ export function accountCashbackTypeSlices(detail: AccountAnalyticsDetail): Accou
 }
 
 export function accountDailyChartPoints(detail: AccountAnalyticsDetail): AccountDailyChartPoint[] {
-  let cumulativeVolumeUsd = 0;
+  let cumulativeSpendUsd = 0;
+  let cumulativeCashbackUsd = 0;
   return detail.days.map((row) => {
     const depositedUsd = row.depositedUsd ?? 0;
     const spentUsd = row.spentUsd ?? 0;
@@ -90,7 +93,8 @@ export function accountDailyChartPoints(detail: AccountAnalyticsDetail): Account
     const cashbackUsd = row.cashbackUsd ?? 0;
     const borrowedUsd = row.borrowedUsd ?? 0;
     const repaidUsd = row.repaidUsd ?? 0;
-    cumulativeVolumeUsd += depositedUsd + spentUsd + withdrawnUsd + cashbackUsd + borrowedUsd + repaidUsd;
+    cumulativeSpendUsd += spentUsd;
+    cumulativeCashbackUsd += cashbackUsd;
     return {
       date: new Date(`${row.day}T00:00:00Z`),
       day: row.day,
@@ -100,15 +104,10 @@ export function accountDailyChartPoints(detail: AccountAnalyticsDetail): Account
       cashbackUsd,
       borrowedUsd,
       repaidUsd,
-      cumulativeVolumeUsd,
-      hasUnpricedFlow: [
-        row.depositedUsd,
-        row.spentUsd,
-        row.withdrawnUsd,
-        row.cashbackUsd,
-        row.borrowedUsd,
-        row.repaidUsd,
-      ].some((value) => value === null),
+      cumulativeSpendUsd,
+      cumulativeCashbackUsd,
+      hasUnpricedSpend: row.spentUsd === null,
+      hasUnpricedCashback: row.cashbackUsd === null,
     };
   });
 }

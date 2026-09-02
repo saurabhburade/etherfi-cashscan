@@ -82,6 +82,17 @@ export type AccountDayAnalytics = {
   pricingCoverageRatio: number;
 };
 
+export type AccountFlowEvent = {
+  id: string;
+  economicActionId: string;
+  chainId: number;
+  category: string;
+  fundingMode: string | null;
+  status: string;
+  amountUsd: number | null;
+  timestamp: string;
+};
+
 export type AccountTokenActivity = {
   id: string;
   chainId: number;
@@ -122,7 +133,7 @@ export type AccountAnalyticsPage = {
 const ACCOUNT_FIELDS = `id chainId safeAddress tokenCount transactionCount lifetimeDepositedUsd lifetimeSpentUsd lifetimeWithdrawnUsd lifetimeCashbackUsd lifetimeCashbackGeneratedUsd lifetimeCashbackReceivedUsd lifetimeCashbackGeneratedForOthersUsd lifetimeCashbackRegularUsd lifetimeCashbackSpenderUsd lifetimeCashbackPromotionUsd lifetimeCashbackReferralUsd lifetimeCashbackOtherUsd creditSpendUsd debitSpendUsd borrowedUsd repaidUsd eventLedgerOutstandingDebtUsd debtStatus currentBalanceUsd netWorthUsd unpricedPositionCount firstActivityAt lastActivityAt`;
 const ACCOUNT_LIST_QUERY = `query AccountList($limit:Int!,$offset:Int!,$where:AccountMetric_bool_exp!,$orderBy:[AccountMetric_order_by!]!){AccountMetric(limit:$limit,offset:$offset,where:$where,order_by:$orderBy){${ACCOUNT_FIELDS}}}`;
 const ACCOUNT_TIERS_QUERY = `query AccountTiers($where:SafeTierState_bool_exp!,$limit:Int!){SafeTierState(where:$where,limit:$limit,order_by:{updatedAt:desc}){chainId safe tierId}}`;
-const ACCOUNT_DETAIL_QUERY = `query AccountDetail($accountWhere:AccountMetric_bool_exp!,$tokenWhere:AccountTokenMetric_bool_exp!,$dayWhere:AccountDailyMetric_bool_exp!,$eventWhere:AccountTokenEvent_bool_exp!,$priceWhere:TokenPriceCurrent_bool_exp!,$limit:Int!){AccountMetric(where:$accountWhere,limit:10){id chainId safeAddress tokenCount transactionCount lifetimeDepositedUsd lifetimeSpentUsd lifetimeWithdrawnUsd lifetimeCashbackUsd lifetimeCashbackGeneratedUsd lifetimeCashbackReceivedUsd lifetimeCashbackGeneratedForOthersUsd lifetimeCashbackRegularUsd lifetimeCashbackSpenderUsd lifetimeCashbackPromotionUsd lifetimeCashbackReferralUsd lifetimeCashbackOtherUsd creditSpendUsd debitSpendUsd borrowedUsd repaidUsd eventLedgerOutstandingDebtUsd debtStatus currentBalanceUsd netWorthUsd unpricedPositionCount firstActivityAt lastActivityAt} AccountTokenMetric(where:$tokenWhere,limit:300,order_by:[{currentBalanceUsd:desc_nulls_last},{id:asc}]){id chainId currentBalanceAmount currentBalanceUsd currentBalanceValuationStatus safeInflowAmount safeOutflowAmount safeBalanceAmount updatedAt depositedAmount depositedUsd spentAmount spentUsd withdrawnAmount withdrawnUsd cashbackAmount cashbackUsd borrowedUsd repaidUsd outstandingDebtUsd outstandingDebtStatus token{address symbol name decimals}} TokenPriceCurrent(where:$priceWhere,limit:300){tokenId priceUsdE18 priceStatus observedAt token{address chainId}} AccountDailyMetric(where:$dayWhere,limit:5000,order_by:{day:desc}){day chainId depositedUsd spentUsd creditSpendUsd debitSpendUsd withdrawnUsd cashbackUsd borrowedUsd repaidUsd closingBalanceUsd closingBalanceStatus transactionCount pricingCoverageRatio} AccountTokenEvent(where:$eventWhere,limit:$limit,order_by:[{timestamp:desc},{chainId:asc},{blockNumber:desc},{logIndex:desc},{legIndex:desc},{id:asc}]){id chainId category direction fundingMode status amountRaw amountUsd valuationStatus valuationSource cashbackType timestamp transactionHash token{address symbol name decimals}}}`;
+const ACCOUNT_DETAIL_QUERY = `query AccountDetail($accountWhere:AccountMetric_bool_exp!,$tokenWhere:AccountTokenMetric_bool_exp!,$dayWhere:AccountDailyMetric_bool_exp!,$eventWhere:AccountTokenEvent_bool_exp!,$priceWhere:TokenPriceCurrent_bool_exp!,$activityLimit:Int!,$dailyEventLimit:Int!){AccountMetric(where:$accountWhere,limit:10){id chainId safeAddress tokenCount transactionCount lifetimeDepositedUsd lifetimeSpentUsd lifetimeWithdrawnUsd lifetimeCashbackUsd lifetimeCashbackGeneratedUsd lifetimeCashbackReceivedUsd lifetimeCashbackGeneratedForOthersUsd lifetimeCashbackRegularUsd lifetimeCashbackSpenderUsd lifetimeCashbackPromotionUsd lifetimeCashbackReferralUsd lifetimeCashbackOtherUsd creditSpendUsd debitSpendUsd borrowedUsd repaidUsd eventLedgerOutstandingDebtUsd debtStatus currentBalanceUsd netWorthUsd unpricedPositionCount firstActivityAt lastActivityAt} AccountTokenMetric(where:$tokenWhere,limit:300,order_by:[{currentBalanceUsd:desc_nulls_last},{id:asc}]){id chainId currentBalanceAmount currentBalanceUsd currentBalanceValuationStatus safeInflowAmount safeOutflowAmount safeBalanceAmount updatedAt depositedAmount depositedUsd spentAmount spentUsd withdrawnAmount withdrawnUsd cashbackAmount cashbackUsd borrowedUsd repaidUsd outstandingDebtUsd outstandingDebtStatus token{address symbol name decimals}} TokenPriceCurrent(where:$priceWhere,limit:300){tokenId priceUsdE18 priceStatus observedAt token{address chainId}} AccountDailyMetric(where:$dayWhere,limit:5000,order_by:{day:desc}){day chainId depositedUsd spentUsd creditSpendUsd debitSpendUsd withdrawnUsd cashbackUsd borrowedUsd repaidUsd closingBalanceUsd closingBalanceStatus transactionCount pricingCoverageRatio} AccountTokenEvent(where:$eventWhere,limit:$activityLimit,order_by:[{timestamp:desc},{chainId:asc},{blockNumber:desc},{logIndex:desc},{legIndex:desc},{id:asc}]){id chainId category direction fundingMode status amountRaw amountUsd valuationStatus valuationSource cashbackType timestamp transactionHash token{address symbol name decimals}} AccountDailyFallbackEvent:AccountTokenEvent(where:$eventWhere,limit:$dailyEventLimit,order_by:[{timestamp:asc},{chainId:asc},{blockNumber:asc},{logIndex:asc},{legIndex:asc},{id:asc}]){id economicActionId chainId category fundingMode status amountUsd timestamp}}`;
 
 const number = (value: unknown): number | null => (value == null ? null : Number(value));
 /** Envio stores every account monetary value as an exact USD-e6 integer. */
@@ -254,6 +265,7 @@ export async function loadAccountAnalyticsDetail(
     TokenPriceCurrent: Array<Record<string, unknown>>;
     AccountDailyMetric: Array<Record<string, unknown>>;
     AccountTokenEvent: Array<Record<string, unknown>>;
+    AccountDailyFallbackEvent: Array<Record<string, unknown>>;
   }>(ACCOUNT_DETAIL_QUERY, {
     accountWhere: withChain({ safeAddress: { _eq: safe } }),
     tokenWhere: withChain({ account: { address: { _eq: safe } } }),
@@ -267,7 +279,8 @@ export async function loadAccountAnalyticsDetail(
         ],
       },
     },
-    limit: 50,
+    activityLimit: 50,
+    dailyEventLimit: 5001,
   });
   const accounts = await attachAccountTiers(data.AccountMetric.map(account));
   const currentPrices = new Map(
@@ -316,29 +329,43 @@ export async function loadAccountAnalyticsDetail(
       token: tokenValue,
     };
   });
+  const indexedDays = data.AccountDailyMetric.map((row) => ({
+    day: string(row.day),
+    chainId: integer(row.chainId),
+    tokenId: null,
+    depositedUsd: accountUsd(row.depositedUsd),
+    spentUsd: accountUsd(row.spentUsd),
+    creditSpendUsd: accountUsd(row.creditSpendUsd),
+    debitSpendUsd: accountUsd(row.debitSpendUsd),
+    withdrawnUsd: accountUsd(row.withdrawnUsd),
+    cashbackUsd: accountUsd(row.cashbackUsd),
+    borrowedUsd: accountUsd(row.borrowedUsd),
+    repaidUsd: accountUsd(row.repaidUsd),
+    closingBalanceUsd: accountUsd(row.closingBalanceUsd),
+    closingBalanceStatus: string(row.closingBalanceStatus),
+    transactionCount: integer(row.transactionCount),
+    pricingCoverageRatio: number(row.pricingCoverageRatio) ?? 0,
+  }));
+  const fallbackDays =
+    data.AccountDailyFallbackEvent.length <= 5000
+      ? accountDaysFromEvents(
+          data.AccountDailyFallbackEvent.map((row) => ({
+            id: string(row.id),
+            economicActionId: string(row.economicActionId),
+            chainId: integer(row.chainId),
+            category: string(row.category),
+            fundingMode: row.fundingMode == null ? null : string(row.fundingMode),
+            status: string(row.status),
+            amountUsd: accountUsd(row.amountUsd),
+            timestamp: string(row.timestamp),
+          })),
+        )
+      : [];
   return {
     account: aggregateAccountMetrics(accounts),
     chainIds: [...new Set(accounts.map((row) => row.chainId))].sort((a, b) => a - b),
     tokens,
-    days: aggregateAccountDays(
-      data.AccountDailyMetric.map((row) => ({
-        day: string(row.day),
-        chainId: integer(row.chainId),
-        tokenId: null,
-        depositedUsd: accountUsd(row.depositedUsd),
-        spentUsd: accountUsd(row.spentUsd),
-        creditSpendUsd: accountUsd(row.creditSpendUsd),
-        debitSpendUsd: accountUsd(row.debitSpendUsd),
-        withdrawnUsd: accountUsd(row.withdrawnUsd),
-        cashbackUsd: accountUsd(row.cashbackUsd),
-        borrowedUsd: accountUsd(row.borrowedUsd),
-        repaidUsd: accountUsd(row.repaidUsd),
-        closingBalanceUsd: accountUsd(row.closingBalanceUsd),
-        closingBalanceStatus: string(row.closingBalanceStatus),
-        transactionCount: integer(row.transactionCount),
-        pricingCoverageRatio: number(row.pricingCoverageRatio) ?? 0,
-      })),
-    ),
+    days: accountDaysWithEventFallback(indexedDays, fallbackDays),
     activity: data.AccountTokenEvent.map((row) => ({
       id: string(row.id),
       chainId: integer(row.chainId),
@@ -426,6 +453,88 @@ async function attachAccountTiers(accounts: AccountAnalyticsMetric[]) {
     ...row,
     tierId: tiers.get(`${row.chainId}:${row.safeAddress.toLowerCase()}`) ?? null,
   }));
+}
+
+type AccountFlowUsdField =
+  | "depositedUsd"
+  | "spentUsd"
+  | "creditSpendUsd"
+  | "debitSpendUsd"
+  | "withdrawnUsd"
+  | "cashbackUsd"
+  | "borrowedUsd"
+  | "repaidUsd";
+
+/** Reconstructs missing account-day rollups from the canonical priced event ledger. */
+export function accountDaysFromEvents(events: AccountFlowEvent[]): AccountDayAnalytics[] {
+  const grouped = new Map<
+    string,
+    { row: AccountDayAnalytics; actions: Set<string>; pricedLegs: number; totalLegs: number }
+  >();
+  for (const event of events) {
+    if (event.status !== "completed") continue;
+    const fields = accountFlowFields(event);
+    if (!fields.length) continue;
+    const day = event.timestamp.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    const key = `${event.chainId}:${day}`;
+    const current = grouped.get(key) ?? {
+      row: {
+        day,
+        chainId: event.chainId,
+        tokenId: null,
+        depositedUsd: 0,
+        spentUsd: 0,
+        creditSpendUsd: 0,
+        debitSpendUsd: 0,
+        withdrawnUsd: 0,
+        cashbackUsd: 0,
+        borrowedUsd: 0,
+        repaidUsd: 0,
+        closingBalanceUsd: null,
+        closingBalanceStatus: "not_reconstructed",
+        transactionCount: 0,
+        pricingCoverageRatio: 0,
+      },
+      actions: new Set<string>(),
+      pricedLegs: 0,
+      totalLegs: 0,
+    };
+    current.actions.add(event.economicActionId || event.id);
+    current.totalLegs += 1;
+    if (event.amountUsd !== null) current.pricedLegs += 1;
+    for (const field of fields) {
+      current.row[field] =
+        current.row[field] === null || event.amountUsd === null ? null : (current.row[field] ?? 0) + event.amountUsd;
+    }
+    grouped.set(key, current);
+  }
+  return [...grouped.values()].map(({ row, actions, pricedLegs, totalLegs }) => ({
+    ...row,
+    transactionCount: actions.size,
+    pricingCoverageRatio: totalLegs ? pricedLegs / totalLegs : 0,
+  }));
+}
+
+/** Canonical account-day rows win; event-derived rows fill only missing chain/day buckets. */
+export function accountDaysWithEventFallback(indexedDays: AccountDayAnalytics[], fallbackDays: AccountDayAnalytics[]) {
+  const indexedKeys = new Set(indexedDays.map((row) => `${row.chainId ?? "unknown"}:${row.day}`));
+  return aggregateAccountDays([
+    ...indexedDays,
+    ...fallbackDays.filter((row) => !indexedKeys.has(`${row.chainId ?? "unknown"}:${row.day}`)),
+  ]);
+}
+
+function accountFlowFields(event: AccountFlowEvent): AccountFlowUsdField[] {
+  if (event.category === "deposit") return ["depositedUsd"];
+  if (event.category === "withdrawal") return ["withdrawnUsd"];
+  if (event.category === "cashback") return ["cashbackUsd"];
+  if (event.category === "borrow") return ["borrowedUsd"];
+  if (event.category === "repayment") return ["repaidUsd"];
+  if (event.category !== "spend") return [];
+  if (event.fundingMode === "credit") return ["spentUsd", "creditSpendUsd"];
+  if (event.fundingMode === "debit") return ["spentUsd", "debitSpendUsd"];
+  return ["spentUsd"];
 }
 
 export function aggregateAccountDays(rows: AccountDayAnalytics[]): AccountDayAnalytics[] {
