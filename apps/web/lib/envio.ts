@@ -2,7 +2,6 @@ import { zeroAddress } from "viem";
 import {
   type CashExplorerTokenLeg,
   cashExplorerActivity,
-  cashExplorerEventWhere,
   cashExplorerSchemaEnabled,
   loadCashExplorerPage,
 } from "./cash-explorer";
@@ -236,7 +235,6 @@ const CORE_QUERY = /* GraphQL */ `
   query EtherFiCashExplorerCore(
     $activeSafeWhere: ActiveSafe_bool_exp!
     $dailyWhere: DailyCashMetric_bool_exp!
-    $balanceWhere: AccountTokenBalance_bool_exp!
   ) {
     ActiveSafe_aggregate(where: $activeSafeWhere) { aggregate { count } }
     DailyCashMetric(limit: 6000, where: $dailyWhere, order_by: { day: desc }) {
@@ -247,9 +245,14 @@ const CORE_QUERY = /* GraphQL */ `
       newCardCount
       topUpCount
     }
+  }
+`;
+
+const BALANCES_QUERY = /* GraphQL */ `
+  query EtherFiCashExplorerBalances($where: AccountTokenBalance_bool_exp!) {
     AccountTokenBalance(
       limit: 40
-      where: { _and: [{ amount: { _gt: "0" } }, $balanceWhere] }
+      where: { _and: [{ isPositive: { _eq: true } }, $where] }
       order_by: { amount: desc }
     ) {
       chainId
@@ -264,6 +267,12 @@ const CORE_QUERY = /* GraphQL */ `
 const GLOBAL_ACTIVE_SAFE_QUERY = /* GraphQL */ `
   query EtherFiCashExplorerGlobalActiveSafes {
     GlobalActiveSafe_aggregate { aggregate { count } }
+  }
+`;
+
+const STATUS_QUERY = /* GraphQL */ `
+  query EtherFiCashExplorerStatus {
+    Token_aggregate { aggregate { count } }
   }
 `;
 
@@ -373,10 +382,14 @@ export const ACTIVITY_PAGE_QUERY = /* GraphQL */ `
 `;
 
 export const ACTIVITY_EVENT_TYPES_QUERY = /* GraphQL */ `
-  query EtherFiCashActivityEventTypes($where: ScannerEvent_bool_exp!) {
-    ScannerEvent(distinct_on: [eventType], order_by: [{ eventType: asc }], where: $where) {
-      eventType
-    }
+  query EtherFiCashActivityEventTypes($where: ScannerEventTypeMetric_bool_exp!) {
+    ScannerEventTypeMetric(where: $where, order_by: [{ eventType: asc }]) { eventType }
+  }
+`;
+
+export const TOKEN_ACTIVITY_EVENT_TYPES_QUERY = /* GraphQL */ `
+  query EtherFiCashTokenActivityEventTypes($where: ScannerTokenEventTypeMetric_bool_exp!) {
+    ScannerTokenEventTypeMetric(where: $where, order_by: [{ eventType: asc }]) { eventType }
   }
 `;
 
@@ -481,12 +494,12 @@ let tokenAnalyticsHasLatestBorrowFields: boolean | null = null;
 
 const SAFE_ACCOUNTS_QUERY = /* GraphQL */ `
   query EtherFiCashExplorerSafeAccounts($where: SafeTokenBalance_bool_exp!) {
-    SafeTokenBalance_aggregate(where: { _and: [{ amount: { _gt: "0" } }, $where] }) {
+    SafeTokenBalance_aggregate(where: { _and: [{ isPositive: { _eq: true } }, $where] }) {
       aggregate { count }
     }
     SafeTokenBalance(
       limit: 5000
-      where: { _and: [{ amount: { _gt: "0" } }, $where] }
+      where: { _and: [{ isPositive: { _eq: true } }, $where] }
       order_by: [{ updatedAt: desc }, { safeAddress: asc }, { tokenAddress: asc }]
     ) {
       chainId
@@ -602,6 +615,16 @@ const CASH_SAFE_STATE_QUERY = /* GraphQL */ `
     PendingCashbackBalance(limit: 5000, where: $cashbackWhere) { chainId recipient tokenAddress amountUsd }
   }
 `;
+const TIER_SAFE_STATE_QUERY = /* GraphQL */ `
+  query EtherFiCashExplorerTierState($where: SafeTierState_bool_exp!) {
+    SafeTierState(limit: 5000, where: $where) { chainId safe tierId updatedAt }
+    tier0: SafeTierState_aggregate(where: { _and: [$where, { tierId: { _eq: 0 } }] }) { aggregate { count } }
+    tier1: SafeTierState_aggregate(where: { _and: [$where, { tierId: { _eq: 1 } }] }) { aggregate { count } }
+    tier2: SafeTierState_aggregate(where: { _and: [$where, { tierId: { _eq: 2 } }] }) { aggregate { count } }
+    tier3: SafeTierState_aggregate(where: { _and: [$where, { tierId: { _eq: 3 } }] }) { aggregate { count } }
+    tier4: SafeTierState_aggregate(where: { _and: [$where, { tierId: { _eq: 4 } }] }) { aggregate { count } }
+  }
+`;
 const CASH_HISTORY_QUERY = /* GraphQL */ `
   query EtherFiCashExplorerCashHistory($tierWhere: SafeTierChange_bool_exp!, $modeWhere: SafeModeChange_bool_exp!) {
     SafeTierChange_aggregate(where: $tierWhere) { aggregate { count } }
@@ -611,6 +634,14 @@ const CASH_HISTORY_QUERY = /* GraphQL */ `
     SafeModeChange_aggregate(where: $modeWhere) { aggregate { count } }
     SafeModeChange(limit: 5000, where: $modeWhere, order_by: { timestamp: desc }) {
       previousModeId modeId timestamp
+    }
+  }
+`;
+const TIER_HISTORY_QUERY = /* GraphQL */ `
+  query EtherFiCashExplorerTierHistory($where: SafeTierChange_bool_exp!) {
+    SafeTierChange_aggregate(where: $where) { aggregate { count } }
+    SafeTierChange(limit: 5000, where: $where, order_by: { timestamp: desc }) {
+      previousTierId tierId timestamp
     }
   }
 `;
@@ -651,6 +682,7 @@ type CoreResponse = {
   DailyCashMetric: Row[];
   AccountTokenBalance: Row[];
 };
+type StatusResponse = { Token_aggregate?: AggregateResponse };
 type GlobalActiveSafeResponse = { GlobalActiveSafe_aggregate?: AggregateResponse };
 type SpendBucketsResponse = { SpendBucketMetric: Row[] };
 type HourlyResponse = { HourlySpendMetric: Row[] };
@@ -736,16 +768,102 @@ export type TokenRecord = {
   analyticsUpdatedAt: string;
 };
 
-export async function loadExplorerData(filters: { query?: string; chainId?: number } = {}): Promise<ExplorerData> {
+const explorerDataOperationNames = [
+  "core",
+  "balances",
+  "globalActiveSafes",
+  "status",
+  "spendBuckets",
+  "hourly",
+  "events",
+  "tokens",
+  "extendedDaily",
+  "cashbackTotal",
+  "topUpRecipients",
+  "cashbackReceivers",
+  "repaymentTotal",
+  "rampTokenMetrics",
+  "fxRates",
+  "debtMetrics",
+  "cashSafeState",
+  "tierSafeState",
+  "cashHistory",
+  "tierHistory",
+  "cashOperations",
+  "cashConfiguration",
+] as const;
+
+type ExplorerDataOperation = (typeof explorerDataOperationNames)[number];
+export type ExplorerDataProfile = "full" | "home" | "stats" | "tokens" | "accounts" | "transactions" | "status";
+
+// Keep the default loader compatible with its pre-profile request set. The
+// narrower tier/status operations are alternatives for route profiles, not
+// additions to the legacy full fan-out.
+const fullExplorerDataOperations: readonly ExplorerDataOperation[] = [
+  "core",
+  "balances",
+  "globalActiveSafes",
+  "spendBuckets",
+  "hourly",
+  "events",
+  "tokens",
+  "extendedDaily",
+  "cashbackTotal",
+  "topUpRecipients",
+  "cashbackReceivers",
+  "repaymentTotal",
+  "rampTokenMetrics",
+  "fxRates",
+  "debtMetrics",
+  "cashSafeState",
+  "cashHistory",
+  "cashOperations",
+  "cashConfiguration",
+];
+
+const profileOperations: Record<ExplorerDataProfile, readonly ExplorerDataOperation[]> = {
+  full: fullExplorerDataOperations,
+  home: ["core", "globalActiveSafes", "events", "tokens"],
+  stats: [
+    "globalActiveSafes",
+    "spendBuckets",
+    "hourly",
+    "tokens",
+    "extendedDaily",
+    "cashbackTotal",
+    "rampTokenMetrics",
+    "fxRates",
+    "tierSafeState",
+    "tierHistory",
+  ],
+  tokens: ["status"],
+  accounts: ["core", "globalActiveSafes", "tierSafeState"],
+  transactions: ["core", "spendBuckets"],
+  status: ["status"],
+};
+
+/** The GraphQL operations a route profile is permitted to issue. */
+export function explorerDataOperations(profile: ExplorerDataProfile = "full"): readonly ExplorerDataOperation[] {
+  return profileOperations[profile];
+}
+
+export async function loadExplorerData(
+  filters: { query?: string; chainId?: number } = {},
+  profile: ExplorerDataProfile = "full",
+): Promise<ExplorerData> {
   const endpoint =
     process.env.ENVIO_GRAPHQL_URL ?? process.env.NEXT_PUBLIC_ENVIO_GRAPHQL_URL ?? "http://localhost:8080/v1/graphql";
   const adminSecret = process.env.ENVIO_HASURA_ADMIN_SECRET;
   const chainWhere = chainWhereFor(filters);
+  const selected = new Set(explorerDataOperations(profile));
+  const includes = (operation: ExplorerDataOperation) => selected.has(operation);
 
   try {
     const [
       core,
+      balanceData,
       globalActiveSafes,
+      status,
       spendBuckets,
       hourlyData,
       eventData,
@@ -759,98 +877,155 @@ export async function loadExplorerData(filters: { query?: string; chainId?: numb
       fxRates,
       debtMetrics,
       cashSafeState,
+      tierSafeState,
       cashHistory,
+      tierHistory,
       cashOperations,
       cashConfiguration,
     ] = await Promise.all([
-      graphqlRequired<CoreResponse>(
-        endpoint,
-        CORE_QUERY,
-        {
-          activeSafeWhere: chainWhere,
-          dailyWhere: chainWhere,
-          balanceWhere: chainWhere,
-        },
-        adminSecret,
-      ),
-      filters.chainId
-        ? Promise.resolve(null)
-        : graphqlOptional<GlobalActiveSafeResponse>(endpoint, GLOBAL_ACTIVE_SAFE_QUERY, {}, adminSecret),
-      graphqlOptional<SpendBucketsResponse>(endpoint, SPEND_BUCKETS_QUERY, { where: chainWhere }, adminSecret),
-      graphqlOptional<HourlyResponse>(endpoint, HOURLY_QUERY, { where: chainWhere }, adminSecret),
-      graphqlOptional<EventsResponse>(
-        endpoint,
-        EVENTS_QUERY,
-        {
-          spendWhere: eventWhereForType(filters, "spend"),
-          cashbackWhere: eventWhereForType(filters, "cashback"),
-        },
-        adminSecret,
-      ),
-      graphqlOptional<TokenResponse>(endpoint, TOKENS_QUERY, { where: chainWhere }, adminSecret),
-      graphqlOptional<ExtendedDailyResponse>(endpoint, EXTENDED_DAILY_QUERY, { where: chainWhere }, adminSecret),
-      graphqlOptional<CashbackTotalResponse>(endpoint, CASHBACK_TOTAL_QUERY, { where: chainWhere }, adminSecret),
-      graphqlOptional<TopUpRecipientsResponse>(endpoint, TOP_UP_RECIPIENTS_QUERY, { where: chainWhere }, adminSecret),
-      graphqlOptional<CashbackReceiversResponse>(
-        endpoint,
-        CASHBACK_RECEIVERS_QUERY,
-        { where: chainWhere },
-        adminSecret,
-      ),
-      graphqlOptional<RepaymentTotalResponse>(endpoint, REPAYMENT_TOTAL_QUERY, { where: chainWhere }, adminSecret),
-      graphqlOptional<RampTokenMetricsResponse>(endpoint, RAMP_TOKEN_METRICS_QUERY, { where: chainWhere }, adminSecret),
-      graphqlOptional<FxRatesResponse>(
-        endpoint,
-        FX_RATES_QUERY,
-        { where: chainWhere, stateWhere: chainWhere },
-        adminSecret,
-      ),
-      graphqlOptional<DebtMetricsResponse>(endpoint, DEBT_METRICS_QUERY, { where: chainWhere }, adminSecret),
-      graphqlOptional<CashSafeStateResponse>(
-        endpoint,
-        CASH_SAFE_STATE_QUERY,
-        {
-          tierWhere: chainWhere,
-          lendWhere: chainWhere,
-          modeWhere: chainWhere,
-          limitWhere: chainWhere,
-          withdrawalWhere: chainWhere,
-          cashbackWhere: chainWhere,
-        },
-        adminSecret,
-      ),
-      graphqlOptional<CashHistoryResponse>(
-        endpoint,
-        CASH_HISTORY_QUERY,
-        { tierWhere: chainWhere, modeWhere: chainWhere },
-        adminSecret,
-      ),
-      graphqlOptional<CashOperationResponse>(
-        endpoint,
-        CASH_OPERATION_QUERY,
-        { resupplyWhere: chainWhere, failureWhere: chainWhere },
-        adminSecret,
-      ),
-      graphqlOptional<CashConfigurationResponse>(
-        endpoint,
-        CASH_CONFIGURATION_QUERY,
-        {
-          tierWhere: chainWhere,
-          splitWhere: chainWhere,
-          delaysWhere: chainWhere,
-          dispatcherWhere: chainWhere,
-          gatewayWhere: chainWhere,
-          tokenWhere: chainWhere,
-          moduleWhere: chainWhere,
-        },
-        adminSecret,
-      ),
+      includes("core")
+        ? graphqlRequired<CoreResponse>(
+            endpoint,
+            CORE_QUERY,
+            {
+              activeSafeWhere: chainWhere,
+              dailyWhere: chainWhere,
+            },
+            adminSecret,
+          )
+        : Promise.resolve(null),
+      includes("balances")
+        ? graphqlOptional<CoreResponse>(endpoint, BALANCES_QUERY, { where: chainWhere }, adminSecret)
+        : Promise.resolve(null),
+      includes("globalActiveSafes") && !filters.chainId
+        ? graphqlOptional<GlobalActiveSafeResponse>(endpoint, GLOBAL_ACTIVE_SAFE_QUERY, {}, adminSecret)
+        : Promise.resolve(null),
+      includes("status")
+        ? graphqlOptional<StatusResponse>(endpoint, STATUS_QUERY, {}, adminSecret)
+        : Promise.resolve(null),
+      includes("spendBuckets")
+        ? graphqlOptional<SpendBucketsResponse>(endpoint, SPEND_BUCKETS_QUERY, { where: chainWhere }, adminSecret)
+        : Promise.resolve(null),
+      includes("hourly")
+        ? graphqlOptional<HourlyResponse>(endpoint, HOURLY_QUERY, { where: chainWhere }, adminSecret)
+        : Promise.resolve(null),
+      includes("events")
+        ? graphqlOptional<EventsResponse>(
+            endpoint,
+            EVENTS_QUERY,
+            {
+              spendWhere: eventWhereForType(filters, "spend"),
+              cashbackWhere: eventWhereForType(filters, "cashback"),
+            },
+            adminSecret,
+          )
+        : Promise.resolve(null),
+      includes("tokens")
+        ? graphqlOptional<TokenResponse>(endpoint, TOKENS_QUERY, { where: chainWhere }, adminSecret)
+        : Promise.resolve(null),
+      includes("extendedDaily")
+        ? graphqlOptional<ExtendedDailyResponse>(endpoint, EXTENDED_DAILY_QUERY, { where: chainWhere }, adminSecret)
+        : Promise.resolve(null),
+      includes("cashbackTotal")
+        ? graphqlOptional<CashbackTotalResponse>(endpoint, CASHBACK_TOTAL_QUERY, { where: chainWhere }, adminSecret)
+        : Promise.resolve(null),
+      includes("topUpRecipients")
+        ? graphqlOptional<TopUpRecipientsResponse>(
+            endpoint,
+            TOP_UP_RECIPIENTS_QUERY,
+            { where: chainWhere },
+            adminSecret,
+          )
+        : Promise.resolve(null),
+      includes("cashbackReceivers")
+        ? graphqlOptional<CashbackReceiversResponse>(
+            endpoint,
+            CASHBACK_RECEIVERS_QUERY,
+            { where: chainWhere },
+            adminSecret,
+          )
+        : Promise.resolve(null),
+      includes("repaymentTotal")
+        ? graphqlOptional<RepaymentTotalResponse>(endpoint, REPAYMENT_TOTAL_QUERY, { where: chainWhere }, adminSecret)
+        : Promise.resolve(null),
+      includes("rampTokenMetrics")
+        ? graphqlOptional<RampTokenMetricsResponse>(
+            endpoint,
+            RAMP_TOKEN_METRICS_QUERY,
+            { where: chainWhere },
+            adminSecret,
+          )
+        : Promise.resolve(null),
+      includes("fxRates")
+        ? graphqlOptional<FxRatesResponse>(
+            endpoint,
+            FX_RATES_QUERY,
+            { where: chainWhere, stateWhere: chainWhere },
+            adminSecret,
+          )
+        : Promise.resolve(null),
+      includes("debtMetrics")
+        ? graphqlOptional<DebtMetricsResponse>(endpoint, DEBT_METRICS_QUERY, { where: chainWhere }, adminSecret)
+        : Promise.resolve(null),
+      includes("cashSafeState")
+        ? graphqlOptional<CashSafeStateResponse>(
+            endpoint,
+            CASH_SAFE_STATE_QUERY,
+            {
+              tierWhere: chainWhere,
+              lendWhere: chainWhere,
+              modeWhere: chainWhere,
+              limitWhere: chainWhere,
+              withdrawalWhere: chainWhere,
+              cashbackWhere: chainWhere,
+            },
+            adminSecret,
+          )
+        : Promise.resolve(null),
+      includes("tierSafeState")
+        ? graphqlOptional<CashSafeStateResponse>(endpoint, TIER_SAFE_STATE_QUERY, { where: chainWhere }, adminSecret)
+        : Promise.resolve(null),
+      includes("cashHistory")
+        ? graphqlOptional<CashHistoryResponse>(
+            endpoint,
+            CASH_HISTORY_QUERY,
+            { tierWhere: chainWhere, modeWhere: chainWhere },
+            adminSecret,
+          )
+        : Promise.resolve(null),
+      includes("tierHistory")
+        ? graphqlOptional<CashHistoryResponse>(endpoint, TIER_HISTORY_QUERY, { where: chainWhere }, adminSecret)
+        : Promise.resolve(null),
+      includes("cashOperations")
+        ? graphqlOptional<CashOperationResponse>(
+            endpoint,
+            CASH_OPERATION_QUERY,
+            { resupplyWhere: chainWhere, failureWhere: chainWhere },
+            adminSecret,
+          )
+        : Promise.resolve(null),
+      includes("cashConfiguration")
+        ? graphqlOptional<CashConfigurationResponse>(
+            endpoint,
+            CASH_CONFIGURATION_QUERY,
+            {
+              tierWhere: chainWhere,
+              splitWhere: chainWhere,
+              delaysWhere: chainWhere,
+              dispatcherWhere: chainWhere,
+              gatewayWhere: chainWhere,
+              tokenWhere: chainWhere,
+              moduleWhere: chainWhere,
+            },
+            adminSecret,
+          )
+        : Promise.resolve(null),
     ]);
 
-    const metricRows = extendedDaily?.DailyCashMetric ?? core.DailyCashMetric ?? [];
+    const metricRows = extendedDaily?.DailyCashMetric ?? core?.DailyCashMetric ?? [];
     const totals = sumDailyMetrics(metricRows);
     const activeCardCount = integer(
-      globalActiveSafes?.GlobalActiveSafe_aggregate?.aggregate?.count ?? core.ActiveSafe_aggregate?.aggregate?.count,
+      globalActiveSafes?.GlobalActiveSafe_aggregate?.aggregate?.count ?? core?.ActiveSafe_aggregate?.aggregate?.count,
     );
     const cashbackCount = integer(cashbackTotal?.CashbackReceiverMetric_aggregate?.aggregate?.sum?.rewardCount);
     const cashbackUsd = usd(cashbackTotal?.CashbackReceiverMetric_aggregate?.aggregate?.sum?.amountUsd);
@@ -901,7 +1076,7 @@ export async function loadExplorerData(filters: { query?: string; chainId?: numb
       ? await graphqlOptional<SpendDetailsResponse>(endpoint, SPEND_DETAILS_QUERY, { ids: spendEventIds }, adminSecret)
       : null;
     const spendById = new Map((spendDetails?.Spend ?? []).map((row) => [String(row.id), row]));
-    const balances = (core.AccountTokenBalance ?? []).map((row) => {
+    const balances = (balanceData?.AccountTokenBalance ?? []).map((row) => {
       const tokenAddress = String(row.tokenAddress).toLowerCase();
       const token = tokenById.get(`${Number(row.chainId)}:${tokenAddress}`);
       return {
@@ -915,19 +1090,24 @@ export async function loadExplorerData(filters: { query?: string; chainId?: numb
         amountUsd: token ? indexedTokenAmountUsd(String(row.amount), token) : null,
       };
     });
-    const history = cashHistoryForDisplay(cashHistory);
+    const selectedSafeState = cashSafeState ?? tierSafeState;
+    const history = cashHistoryForDisplay(cashHistory ?? tierHistory);
     const cash = deriveCashSafeData({
-      tierStates: cashSafeState?.SafeTierState ?? [],
-      lendStates: cashSafeState?.SafeLendState ?? [],
+      tierStates: selectedSafeState?.SafeTierState ?? [],
+      lendStates: selectedSafeState?.SafeLendState ?? [],
       tierDistribution: cashSafeState
         ? [cashSafeState.tier0, cashSafeState.tier1, cashSafeState.tier2, cashSafeState.tier3, cashSafeState.tier4]
             .map((aggregate, tierId) => ({ tierId, safeCount: integer(aggregate?.aggregate?.count) }))
             .filter((row) => row.safeCount > 0)
-        : undefined,
-      modeStates: cashSafeState?.SafeModeState ?? [],
-      spendingLimitStates: cashSafeState?.SafeSpendingLimitState ?? [],
-      pendingWithdrawals: cashSafeState?.PendingWithdrawalState ?? [],
-      pendingCashbackBalances: cashSafeState?.PendingCashbackBalance ?? [],
+        : tierSafeState
+          ? [tierSafeState.tier0, tierSafeState.tier1, tierSafeState.tier2, tierSafeState.tier3, tierSafeState.tier4]
+              .map((aggregate, tierId) => ({ tierId, safeCount: integer(aggregate?.aggregate?.count) }))
+              .filter((row) => row.safeCount > 0)
+          : undefined,
+      modeStates: selectedSafeState?.SafeModeState ?? [],
+      spendingLimitStates: selectedSafeState?.SafeSpendingLimitState ?? [],
+      pendingWithdrawals: selectedSafeState?.PendingWithdrawalState ?? [],
+      pendingCashbackBalances: selectedSafeState?.PendingCashbackBalance ?? [],
       tierChanges: history.tierChanges,
       modeChanges: history.modeChanges,
       collateralResupplyCount: integer(cashOperations?.CollateralResupply_aggregate?.aggregate?.count),
@@ -941,7 +1121,11 @@ export async function loadExplorerData(filters: { query?: string; chainId?: numb
       moduleWhitelists: cashConfiguration?.WithdrawalModuleWhitelist ?? [],
     });
 
-    const hasIndexedData = metricRows.length > 0 || activeCardCount > 0 || activityEvents.length > 0;
+    const hasIndexedData =
+      metricRows.length > 0 ||
+      activeCardCount > 0 ||
+      activityEvents.length > 0 ||
+      integer(status?.Token_aggregate?.aggregate?.count) > 0;
 
     return {
       mode: hasIndexedData ? "live" : "empty",
@@ -1074,16 +1258,28 @@ export async function loadActivityEventTypes(filters: { tokenScopes?: ActivityTo
   const endpoint =
     process.env.ENVIO_GRAPHQL_URL ?? process.env.NEXT_PUBLIC_ENVIO_GRAPHQL_URL ?? "http://localhost:8080/v1/graphql";
   const adminSecret = process.env.ENVIO_HASURA_ADMIN_SECRET;
-  const data = await graphqlOptional<{ ScannerEvent: Array<{ eventType: string }> }>(
+  const tokenScopes = filters.tokenScopes?.filter((scope) => scope.chainId && scope.token) ?? [];
+  const data = await graphqlOptional<{
+    ScannerEventTypeMetric?: Array<{ eventType: string }>;
+    ScannerTokenEventTypeMetric?: Array<{ eventType: string }>;
+  }>(
     endpoint,
-    ACTIVITY_EVENT_TYPES_QUERY,
-    { where: cashExplorerEventWhere(filters) },
+    tokenScopes.length ? TOKEN_ACTIVITY_EVENT_TYPES_QUERY : ACTIVITY_EVENT_TYPES_QUERY,
+    {
+      where: tokenScopes.length
+        ? {
+            _or: tokenScopes.map((scope) => ({
+              chainId: { _eq: scope.chainId },
+              tokenAddress: { _eq: scope.token.toLowerCase() },
+            })),
+          }
+        : {},
+    },
     adminSecret,
   );
 
-  return [...new Set((data?.ScannerEvent ?? []).map((row) => row.eventType).filter(Boolean))].sort((a, b) =>
-    a.localeCompare(b),
-  );
+  const rows = tokenScopes.length ? data?.ScannerTokenEventTypeMetric : data?.ScannerEventTypeMetric;
+  return [...new Set((rows ?? []).map((row) => row.eventType).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 }
 
 export async function loadTokenAnalytics(filters: { chainId?: number } = {}): Promise<TokenAnalyticsRow[]> {

@@ -158,7 +158,7 @@ function ActivityPanel({ title, activities }: { title: string; activities: Activ
 }
 
 export default function HomePage() {
-  const dataPromise = loadExplorerData();
+  const dataPromise = loadExplorerData({}, "home");
 
   return (
     <DashboardShell active="overview" dataPromise={dataPromise}>

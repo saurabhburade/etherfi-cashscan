@@ -35,13 +35,17 @@ type GlobalDailyActiveSafe {
   firstSpendChainId: Int!
 }
 
-type AccountTokenBalance {
+type AccountTokenBalance
+  @index(fields: [["isPositive", "ASC"], ["amount", "DESC"]])
+  @index(fields: [["chainId", "ASC"], ["isPositive", "ASC"], ["amount", "DESC"]])
+{
   id: ID!
   chainId: Int!
   accountAddress: String!
   accountKind: String!
   tokenAddress: String!
   amount: BigInt!
+  isPositive: Boolean!
   inflow: BigInt!
   outflow: BigInt!
   updatedAt: Timestamp!
@@ -52,12 +56,24 @@ type AccountTokenBalance {
 # Exact ERC-20 Transfer ledger for a factory-discovered Ether.fi Safe. This is
 # separate from AccountTokenBalance, which is the Cash top-up/spend product
 # ledger rather than an ERC-20 wallet balance.
-type SafeTokenBalance {
+type SafeTokenBalance
+  @index(fields: [["isPositive", "ASC"], ["updatedAt", "DESC"], ["safeAddress", "ASC"], ["tokenAddress", "ASC"]])
+  @index(
+    fields: [
+      ["chainId", "ASC"]
+      ["isPositive", "ASC"]
+      ["updatedAt", "DESC"]
+      ["safeAddress", "ASC"]
+      ["tokenAddress", "ASC"]
+    ]
+  )
+{
   id: ID!
   chainId: Int! @index
   safeAddress: String! @index
   tokenAddress: String! @index
   amount: BigInt!
+  isPositive: Boolean!
   inflow: BigInt!
   outflow: BigInt!
   updatedAt: Timestamp!
@@ -330,6 +346,9 @@ type SafeTierChange
   @index(
     fields: [["chainId", "ASC"], ["timestamp", "DESC"], ["blockNumber", "DESC"], ["logIndex", "DESC"], ["id", "ASC"]]
   )
+  @index(
+    fields: [["timestamp", "DESC"], ["chainId", "ASC"], ["blockNumber", "DESC"], ["logIndex", "DESC"], ["id", "ASC"]]
+  )
 {
   id: ID!
   chainId: Int!
@@ -386,6 +405,9 @@ type SafeModeState {
 type SafeModeChange
   @index(
     fields: [["chainId", "ASC"], ["timestamp", "DESC"], ["blockNumber", "DESC"], ["logIndex", "DESC"], ["id", "ASC"]]
+  )
+  @index(
+    fields: [["timestamp", "DESC"], ["chainId", "ASC"], ["blockNumber", "DESC"], ["logIndex", "DESC"], ["id", "ASC"]]
   )
 {
   id: ID!
@@ -855,7 +877,28 @@ type Account {
   updatedAt: Timestamp!
 }
 type AccountTokenEvent
-  @index(fields: [["chainId", "ASC"], ["accountAddress", "ASC"], ["timestamp", "DESC"], ["id", "ASC"]])
+  @index(
+    fields: [
+      ["chainId", "ASC"]
+      ["accountAddress", "ASC"]
+      ["timestamp", "DESC"]
+      ["blockNumber", "DESC"]
+      ["logIndex", "DESC"]
+      ["legIndex", "DESC"]
+      ["id", "ASC"]
+    ]
+  )
+  @index(
+    fields: [
+      ["accountAddress", "ASC"]
+      ["timestamp", "DESC"]
+      ["chainId", "ASC"]
+      ["blockNumber", "DESC"]
+      ["logIndex", "DESC"]
+      ["legIndex", "DESC"]
+      ["id", "ASC"]
+    ]
+  )
 {
   id: ID!
   chainId: Int! @index
@@ -1273,6 +1316,29 @@ type ScannerEvent
   @index(
     fields: [["timestamp", "DESC"], ["chainId", "ASC"], ["blockNumber", "DESC"], ["logIndex", "DESC"], ["id", "ASC"]]
   )
+  @index(
+    fields: [["chainId", "ASC"], ["timestamp", "DESC"], ["blockNumber", "DESC"], ["logIndex", "DESC"], ["id", "ASC"]]
+  )
+  @index(
+    fields: [
+      ["eventType", "ASC"]
+      ["timestamp", "DESC"]
+      ["chainId", "ASC"]
+      ["blockNumber", "DESC"]
+      ["logIndex", "DESC"]
+      ["id", "ASC"]
+    ]
+  )
+  @index(
+    fields: [
+      ["chainId", "ASC"]
+      ["eventType", "ASC"]
+      ["timestamp", "DESC"]
+      ["blockNumber", "DESC"]
+      ["logIndex", "DESC"]
+      ["id", "ASC"]
+    ]
+  )
 {
   id: ID!
   chainId: Int! @index
@@ -1289,7 +1355,10 @@ type ScannerEvent
   logIndex: Int!
   tokenLegs: [ScannerEventTokenLeg!]! @derivedFrom(field: "scannerEvent")
 }
-type ScannerEventTokenLeg {
+type ScannerEventTokenLeg
+  @index(fields: [["tokenAddress", "ASC"], ["scannerEvent", "ASC"]])
+  @index(fields: [["scannerEvent", "ASC"], ["legIndex", "ASC"]])
+{
   id: ID!
   scannerEvent: ScannerEvent!
   token: Token
@@ -1299,6 +1368,23 @@ type ScannerEventTokenLeg {
   amountUsd: BigInt
   direction: String!
   priceStatus: String!
+}
+type ScannerEventTypeMetric @index(fields: [["chainId", "ASC"], ["eventType", "ASC"]]) {
+  # Stable availability key: chainId:eventType.
+  id: ID!
+  chainId: Int!
+  eventType: String!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
+type ScannerTokenEventTypeMetric @index(fields: [["chainId", "ASC"], ["tokenAddress", "ASC"], ["eventType", "ASC"]]) {
+  # Stable availability key: chainId:lower(tokenAddress):eventType.
+  id: ID!
+  chainId: Int!
+  tokenAddress: String!
+  eventType: String!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
 }
 type AccountTokenDailyMetric {
   id: ID!

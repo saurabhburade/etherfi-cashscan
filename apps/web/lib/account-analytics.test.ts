@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   type AccountAnalyticsMetric,
   accountAnalyticsEnabled,
+  accountDailyFallbackRequired,
   accountDaysFromEvents,
   accountDaysWithEventFallback,
   accountPriceUsd,
@@ -246,6 +247,132 @@ describe("account analytics feature contract", () => {
       { day: "2025-01-01", spentUsd: 50 },
       { day: "2025-01-02", spentUsd: 20 },
     ]);
+  });
+
+  it("documents the conservative fallback rule for unavailable or capped indexed daily metrics", () => {
+    const day = {
+      day: "2025-01-01",
+      depositedUsd: 0,
+      spentUsd: 0,
+      creditSpendUsd: 0,
+      debitSpendUsd: 0,
+      withdrawnUsd: 0,
+      cashbackUsd: 0,
+      borrowedUsd: 0,
+      repaidUsd: 0,
+      closingBalanceUsd: null,
+      closingBalanceStatus: "not_reconstructed",
+      transactionCount: 0,
+      pricingCoverageRatio: 0,
+    };
+    expect(accountDailyFallbackRequired([])).toBe(true);
+    expect(accountDailyFallbackRequired([day])).toBe(false);
+    expect(accountDailyFallbackRequired(Array.from({ length: 5_000 }, () => day))).toBe(true);
+  });
+
+  it("does not put the expensive daily fallback alias in the primary detail request", async () => {
+    vi.stubEnv("CASH_EXPLORER_SCHEMA_ENABLED", "true");
+    vi.resetModules();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            AccountMetric: [],
+            AccountTokenMetric: [],
+            TokenPriceCurrent: [],
+            AccountDailyMetric: [
+              {
+                day: "2025-01-01",
+                chainId: 10,
+                depositedUsd: "0",
+                spentUsd: "0",
+                creditSpendUsd: "0",
+                debitSpendUsd: "0",
+                withdrawnUsd: "0",
+                cashbackUsd: "0",
+                borrowedUsd: "0",
+                repaidUsd: "0",
+                closingBalanceUsd: null,
+                closingBalanceStatus: "not_reconstructed",
+                transactionCount: "0",
+                pricingCoverageRatio: "0",
+              },
+            ],
+            AccountTokenEvent: [],
+          },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const { loadAccountAnalyticsDetail } = await import("./account-analytics");
+      await loadAccountAnalyticsDetail(10, "0xsafe");
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const request = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+      expect(request.query).not.toContain("AccountDailyFallbackEvent");
+      expect(request.query).not.toContain("dailyEventLimit");
+      expect(request.variables).toMatchObject({
+        tokenWhere: { _and: [{ accountAddress: { _eq: "0xsafe" } }, { chainId: { _eq: 10 } }] },
+        dayWhere: { _and: [{ accountAddress: { _eq: "0xsafe" } }, { chainId: { _eq: 10 } }] },
+        eventWhere: { _and: [{ accountAddress: { _eq: "0xsafe" } }, { chainId: { _eq: 10 } }] },
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
+  });
+
+  it("uses the bounded fallback request when indexed daily metrics are unavailable", async () => {
+    vi.stubEnv("CASH_EXPLORER_SCHEMA_ENABLED", "true");
+    vi.resetModules();
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body));
+      const data = request.query.includes("query AccountDetail")
+        ? {
+            AccountMetric: [],
+            AccountTokenMetric: [],
+            TokenPriceCurrent: [],
+            AccountDailyMetric: [],
+            AccountTokenEvent: [],
+          }
+        : {
+            AccountDailyFallbackEvent: [
+              {
+                id: "deposit",
+                economicActionId: "deposit-action",
+                chainId: 10,
+                category: "deposit",
+                fundingMode: null,
+                status: "completed",
+                amountUsd: "100000000",
+                timestamp: "2025-01-01T01:00:00Z",
+              },
+            ],
+          };
+      return new Response(JSON.stringify({ data }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const { loadAccountAnalyticsDetail } = await import("./account-analytics");
+      const detail = await loadAccountAnalyticsDetail(10, "0xsafe");
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const fallbackRequest = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+      expect(fallbackRequest.query).toContain("AccountDailyFallbackEvent");
+      expect(fallbackRequest.variables.dailyEventLimit).toBe(5_001);
+      expect(fallbackRequest.variables.eventWhere).toEqual({
+        _and: [{ accountAddress: { _eq: "0xsafe" } }, { chainId: { _eq: 10 } }],
+      });
+      expect(detail.days).toEqual([expect.objectContaining({ day: "2025-01-01", depositedUsd: 100 })]);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
   });
 
   it("values raw Safe transfer amounts with the latest indexed token price", () => {

@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 };
 
 export default function TransactionsPage() {
-  const dataPromise = loadExplorerData();
+  const dataPromise = loadExplorerData({}, "transactions");
   const activityPromise = loadActivityPage({ page: 1, pageSize: 10 });
   const eventTypesPromise = loadActivityEventTypes();
 

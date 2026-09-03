@@ -7,7 +7,7 @@ import { CashProductPanels } from "@/components/parity/cash-products";
 import { type ExplorerData, loadExplorerData, loadTokenAnalytics, type TokenAnalyticsRow } from "@/lib/envio";
 
 export default function StatsPage() {
-  const dataPromise = loadExplorerData();
+  const dataPromise = loadExplorerData({}, "stats");
   const tokenAnalyticsPromise = loadTokenAnalytics();
 
   return (

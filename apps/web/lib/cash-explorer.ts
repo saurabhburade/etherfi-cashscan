@@ -177,14 +177,14 @@ export function cashExplorerEventWhere(filters: {
   if (filters.account) conditions.push({ actorAddress: { _eq: filters.account.toLowerCase() } });
   if (filters.token) {
     const address = filters.token.toLowerCase();
-    conditions.push({ tokenLegs: { token: { address: { _eq: address } } } });
+    conditions.push({ tokenLegs: { tokenAddress: { _eq: address } } });
   }
   if (filters.tokenScopes?.length) {
     conditions.push({
       _or: filters.tokenScopes.map((scope) => ({
         _and: [
           { chainId: { _eq: scope.chainId } },
-          { tokenLegs: { token: { address: { _eq: scope.token.toLowerCase() } } } },
+          { tokenLegs: { tokenAddress: { _eq: scope.token.toLowerCase() } } },
         ],
       })),
     });

@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 };
 
 export default function TokensPage() {
-  const dataPromise = loadExplorerData();
+  const dataPromise = loadExplorerData({}, "tokens");
   const tokenAnalyticsPromise = loadTokenAnalytics();
 
   return (

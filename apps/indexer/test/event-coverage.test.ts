@@ -241,7 +241,57 @@ describe("Envio-owned Cash Explorer projection contract", () => {
     expect(handlers).toContain('event.params.paid ? "cashback_received" : "cashback_generated"');
     expect(handlers).toContain("context.ScannerEvent.set");
     expect(handlers).toContain("context.ScannerEventTokenLeg.set");
+    expect(handlers).toContain("materializeScannerEventTypeMetric(context, event, actionType)");
+    expect(handlers).toContain("return { id, accountAddress, scannerEventType: actionType }");
+    expect(handlers).toContain(
+      "materializeScannerTokenEventTypeMetric(context, event, tokenAddress, scannerEventType)",
+    );
     expect(handlers).toContain('eventType.startsWith("topup")');
     expect(handlers).toContain('status: options.status ?? "completed"');
+  });
+
+  it("materializes deterministic scanner event-type availability metrics", () => {
+    const schema = read("../schema.graphql");
+    expect(schema).toContain("type ScannerEventTypeMetric");
+    expect(schema).toContain('[["chainId", "ASC"], ["eventType", "ASC"]]');
+    expect(schema).toContain("type ScannerTokenEventTypeMetric");
+    expect(schema).toContain('[["chainId", "ASC"], ["tokenAddress", "ASC"], ["eventType", "ASC"]]');
+    expect(handlers).toContain(["id: `", "${event.chainId}", ":", "${eventType}", "`"].join(""));
+    expect(handlers).toContain(
+      ["id: `", "${event.chainId}", ":", "${normalizedTokenAddress}", ":", "${eventType}", "`"].join(""),
+    );
+    expect(handlers).toContain(
+      ["materializeScannerEventTypeMetric(context, event as BlockEvent, `lending_", "${eventType}", "`)"].join(""),
+    );
+    expect(handlers).toContain(["`lending_", "${lendingEvent.eventType}", "`"].join(""));
+  });
+
+  it("uses the parent ScannerEvent type for withdrawal and debt token availability", () => {
+    expect(handlers).toContain("`withdrawal_${status}`");
+    expect(handlers).toContain('"withdrawal",');
+    expect(handlers).toContain("`debt_${eventType}`");
+    expect(handlers).toContain('eventType === "borrowed" ? "borrow" : eventType === "repaid" ? "repay" : "supplied"');
+    expect(handlers).toContain("canonical.scannerEventType");
+  });
+
+  it("declares explorer timeline indexes in the Envio schema", () => {
+    const schema = read("../schema.graphql");
+    expect(schema).toContain('["chainId", "ASC"]\n      ["accountAddress", "ASC"]');
+    expect(schema).toContain('["accountAddress", "ASC"]\n      ["timestamp", "DESC"]\n      ["chainId", "ASC"]');
+    expect(schema).toContain('["eventType", "ASC"]\n      ["timestamp", "DESC"]\n      ["chainId", "ASC"]');
+    expect(schema).toContain('["chainId", "ASC"]\n      ["eventType", "ASC"]\n      ["timestamp", "DESC"]');
+    expect(schema.match(/type SafeTierChange[\s\S]*?type TierDailyMetric/)?.[0]).toContain(
+      '[["timestamp", "DESC"], ["chainId", "ASC"]',
+    );
+    expect(schema.match(/type SafeModeChange[\s\S]*?type SafeSpendingLimitState/)?.[0]).toContain(
+      '[["timestamp", "DESC"], ["chainId", "ASC"]',
+    );
+    expect(schema).toContain('[["tokenAddress", "ASC"], ["scannerEvent", "ASC"]]');
+    expect(schema).toContain('[["scannerEvent", "ASC"], ["legIndex", "ASC"]]');
+    expect(schema).toContain('[["isPositive", "ASC"], ["amount", "DESC"]]');
+    expect(schema).toContain(
+      '[["isPositive", "ASC"], ["updatedAt", "DESC"], ["safeAddress", "ASC"], ["tokenAddress", "ASC"]]',
+    );
+    expect(handlers).toContain("isPositive: nextAmount > 0n");
   });
 });

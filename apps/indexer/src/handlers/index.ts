@@ -50,6 +50,11 @@ type BlockEvent = {
   transaction: { hash: string; transactionIndex: number | bigint };
 };
 
+type ScannerMetricContext = {
+  ScannerEventTypeMetric: { set(value: Record<string, unknown>): void };
+  ScannerTokenEventTypeMetric: { set(value: Record<string, unknown>): void };
+};
+
 type MetricDelta = Partial<{
   spendCount: bigint;
   spendUsd: bigint;
@@ -68,6 +73,33 @@ type MetricDelta = Partial<{
 const ts = (event: BlockEvent) => new Date(Number(event.block.timestamp) * 1000);
 const lower = (value: string) => value.toLowerCase();
 const jsonBigInts = (values: readonly (bigint | number | string)[]) => JSON.stringify(values.map(String));
+
+function materializeScannerEventTypeMetric(context: ScannerMetricContext, event: BlockEvent, eventType: string) {
+  context.ScannerEventTypeMetric.set({
+    id: `${event.chainId}:${eventType}`,
+    chainId: event.chainId,
+    eventType,
+    updatedAt: ts(event),
+    updatedBlock: asBigInt(event.block.number),
+  });
+}
+
+function materializeScannerTokenEventTypeMetric(
+  context: ScannerMetricContext,
+  event: BlockEvent,
+  tokenAddress: string,
+  eventType: string,
+) {
+  const normalizedTokenAddress = lower(tokenAddress);
+  context.ScannerTokenEventTypeMetric.set({
+    id: `${event.chainId}:${normalizedTokenAddress}:${eventType}`,
+    chainId: event.chainId,
+    tokenAddress: normalizedTokenAddress,
+    eventType,
+    updatedAt: ts(event),
+    updatedBlock: asBigInt(event.block.number),
+  });
+}
 
 const tokenMetricDefaults = {
   spendCount: 0n,
@@ -585,6 +617,7 @@ async function bumpDestinationBalance(
   context.AccountTokenBalance.set({
     ...current,
     amount: nextAmount,
+    isPositive: nextAmount > 0n,
     inflow: current.inflow + inflow,
     outflow: current.outflow + outflow,
     updatedAt: ts(event),
@@ -717,7 +750,8 @@ async function canonicalAction(
     ...(amountUsd === undefined ? {} : { amountUsd }),
     usdStatus: amountUsd === undefined ? "unpriced" : "priced",
   });
-  return { id, accountAddress };
+  materializeScannerEventTypeMetric(context, event, actionType);
+  return { id, accountAddress, scannerEventType: actionType };
 }
 
 type CanonicalValuation = {
@@ -1362,6 +1396,7 @@ async function canonicalTokenLeg(
   context: any,
   event: BlockEvent,
   actionId: string,
+  scannerEventType: string | undefined,
   rawAccount: string,
   rawToken: string,
   legIndex: number,
@@ -1375,6 +1410,8 @@ async function canonicalTokenLeg(
   const accountAddress = await canonicalAccount(context, event, rawAccount);
   const tokenAddress = lower(rawToken);
   const id = `${actionId}:${legIndex}`;
+  if (options.createScannerLeg !== false && !scannerEventType)
+    throw new Error(`Scanner token leg ${id} requires its parent ScannerEvent event type`);
   const valuation = await resolveCanonicalValuation(context, event, tokenAddress, amount, amountUsd);
   const resolvedAmountUsd = valuation.amountUsd;
   const category =
@@ -1431,6 +1468,7 @@ async function canonicalTokenLeg(
       direction,
       priceStatus: valuation.status,
     });
+  if (scannerEventType) materializeScannerTokenEventTypeMetric(context, event, tokenAddress, scannerEventType);
   const metricId = `${event.chainId}:${accountAddress}:${tokenAddress}`;
   const exactWallet = await context.SafeTokenBalance.get(metricId);
   if (exactWallet && valuation.priceUsdE18)
@@ -1873,6 +1911,7 @@ indexer.onEvent({ contract: "TopUpDest", event: "TopUp" }, async ({ event, conte
     context,
     base,
     canonical.id,
+    canonical.scannerEventType,
     event.params.user,
     event.params.token,
     0,
@@ -1931,6 +1970,7 @@ indexer.onEvent({ contract: "LegacyTopUpDest", event: "TopUp" }, async ({ event,
     context,
     base,
     canonical.id,
+    canonical.scannerEventType,
     event.params.userSafe,
     event.params.token,
     0,
@@ -2007,7 +2047,18 @@ indexer.onEvent({ contract: "LegacyTopUpDest", event: "TopUpBatch" }, async ({ e
     );
     // A batch may contain different Safes, so each row gets an independent
     // account action/leg identity while retaining the source log index.
-    const valuation = await canonicalTokenLeg(context, base, canonical.id, user, token, 0, "topup", "in", amount);
+    const valuation = await canonicalTokenLeg(
+      context,
+      base,
+      canonical.id,
+      canonical.scannerEventType,
+      user,
+      token,
+      0,
+      "topup",
+      "in",
+      amount,
+    );
     await canonicalAccountMetric(context, base, user, {
       topUpCount: 1n,
       depositedUsd: valuation.amountUsd ?? null,
@@ -2060,6 +2111,7 @@ async function handleCurrentSpend(event: any, context: any) {
         context,
         base,
         canonical.id,
+        canonical.scannerEventType,
         event.params.safe,
         token,
         index,
@@ -2138,6 +2190,7 @@ async function handleRepayment(event: any, context: any, repaymentType: string) 
     context,
     base,
     canonical.id,
+    canonical.scannerEventType,
     safe,
     token,
     0,
@@ -2196,6 +2249,7 @@ indexer.onEvent({ contract: "CashEventEmitter", event: "RepayLendTokenAmount" },
     context,
     base,
     canonical.id,
+    canonical.scannerEventType,
     safe,
     token,
     0,
@@ -2245,6 +2299,7 @@ indexer.onEvent({ contract: "CashEventEmitter", event: "LendBorrowed" }, async (
     context,
     base,
     canonical.id,
+    canonical.scannerEventType,
     safe,
     token,
     0,
@@ -2320,6 +2375,7 @@ indexer.onEvent({ contract: "CashEventEmitter", event: "Cashback" }, async ({ ev
       context,
       base,
       canonical.id,
+      canonical.scannerEventType,
       recipient,
       token,
       0,
@@ -2410,6 +2466,7 @@ indexer.onEvent({ contract: "CashEventEmitter", event: "PendingCashbackCleared" 
     context,
     base,
     canonical.id,
+    canonical.scannerEventType,
     recipient,
     token,
     0,
@@ -2462,6 +2519,7 @@ async function handleWithdrawal(event: any, context: any, status: string) {
       context,
       base,
       canonical.id,
+      canonical.scannerEventType,
       safe,
       token,
       index,
@@ -2547,6 +2605,7 @@ cashIndexer.onEvent({ contract: "CashEventEmitter", event: "WithdrawalAmountUpda
     context,
     base,
     canonical.id,
+    canonical.scannerEventType,
     safe,
     token,
     0,
@@ -3016,6 +3075,7 @@ indexer.onEvent({ contract: "ScrollCashEmitter", event: "LegacySpend" }, async (
     context,
     base,
     canonical.id,
+    canonical.scannerEventType,
     event.params.userSafe,
     event.params.token,
     0,
@@ -3090,6 +3150,7 @@ async function recordDebtEvent(
     context,
     base,
     canonical.id,
+    canonical.scannerEventType,
     user,
     token,
     0,
@@ -3231,6 +3292,7 @@ for (const [contract, managerVersion] of [
       context,
       base,
       canonical.id,
+      canonical.scannerEventType,
       user,
       token,
       0,
@@ -3248,6 +3310,7 @@ for (const [contract, managerVersion] of [
         context,
         base,
         canonical.id,
+        canonical.scannerEventType,
         user,
         collateral.token,
         index + 1,
@@ -3705,6 +3768,7 @@ async function recordLendingSourceEvent(
     logIndex: event.logIndex,
     usdStatus: "unpriced",
   });
+  materializeScannerEventTypeMetric(context, event as BlockEvent, `lending_${eventType}`);
   const reserveKey = fields.reserveId === undefined ? undefined : `${marketId}:${String(fields.reserveId)}`;
   context.LendingEvent.set({
     id,
@@ -3780,6 +3844,7 @@ async function recordLendingLeg(
     premiumOffsetRayDelta: premium.premiumOffsetRayDelta ?? 0n,
     valuationStatus: "unpriced",
   });
+  const lendingEvent = await context.LendingEvent.get(sourceEventId);
   if (tokenAddress) {
     await recordToken(context, event as BlockEvent, tokenAddress);
     context.ScannerEventTokenLeg.set({
@@ -3792,9 +3857,15 @@ async function recordLendingLeg(
       direction: direction === "increase" ? "in" : direction === "decrease" ? "out" : "neutral",
       priceStatus: "unpriced",
     });
+    if (lendingEvent)
+      materializeScannerTokenEventTypeMetric(
+        context,
+        event as BlockEvent,
+        tokenAddress,
+        `lending_${lendingEvent.eventType}`,
+      );
   }
   if (!tokenAddress) return;
-  const lendingEvent = await context.LendingEvent.get(sourceEventId);
   if (!lendingEvent?.accountAddress || lendingEvent.sourceKind !== "spoke" || !lendingEvent.economicActionId) return;
   const canonicalType =
     legType === "borrow" ? "borrow" : legType === "repay" || legType === "debt_restored" ? "repay" : "other";
@@ -3803,6 +3874,7 @@ async function recordLendingLeg(
     context,
     event as BlockEvent,
     lendingEvent.economicActionId,
+    undefined,
     lendingEvent.accountAddress,
     tokenAddress,
     legIndex,
@@ -4429,6 +4501,7 @@ async function bumpSafeTransferBalance(
   context.SafeTokenBalance.set({
     ...current,
     amount: nextAmount,
+    isPositive: nextAmount > 0n,
     inflow: current.inflow + inflow,
     outflow: current.outflow + outflow,
     updatedAt: ts(event),

@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 
 export default async function TokenPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const dataPromise = loadExplorerData();
+  const dataPromise = loadExplorerData({}, "tokens");
   const tokenAnalyticsPromise = loadTokenAnalytics();
 
   return (

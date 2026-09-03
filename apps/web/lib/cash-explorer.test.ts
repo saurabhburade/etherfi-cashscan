@@ -130,7 +130,7 @@ describe("Cash Explorer server filters", () => {
         { chainId: { _eq: 10 } },
         {
           tokenLegs: {
-            token: { address: { _eq: "0x5a7facb970d094b6c7ff1df0ea68d99e6e73cbff" } },
+            tokenAddress: { _eq: "0x5a7facb970d094b6c7ff1df0ea68d99e6e73cbff" },
           },
         },
       ],
@@ -154,7 +154,7 @@ describe("Cash Explorer server filters", () => {
                 { chainId: { _eq: 10 } },
                 {
                   tokenLegs: {
-                    token: { address: { _eq: "0x0000000000000000000000000000000000000001" } },
+                    tokenAddress: { _eq: "0x0000000000000000000000000000000000000001" },
                   },
                 },
               ],
@@ -164,7 +164,7 @@ describe("Cash Explorer server filters", () => {
                 { chainId: { _eq: 534352 } },
                 {
                   tokenLegs: {
-                    token: { address: { _eq: "0x0000000000000000000000000000000000000002" } },
+                    tokenAddress: { _eq: "0x0000000000000000000000000000000000000002" },
                   },
                 },
               ],

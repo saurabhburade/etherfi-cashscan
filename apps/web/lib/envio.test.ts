@@ -7,6 +7,8 @@ import {
   deriveCashSafeData,
   EVENTS_QUERY,
   eventWhere,
+  explorerDataOperations,
+  TOKEN_ACTIVITY_EVENT_TYPES_QUERY,
   TOKEN_ANALYTICS_QUERY,
   type TokenRecord,
   tokenAnalyticsRows,
@@ -69,12 +71,51 @@ describe("activity token normalization", () => {
 });
 
 describe("event query contract", () => {
-  it("loads every distinct event type independently of paginated activity", () => {
-    expect(ACTIVITY_EVENT_TYPES_QUERY).toContain("ScannerEvent(");
-    expect(ACTIVITY_EVENT_TYPES_QUERY).toContain("distinct_on: [eventType]");
+  it("loads event types from materialized metrics independently of paginated activity", () => {
+    expect(ACTIVITY_EVENT_TYPES_QUERY).toContain("ScannerEventTypeMetric(");
+    expect(TOKEN_ACTIVITY_EVENT_TYPES_QUERY).toContain("ScannerTokenEventTypeMetric(");
+    expect(ACTIVITY_EVENT_TYPES_QUERY).not.toContain("distinct_on");
+    expect(TOKEN_ACTIVITY_EVENT_TYPES_QUERY).not.toContain("distinct_on");
     expect(ACTIVITY_EVENT_TYPES_QUERY).toContain("order_by: [{ eventType: asc }]");
-    expect(ACTIVITY_EVENT_TYPES_QUERY).toContain("where: $where");
+    expect(TOKEN_ACTIVITY_EVENT_TYPES_QUERY).toContain("where: $where");
     expect(ACTIVITY_EVENT_TYPES_QUERY).not.toContain("limit:");
+  });
+
+  it("omits unrelated explorer operations for every route profile", () => {
+    expect(explorerDataOperations("home")).toEqual(["core", "globalActiveSafes", "events", "tokens"]);
+    expect(explorerDataOperations("stats")).toEqual([
+      "globalActiveSafes",
+      "spendBuckets",
+      "hourly",
+      "tokens",
+      "extendedDaily",
+      "cashbackTotal",
+      "rampTokenMetrics",
+      "fxRates",
+      "tierSafeState",
+      "tierHistory",
+    ]);
+    expect(explorerDataOperations("transactions")).toEqual(["core", "spendBuckets"]);
+    expect(explorerDataOperations("accounts")).toEqual(["core", "globalActiveSafes", "tierSafeState"]);
+    expect(explorerDataOperations("tokens")).toEqual(["status"]);
+    expect(explorerDataOperations("status")).toEqual(["status"]);
+    expect(explorerDataOperations("stats")).not.toEqual(
+      expect.arrayContaining([
+        "topUpRecipients",
+        "cashbackReceivers",
+        "debtMetrics",
+        "cashOperations",
+        "cashConfiguration",
+      ]),
+    );
+  });
+
+  it("keeps the default profile free of alternative duplicate operations", () => {
+    const full = explorerDataOperations();
+    expect(full).not.toContain("status");
+    expect(full).not.toEqual(expect.arrayContaining(["cashSafeState", "tierSafeState"]));
+    expect(full).not.toEqual(expect.arrayContaining(["cashHistory", "tierHistory"]));
+    expect(new Set(full).size).toBe(full.length);
   });
 
   it("uses lookahead limit and offset pagination without an aggregate count", () => {

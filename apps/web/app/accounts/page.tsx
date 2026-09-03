@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 };
 
 export default function AccountsPage() {
-  const explorer = loadExplorerData();
+  const explorer = loadExplorerData({}, "accounts");
   return (
     <DashboardShell active="accounts" dataPromise={explorer}>
       <main className="pb-20">

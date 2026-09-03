@@ -21,7 +21,7 @@ export default async function AccountPage({
   if (chainId !== null && !Number.isInteger(chainId)) notFound();
   const detailPromise = loadAccountAnalyticsDetail(chainId, safe);
   const activityPromise = loadActivityPage({ account: safe, chainId: chainId ?? undefined, pageSize: 10 });
-  const explorer = loadExplorerData();
+  const explorer = loadExplorerData({}, "status");
   const [detail, activity] = await Promise.all([detailPromise, activityPromise]);
   if (!detail.account) notFound();
   return (
