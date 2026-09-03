@@ -218,7 +218,11 @@ function AccountTable({ rows }: { rows: AccountAnalyticsPage["accounts"] }) {
                 <Metric value={row.lifetimeSpentUsd} />
                 <Metric value={row.lifetimeWithdrawnUsd} />
                 <Metric value={row.eventLedgerOutstandingDebtUsd} />
-                <Metric value={row.currentBalanceUsd} trailing />
+                <Metric
+                  partial={row.currentBalanceUsd === null && row.unpricedPositionCount > 0}
+                  value={row.currentBalanceUsd ?? row.pricedBalanceUsd}
+                  trailing
+                />
               </tr>
             );
           })}
@@ -228,10 +232,21 @@ function AccountTable({ rows }: { rows: AccountAnalyticsPage["accounts"] }) {
   );
 }
 
-function Metric({ value, trailing = false }: { value: number | null; trailing?: boolean }) {
+function Metric({
+  value,
+  trailing = false,
+  partial = false,
+}: {
+  value: number | null;
+  trailing?: boolean;
+  partial?: boolean;
+}) {
   return (
     <td className={`${trailing ? "px-4" : "px-3"} py-4 text-right`}>
-      <span className="block whitespace-nowrap text-foreground">{value === null ? "Unpriced" : compactUsd(value)}</span>
+      <span className="block whitespace-nowrap text-foreground">
+        {value === null ? "Unpriced" : `${partial ? "≥" : ""}${compactUsd(value)}`}
+      </span>
+      {partial ? <span className="mt-1 block text-xs text-muted-foreground">priced assets</span> : null}
     </td>
   );
 }

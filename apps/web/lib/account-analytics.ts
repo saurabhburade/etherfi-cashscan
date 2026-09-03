@@ -28,6 +28,8 @@ export type AccountAnalyticsMetric = {
   repaidUsd: number | null;
   eventLedgerOutstandingDebtUsd: number | null;
   debtStatus: string;
+  /** Sum of positions with a usable latest price, even when the exact total is incomplete. */
+  pricedBalanceUsd: number;
   currentBalanceUsd: number | null;
   netWorthUsd: number | null;
   unpricedPositionCount: number;
@@ -130,12 +132,12 @@ export type AccountAnalyticsPage = {
   hasNextPage: boolean;
 };
 
-const ACCOUNT_FIELDS = `id chainId safeAddress tokenCount transactionCount lifetimeDepositedUsd lifetimeSpentUsd lifetimeWithdrawnUsd lifetimeCashbackUsd lifetimeCashbackGeneratedUsd lifetimeCashbackReceivedUsd lifetimeCashbackGeneratedForOthersUsd lifetimeCashbackRegularUsd lifetimeCashbackSpenderUsd lifetimeCashbackPromotionUsd lifetimeCashbackReferralUsd lifetimeCashbackOtherUsd creditSpendUsd debitSpendUsd borrowedUsd repaidUsd eventLedgerOutstandingDebtUsd debtStatus currentBalanceUsd netWorthUsd unpricedPositionCount firstActivityAt lastActivityAt`;
+const ACCOUNT_FIELDS = `id chainId safeAddress tokenCount transactionCount lifetimeDepositedUsd lifetimeSpentUsd lifetimeWithdrawnUsd lifetimeCashbackUsd lifetimeCashbackGeneratedUsd lifetimeCashbackReceivedUsd lifetimeCashbackGeneratedForOthersUsd lifetimeCashbackRegularUsd lifetimeCashbackSpenderUsd lifetimeCashbackPromotionUsd lifetimeCashbackReferralUsd lifetimeCashbackOtherUsd creditSpendUsd debitSpendUsd borrowedUsd repaidUsd eventLedgerOutstandingDebtUsd debtStatus pricedBalanceUsd currentBalanceUsd netWorthUsd unpricedPositionCount firstActivityAt lastActivityAt`;
 const ACCOUNT_LIST_QUERY = `query AccountList($limit:Int!,$offset:Int!,$where:AccountMetric_bool_exp!,$orderBy:[AccountMetric_order_by!]!){AccountMetric(limit:$limit,offset:$offset,where:$where,order_by:$orderBy){${ACCOUNT_FIELDS}}}`;
 const ACCOUNT_TIERS_QUERY = `query AccountTiers($where:SafeTierState_bool_exp!,$limit:Int!){SafeTierState(where:$where,limit:$limit,order_by:{updatedAt:desc}){chainId safe tierId}}`;
 const ACCOUNT_DAILY_METRIC_LIMIT = 5000;
 const ACCOUNT_DAILY_FALLBACK_LIMIT = 5000;
-const ACCOUNT_DETAIL_QUERY = `query AccountDetail($accountWhere:AccountMetric_bool_exp!,$tokenWhere:AccountTokenMetric_bool_exp!,$dayWhere:AccountDailyMetric_bool_exp!,$eventWhere:AccountTokenEvent_bool_exp!,$priceWhere:TokenPriceCurrent_bool_exp!,$activityLimit:Int!){AccountMetric(where:$accountWhere,limit:10){id chainId safeAddress tokenCount transactionCount lifetimeDepositedUsd lifetimeSpentUsd lifetimeWithdrawnUsd lifetimeCashbackUsd lifetimeCashbackGeneratedUsd lifetimeCashbackReceivedUsd lifetimeCashbackGeneratedForOthersUsd lifetimeCashbackRegularUsd lifetimeCashbackSpenderUsd lifetimeCashbackPromotionUsd lifetimeCashbackReferralUsd lifetimeCashbackOtherUsd creditSpendUsd debitSpendUsd borrowedUsd repaidUsd eventLedgerOutstandingDebtUsd debtStatus currentBalanceUsd netWorthUsd unpricedPositionCount firstActivityAt lastActivityAt} AccountTokenMetric(where:$tokenWhere,limit:300,order_by:[{currentBalanceUsd:desc_nulls_last},{id:asc}]){id chainId currentBalanceAmount currentBalanceUsd currentBalanceValuationStatus safeInflowAmount safeOutflowAmount safeBalanceAmount updatedAt depositedAmount depositedUsd spentAmount spentUsd withdrawnAmount withdrawnUsd cashbackAmount cashbackUsd borrowedUsd repaidUsd outstandingDebtUsd outstandingDebtStatus token{address symbol name decimals}} TokenPriceCurrent(where:$priceWhere,limit:300){tokenId priceUsdE18 priceStatus observedAt token{address chainId}} AccountDailyMetric(where:$dayWhere,limit:${ACCOUNT_DAILY_METRIC_LIMIT},order_by:{day:desc}){day chainId depositedUsd spentUsd creditSpendUsd debitSpendUsd withdrawnUsd cashbackUsd borrowedUsd repaidUsd closingBalanceUsd closingBalanceStatus transactionCount pricingCoverageRatio} AccountTokenEvent(where:$eventWhere,limit:$activityLimit,order_by:[{timestamp:desc},{chainId:asc},{blockNumber:desc},{logIndex:desc},{legIndex:desc},{id:asc}]){id chainId category direction fundingMode status amountRaw amountUsd valuationStatus valuationSource cashbackType timestamp transactionHash token{address symbol name decimals}}}`;
+const ACCOUNT_DETAIL_QUERY = `query AccountDetail($accountWhere:AccountMetric_bool_exp!,$tokenWhere:AccountTokenMetric_bool_exp!,$dayWhere:AccountDailyMetric_bool_exp!,$eventWhere:AccountTokenEvent_bool_exp!,$priceWhere:TokenPriceCurrent_bool_exp!,$activityLimit:Int!){AccountMetric(where:$accountWhere,limit:10){${ACCOUNT_FIELDS}} AccountTokenMetric(where:$tokenWhere,limit:300,order_by:[{currentBalanceUsd:desc_nulls_last},{id:asc}]){id chainId currentBalanceAmount currentBalanceUsd currentBalanceValuationStatus safeInflowAmount safeOutflowAmount safeBalanceAmount updatedAt depositedAmount depositedUsd spentAmount spentUsd withdrawnAmount withdrawnUsd cashbackAmount cashbackUsd borrowedUsd repaidUsd outstandingDebtUsd outstandingDebtStatus token{address symbol name decimals}} TokenPriceCurrent(where:$priceWhere,limit:300){tokenId priceUsdE18 priceStatus observedAt token{address chainId}} AccountDailyMetric(where:$dayWhere,limit:${ACCOUNT_DAILY_METRIC_LIMIT},order_by:{day:desc}){day chainId depositedUsd spentUsd creditSpendUsd debitSpendUsd withdrawnUsd cashbackUsd borrowedUsd repaidUsd closingBalanceUsd closingBalanceStatus transactionCount pricingCoverageRatio} AccountTokenEvent(where:$eventWhere,limit:$activityLimit,order_by:[{timestamp:desc},{chainId:asc},{blockNumber:desc},{logIndex:desc},{legIndex:desc},{id:asc}]){id chainId category direction fundingMode status amountRaw amountUsd valuationStatus valuationSource cashbackType timestamp transactionHash token{address symbol name decimals}}}`;
 const ACCOUNT_DAILY_FALLBACK_QUERY = `query AccountDailyFallback($eventWhere:AccountTokenEvent_bool_exp!,$dailyEventLimit:Int!){AccountDailyFallbackEvent:AccountTokenEvent(where:$eventWhere,limit:$dailyEventLimit,order_by:[{timestamp:asc},{chainId:asc},{blockNumber:asc},{logIndex:asc},{legIndex:asc},{id:asc}]){id economicActionId chainId category fundingMode status amountUsd timestamp}}`;
 
 const number = (value: unknown): number | null => (value == null ? null : Number(value));
@@ -147,6 +149,8 @@ export const accountPriceUsd = (value: unknown): number | null =>
 const usablePriceStatuses = new Set([
   "event_priced",
   "oracle_priced",
+  "historical_constant_priced",
+  "canonical_bucket_priced",
   "cross_chain_event_priced",
   "cross_chain_oracle_priced",
 ]);
@@ -163,6 +167,9 @@ const token = (row: Record<string, unknown>) => {
 };
 
 function account(row: Record<string, unknown>): AccountAnalyticsMetric {
+  const currentBalanceUsd = accountUsd(row.currentBalanceUsd);
+  const rawDebtUsd = accountUsd(row.eventLedgerOutstandingDebtUsd);
+  const eventLedgerOutstandingDebtUsd = rawDebtUsd === null ? null : Math.max(0, rawDebtUsd);
   return {
     id: string(row.id),
     chainId: integer(row.chainId),
@@ -186,10 +193,14 @@ function account(row: Record<string, unknown>): AccountAnalyticsMetric {
     debitSpendUsd: accountUsd(row.debitSpendUsd),
     borrowedUsd: accountUsd(row.borrowedUsd),
     repaidUsd: accountUsd(row.repaidUsd),
-    eventLedgerOutstandingDebtUsd: accountUsd(row.eventLedgerOutstandingDebtUsd),
+    eventLedgerOutstandingDebtUsd,
     debtStatus: string(row.debtStatus),
-    currentBalanceUsd: accountUsd(row.currentBalanceUsd),
-    netWorthUsd: accountUsd(row.netWorthUsd),
+    pricedBalanceUsd: accountUsd(row.pricedBalanceUsd) ?? 0,
+    currentBalanceUsd,
+    netWorthUsd:
+      currentBalanceUsd === null || eventLedgerOutstandingDebtUsd === null
+        ? null
+        : currentBalanceUsd - eventLedgerOutstandingDebtUsd,
     unpricedPositionCount: integer(row.unpricedPositionCount),
     firstActivityAt: row.firstActivityAt == null ? null : string(row.firstActivityAt),
     lastActivityAt: row.lastActivityAt == null ? null : string(row.lastActivityAt),
@@ -434,9 +445,7 @@ const nullableMetricKeys = [
   "debitSpendUsd",
   "borrowedUsd",
   "repaidUsd",
-  "eventLedgerOutstandingDebtUsd",
   "currentBalanceUsd",
-  "netWorthUsd",
 ] as const;
 
 export function aggregateAccountMetrics(rows: AccountAnalyticsMetric[]): AccountAnalyticsMetric | null {
@@ -449,11 +458,21 @@ export function aggregateAccountMetrics(rows: AccountAnalyticsMetric[]): Account
     tierId: rows.find((row) => row.tierId !== null)?.tierId ?? null,
     tokenCount: rows.reduce((sum, row) => sum + row.tokenCount, 0),
     transactionCount: rows.reduce((sum, row) => sum + row.transactionCount, 0),
+    pricedBalanceUsd: rows.reduce((sum, row) => sum + row.pricedBalanceUsd, 0),
     unpricedPositionCount: rows.reduce((sum, row) => sum + row.unpricedPositionCount, 0),
     firstActivityAt: earliest(rows.map((row) => row.firstActivityAt)),
     lastActivityAt: latest(rows.map((row) => row.lastActivityAt)),
   };
   for (const key of nullableMetricKeys) result[key] = sumComplete(rows.map((row) => row[key]));
+  result.eventLedgerOutstandingDebtUsd = sumComplete(
+    rows.map((row) =>
+      row.eventLedgerOutstandingDebtUsd === null ? null : Math.max(0, row.eventLedgerOutstandingDebtUsd),
+    ),
+  );
+  result.netWorthUsd =
+    result.currentBalanceUsd === null || result.eventLedgerOutstandingDebtUsd === null
+      ? null
+      : result.currentBalanceUsd - result.eventLedgerOutstandingDebtUsd;
   return result;
 }
 

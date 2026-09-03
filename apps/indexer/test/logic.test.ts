@@ -13,6 +13,7 @@ import {
   isEurRampToken,
   isFreshNonFuturePrice,
   isLaterTokenSpend,
+  outstandingDebt,
   priceDeviationOverHalf,
   rampAmountUsd,
   rampKindFromLabel,
@@ -90,6 +91,12 @@ describe("indexer identities", () => {
     expect(balanceChange(20n, 0n)).toBe(-20n);
     expect(balanceChange(20n, 35n)).toBe(15n);
     expect(uniqueLowercase(["0xAbC", "0xabc", "0xDEF"])).toEqual(["0xabc", "0xdef"]);
+  });
+
+  it("never turns excess repayment or liquidation into negative debt", () => {
+    expect(outstandingDebt(1_000n, 250n)).toBe(750n);
+    expect(outstandingDebt(1_000n, 1_010n)).toBe(0n);
+    expect(outstandingDebt(1_000n, 250n, 800n)).toBe(0n);
   });
 
   it("derives a normalized USD price from a Spend token leg", () => {

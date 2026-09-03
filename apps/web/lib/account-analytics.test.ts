@@ -51,6 +51,7 @@ describe("account analytics feature contract", () => {
       repaidUsd: 5,
       eventLedgerOutstandingDebtUsd: 15,
       debtStatus: "event_ledger_only",
+      pricedBalanceUsd: 80,
       currentBalanceUsd: 80,
       netWorthUsd: 65,
       unpricedPositionCount: 0,
@@ -88,11 +89,68 @@ describe("account analytics feature contract", () => {
         lifetimeCashbackPromotionUsd: 0,
         lifetimeCashbackReferralUsd: 2,
         lifetimeCashbackOtherUsd: 4,
+        pricedBalanceUsd: 160,
         currentBalanceUsd: null,
         netWorthUsd: null,
         unpricedPositionCount: 1,
         firstActivityAt: "2026-01-01T00:00:00Z",
         lastActivityAt: "2026-01-04T00:00:00Z",
+      }),
+    );
+  });
+
+  it("clamps chain debt before aggregation so excess repayment cannot offset another chain", () => {
+    const base: AccountAnalyticsMetric = {
+      id: "10:0xsafe",
+      chainId: 10,
+      safeAddress: "0xsafe",
+      tierId: null,
+      tokenCount: 1,
+      transactionCount: 1,
+      lifetimeDepositedUsd: 0,
+      lifetimeSpentUsd: 0,
+      lifetimeWithdrawnUsd: 0,
+      lifetimeCashbackUsd: 0,
+      lifetimeCashbackGeneratedUsd: 0,
+      lifetimeCashbackReceivedUsd: 0,
+      lifetimeCashbackGeneratedForOthersUsd: 0,
+      lifetimeCashbackRegularUsd: 0,
+      lifetimeCashbackSpenderUsd: 0,
+      lifetimeCashbackPromotionUsd: 0,
+      lifetimeCashbackReferralUsd: 0,
+      lifetimeCashbackOtherUsd: 0,
+      creditSpendUsd: 0,
+      debitSpendUsd: 0,
+      borrowedUsd: 0,
+      repaidUsd: 0,
+      eventLedgerOutstandingDebtUsd: 100,
+      debtStatus: "event_ledger",
+      pricedBalanceUsd: 250,
+      currentBalanceUsd: 250,
+      netWorthUsd: 150,
+      unpricedPositionCount: 0,
+      firstActivityAt: null,
+      lastActivityAt: null,
+    };
+    const result = aggregateAccountMetrics([
+      base,
+      {
+        ...base,
+        id: "534352:0xsafe",
+        chainId: 534352,
+        eventLedgerOutstandingDebtUsd: -500,
+        pricedBalanceUsd: 50,
+        currentBalanceUsd: 50,
+        netWorthUsd: 550,
+      },
+    ]);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        eventLedgerOutstandingDebtUsd: 100,
+        pricedBalanceUsd: 300,
+        currentBalanceUsd: 300,
+        netWorthUsd: 200,
       }),
     );
   });

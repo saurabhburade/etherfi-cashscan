@@ -98,6 +98,16 @@ export function balanceChange(current: bigint, next: bigint): bigint {
   return next - current;
 }
 
+/**
+ * Repayment events can include accrued interest and rounding, so their total
+ * may legitimately exceed the originally emitted principal. Debt is a
+ * liability and must never turn that excess into a negative asset.
+ */
+export function outstandingDebt(borrowed: bigint, repaid: bigint, liquidated = 0n): bigint {
+  const remaining = borrowed - repaid - liquidated;
+  return remaining > 0n ? remaining : 0n;
+}
+
 export function uniqueLowercase(values: readonly string[]): string[] {
   return [...new Set(values.map((value) => value.toLowerCase()))];
 }

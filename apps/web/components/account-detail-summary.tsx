@@ -17,6 +17,14 @@ const money = new Intl.NumberFormat("en-US", {
 export function AccountDetailSummary({ detail, safe }: { detail: AccountAnalyticsDetail; safe: string }) {
   const account = detail.account;
   if (!account) return null;
+  const hasUnpricedPositions = account.currentBalanceUsd === null && account.unpricedPositionCount > 0;
+  const displayedBalanceUsd = account.currentBalanceUsd ?? account.pricedBalanceUsd;
+  const displayedNetWorthUsd =
+    account.netWorthUsd ??
+    (account.eventLedgerOutstandingDebtUsd === null
+      ? null
+      : account.pricedBalanceUsd - account.eventLedgerOutstandingDebtUsd);
+  const unpricedDetail = `${account.unpricedPositionCount} unpriced token ${account.unpricedPositionCount === 1 ? "position" : "positions"}`;
   const metrics = [
     {
       label: "Cash top-ups",
@@ -39,16 +47,21 @@ export function AccountDetailSummary({ detail, safe }: { detail: AccountAnalytic
       detail: `${usd(account.lifetimeCashbackGeneratedForOthersUsd)} generated for other recipients`,
     },
     {
-      label: "Latest indexed balance",
-      value: usd(account.currentBalanceUsd),
-      detail: detail.balanceUpdatedAt
-        ? `balance state ${timeAgo(detail.balanceUpdatedAt)}`
-        : "balance state unavailable",
+      label: hasUnpricedPositions ? "Priced balance" : "Latest indexed balance",
+      value: lowerBoundUsd(displayedBalanceUsd, hasUnpricedPositions),
+      detail: [
+        hasUnpricedPositions ? `Excludes ${unpricedDetail}` : null,
+        detail.balanceUpdatedAt ? `balance state ${timeAgo(detail.balanceUpdatedAt)}` : "balance state unavailable",
+      ]
+        .filter(Boolean)
+        .join(" · "),
     },
     {
-      label: "Net worth",
-      value: usd(account.netWorthUsd),
-      detail: "indexed balance minus event-ledger debt",
+      label: hasUnpricedPositions ? "Priced net worth" : "Net worth",
+      value: lowerBoundUsd(displayedNetWorthUsd, hasUnpricedPositions),
+      detail: hasUnpricedPositions
+        ? `Priced balance minus event-ledger debt · excludes ${unpricedDetail}`
+        : "indexed balance minus event-ledger debt",
     },
   ];
 
@@ -118,3 +131,5 @@ export function AccountDetailSummary({ detail, safe }: { detail: AccountAnalytic
 }
 
 export const usd = (value: number | null) => (value == null ? "Unpriced" : money.format(value));
+const lowerBoundUsd = (value: number | null, partial: boolean) =>
+  value == null ? "Unpriced" : `${partial ? "≥" : ""}${money.format(value)}`;

@@ -64,6 +64,7 @@ const detail = (overrides: Partial<AccountAnalyticsDetail> = {}): AccountAnalyti
     repaidUsd: 0,
     eventLedgerOutstandingDebtUsd: 0,
     debtStatus: "event_ledger_only",
+    pricedBalanceUsd: 3,
     currentBalanceUsd: 3,
     netWorthUsd: 3,
     unpricedPositionCount: 0,

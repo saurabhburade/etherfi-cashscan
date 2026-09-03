@@ -23,6 +23,7 @@ import {
   impliedUsdPriceE18,
   isFreshNonFuturePrice,
   isLaterTokenSpend,
+  outstandingDebt,
   priceDeviationOverHalf,
   rampAmountUsd,
   rampKindFromLabel,
@@ -1493,6 +1494,10 @@ async function canonicalTokenLeg(
   const isCashback = category === "cashback" && isCompleted && direction === "in";
   const isBorrow = category === "borrow" && isCompleted;
   const isRepayment = category === "repayment" && isCompleted;
+  const borrowedAmount = current.borrowedAmount + (isBorrow ? amount : 0n);
+  const repaidAmount = current.repaidAmount + (isRepayment ? amount : 0n);
+  const borrowedUsd = addUsd(current.borrowedUsd, isBorrow);
+  const repaidUsd = addUsd(current.repaidUsd, isRepayment);
   context.AccountTokenMetric.set({
     ...current,
     balance: applyBalanceDelta(current.balance, inflow, outflow),
@@ -1515,16 +1520,16 @@ async function canonicalTokenLeg(
     cashbackCount: current.cashbackCount + (isCashback ? 1n : 0n),
     cashbackAmount: current.cashbackAmount + (isCashback ? inflow : 0n),
     cashbackUsd: addUsd(current.cashbackUsd, isCashback),
-    borrowedAmount: current.borrowedAmount + (isBorrow ? amount : 0n),
-    repaidAmount: current.repaidAmount + (isRepayment ? amount : 0n),
-    outstandingDebtAmount: current.outstandingDebtAmount + (isBorrow ? amount : 0n) - (isRepayment ? amount : 0n),
-    borrowedUsd: addUsd(current.borrowedUsd, isBorrow),
-    repaidUsd: addUsd(current.repaidUsd, isRepayment),
+    borrowedAmount,
+    repaidAmount,
+    outstandingDebtAmount: outstandingDebt(borrowedAmount, repaidAmount),
+    borrowedUsd,
+    repaidUsd,
     outstandingDebtUsd:
       isBorrow || isRepayment
-        ? resolvedAmountUsd === undefined || current.outstandingDebtUsd === undefined
+        ? borrowedUsd === undefined || repaidUsd === undefined
           ? undefined
-          : current.outstandingDebtUsd + (isBorrow ? resolvedAmountUsd : -resolvedAmountUsd)
+          : outstandingDebt(borrowedUsd, repaidUsd)
         : current.outstandingDebtUsd,
     outstandingDebtStatus:
       isBorrow || isRepayment
@@ -1535,6 +1540,34 @@ async function canonicalTokenLeg(
     updatedAt: ts(event),
     updatedBlock: asBigInt(event.block.number),
   });
+  return valuation;
+}
+
+async function scannerOnlyTokenLeg(
+  context: any,
+  event: BlockEvent,
+  scannerEventId: string,
+  scannerEventType: string,
+  rawToken: string,
+  legIndex: number,
+  direction: "in" | "out" | "neutral",
+  amount: bigint,
+  amountUsd?: bigint,
+) {
+  const tokenAddress = lower(rawToken);
+  const valuation = await resolveCanonicalValuation(context, event, tokenAddress, amount, amountUsd);
+  context.ScannerEventTokenLeg.set({
+    id: `${scannerEventId}:${legIndex}`,
+    scannerEvent_id: scannerEventId,
+    token_id: `${event.chainId}:${tokenAddress}`,
+    legIndex,
+    tokenAddress,
+    amount,
+    ...(valuation.amountUsd === undefined ? {} : { amountUsd: valuation.amountUsd }),
+    direction,
+    priceStatus: valuation.status,
+  });
+  materializeScannerTokenEventTypeMetric(context, event, tokenAddress, scannerEventType);
   return valuation;
 }
 
@@ -1728,7 +1761,8 @@ async function canonicalAccountMetric(
   const cashbackReceivedUsd = addMetricUsd(current.lifetimeCashbackReceivedUsd, delta.cashbackReceivedUsd);
   const borrowedUsd = addMetricUsd(current.borrowedUsd, delta.borrowedUsd);
   const repaidUsd = addMetricUsd(current.repaidUsd, delta.repaidUsd);
-  const outstandingDebtUsd = borrowedUsd === undefined || repaidUsd === undefined ? undefined : borrowedUsd - repaidUsd;
+  const outstandingDebtUsd =
+    borrowedUsd === undefined || repaidUsd === undefined ? undefined : outstandingDebt(borrowedUsd, repaidUsd);
   const next = {
     ...current,
     spendUsd: addMetricUsd(current.spendUsd, delta.spendUsd) ?? current.spendUsd,
@@ -2185,23 +2219,47 @@ async function handleRepayment(event: any, context: any, repaymentType: string) 
   const base = event as unknown as BlockEvent;
   const safe = lower(event.params.safe);
   const token = lower(event.params.token);
-  const canonical = await canonicalAction(context, base, "repay", safe, event.params.debtAmountInUsd);
-  await canonicalTokenLeg(
+  const isDebtManagerAuditMirror = repaymentType === "repay_debt_manager";
+  const canonical = await canonicalAction(
     context,
     base,
-    canonical.id,
-    canonical.scannerEventType,
+    repaymentType,
     safe,
-    token,
-    0,
-    "repay",
-    "out",
-    event.params.debtAmount,
     event.params.debtAmountInUsd,
-    undefined,
-    { affectsSafeBalance: false },
+    isDebtManagerAuditMirror
+      ? JSON.stringify({ accountingRole: "audit_duplicate", canonicalSource: "DebtManager.Repaid" })
+      : "{}",
   );
-  await canonicalAccountMetric(context, base, safe, { repaidUsd: event.params.debtAmountInUsd });
+  if (isDebtManagerAuditMirror)
+    await scannerOnlyTokenLeg(
+      context,
+      base,
+      canonical.id,
+      canonical.scannerEventType,
+      token,
+      0,
+      "out",
+      event.params.debtAmount,
+      event.params.debtAmountInUsd,
+    );
+  else {
+    await canonicalTokenLeg(
+      context,
+      base,
+      canonical.id,
+      canonical.scannerEventType,
+      safe,
+      token,
+      0,
+      "repay",
+      "out",
+      event.params.debtAmount,
+      event.params.debtAmountInUsd,
+      undefined,
+      { affectsSafeBalance: false },
+    );
+    await canonicalAccountMetric(context, base, safe, { repaidUsd: event.params.debtAmountInUsd });
+  }
   context.Repayment.set({
     id: eventId(event.chainId, event.transaction.hash, event.logIndex),
     chainId: event.chainId,
@@ -2224,12 +2282,14 @@ async function handleRepayment(event: any, context: any, repaymentType: string) 
     }),
   );
   await markTokenAnalytics(context, base, token, { hasRepayment: true });
-  await updateTokenAnalytics(context, base, token, {
-    repaidCount: 1n,
-    repaidAmount: event.params.debtAmount,
-    repaidUsd: event.params.debtAmountInUsd,
-  });
-  await bumpDaily(context, base, { repaidUsd: event.params.debtAmountInUsd });
+  if (!isDebtManagerAuditMirror) {
+    await updateTokenAnalytics(context, base, token, {
+      repaidCount: 1n,
+      repaidAmount: event.params.debtAmount,
+      repaidUsd: event.params.debtAmountInUsd,
+    });
+    await bumpDaily(context, base, { repaidUsd: event.params.debtAmountInUsd });
+  }
 }
 
 indexer.onEvent({ contract: "CashEventEmitter", event: "RepayDebtManager" }, async ({ event, context }) => {
@@ -3226,10 +3286,10 @@ async function recordDebtEvent(
     ...current,
     borrowedAmount,
     repaidAmount,
-    outstandingAmount: borrowedAmount - repaidAmount - current.liquidatedAmount,
+    outstandingAmount: outstandingDebt(borrowedAmount, repaidAmount, current.liquidatedAmount),
     borrowedUsd,
     repaidUsd,
-    outstandingUsd: borrowedUsd - repaidUsd - current.liquidatedUsd,
+    outstandingUsd: outstandingDebt(borrowedUsd, repaidUsd, current.liquidatedUsd),
     usdStatus,
     updatedAt: ts(base),
     updatedBlock: asBigInt(event.block.number),
@@ -3364,9 +3424,9 @@ for (const [contract, managerVersion] of [
     context.DebtPosition.set({
       ...current,
       liquidatedAmount,
-      outstandingAmount: current.borrowedAmount - current.repaidAmount - liquidatedAmount,
+      outstandingAmount: outstandingDebt(current.borrowedAmount, current.repaidAmount, liquidatedAmount),
       liquidatedUsd,
-      outstandingUsd: current.borrowedUsd - current.repaidUsd - liquidatedUsd,
+      outstandingUsd: outstandingDebt(current.borrowedUsd, current.repaidUsd, liquidatedUsd),
       usdStatus:
         debtValuation.amountUsd === undefined ||
         ["unpriced_event_only", "event_ledger_partial"].includes(current.usdStatus)

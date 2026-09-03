@@ -250,6 +250,18 @@ describe("Envio-owned Cash Explorer projection contract", () => {
     expect(handlers).toContain('status: options.status ?? "completed"');
   });
 
+  it("keeps the Cash RepayDebtManager mirror visible without counting it twice", () => {
+    const repaymentHandler = handlers.slice(
+      handlers.indexOf("async function handleRepayment"),
+      handlers.indexOf('indexer.onEvent({ contract: "CashEventEmitter", event: "RepayDebtManager"'),
+    );
+    expect(repaymentHandler).toContain('const isDebtManagerAuditMirror = repaymentType === "repay_debt_manager"');
+    expect(repaymentHandler).toContain('accountingRole: "audit_duplicate"');
+    expect(repaymentHandler).toContain('canonicalSource: "DebtManager.Repaid"');
+    expect(repaymentHandler).toContain("await scannerOnlyTokenLeg(");
+    expect(repaymentHandler).toContain("if (!isDebtManagerAuditMirror)");
+  });
+
   it("materializes deterministic scanner event-type availability metrics", () => {
     const schema = read("../schema.graphql");
     expect(schema).toContain("type ScannerEventTypeMetric");
