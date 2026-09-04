@@ -53,6 +53,15 @@ const sources = {
     maxStalenessSeconds: 900,
     event: "15m kline open",
   },
+  binanceEthfiUsdt: {
+    chainId: 0,
+    pair: "ETHFI/USDT",
+    address: "ETHFIUSDT",
+    proxyAddress: "ETHFIUSDT",
+    decimals: 18,
+    maxStalenessSeconds: 900,
+    event: "15m kline open",
+  },
 };
 
 const outputRoutes = [
@@ -85,6 +94,17 @@ const outputRoutes = [
 
 const SCR_ROUTE_ID = "534352:0xd29687c813d741e2f938f4ac377128810e217b1b";
 const SCR_ORACLE_BUCKET_START = BigInt(Math.floor(Date.parse("2025-02-06T09:45:00Z") / 1000));
+const binanceOnlyRoutes = [
+  {
+    id: "534352:0x056a5fa5da84ceb7f93d36e545c5905607d8bd81",
+    asset: "ETHFI",
+    validFrom: "2025-04-30T16:11:30Z",
+    validUntilExclusive: "2025-05-08T15:53:24Z",
+    source: "binanceEthfiUsdt",
+    sourceKeys: ["binanceEthfiUsdt"],
+    symbol: "ETHFIUSDT",
+  },
+];
 const priceRouteAliases = [
   {
     id: "534352:0xca0bfd5f735924e34cc567146989e467ffbbce1a",
@@ -196,13 +216,13 @@ function decimalToE18(value) {
   return BigInt(whole) * USD_E18 + BigInt(fractional.padEnd(18, "0").slice(0, 18));
 }
 
-async function fetchBinanceScrBuckets() {
+async function fetchBinanceBuckets(symbol, validFrom, validUntilExclusive) {
   const pricesByBucketId = {};
-  let startTime = Math.floor(Date.parse("2024-11-22T17:00:00Z") / 900_000) * 900_000;
-  const endTimeExclusive = Number(SCR_ORACLE_BUCKET_START) * 1000;
+  let startTime = Math.floor(Date.parse(validFrom) / 900_000) * 900_000;
+  const endTimeExclusive = Math.ceil(Date.parse(validUntilExclusive) / 900_000) * 900_000;
   while (startTime < endTimeExclusive) {
     const url = new URL("https://api.binance.com/api/v3/klines");
-    url.searchParams.set("symbol", "SCRUSDT");
+    url.searchParams.set("symbol", symbol);
     url.searchParams.set("interval", "15m");
     url.searchParams.set("startTime", String(startTime));
     url.searchParams.set("endTime", String(endTimeExclusive - 1));
@@ -213,7 +233,7 @@ async function fetchBinanceScrBuckets() {
     if (!Array.isArray(klines) || klines.length === 0) break;
     for (const kline of klines) {
       const bucketId = BigInt(Math.floor(Number(kline[0]) / 1000)) / BUCKET_SECONDS;
-      if (bucketId * BUCKET_SECONDS >= SCR_ORACLE_BUCKET_START) continue;
+      if (bucketId * BUCKET_SECONDS * 1000n >= BigInt(endTimeExclusive)) continue;
       pricesByBucketId[bucketId.toString()] = decimalToE18(String(kline[1])).toString();
     }
     startTime = Number(klines.at(-1)[0]) + Number(BUCKET_SECONDS) * 1000;
@@ -316,7 +336,11 @@ if (process.env.REGENERATE_ORACLE_BUCKETS === "1") {
     }),
   );
 }
-const binanceScrPrices = await fetchBinanceScrBuckets();
+const binanceScrPrices = await fetchBinanceBuckets(
+  "SCRUSDT",
+  outputRoutes.find((route) => route.id === SCR_ROUTE_ID).validFrom,
+  new Date(Number(SCR_ORACLE_BUCKET_START) * 1000).toISOString(),
+);
 const scrRoute = routes[SCR_ROUTE_ID];
 const combinedScrEntries = [...Object.entries(binanceScrPrices), ...Object.entries(scrRoute.pricesByBucketId)].sort(
   ([left], [right]) => Number(BigInt(left) - BigInt(right)),
@@ -328,6 +352,16 @@ scrRoute.sourceKeyByBucketId = Object.fromEntries(
     BigInt(bucketId) * BUCKET_SECONDS < SCR_ORACLE_BUCKET_START ? "binanceScrUsdt" : "scrollScrUsd",
   ]),
 );
+for (const route of binanceOnlyRoutes) {
+  routes[route.id] = {
+    asset: route.asset,
+    validFrom: route.validFrom,
+    validUntilExclusive: route.validUntilExclusive,
+    source: route.source,
+    sourceKeys: route.sourceKeys,
+    pricesByBucketId: await fetchBinanceBuckets(route.symbol, route.validFrom, route.validUntilExclusive),
+  };
+}
 for (const alias of priceRouteAliases) {
   const target = routes[alias.priceRouteRef];
   if (!target) throw new Error(`Missing historical price route ${alias.priceRouteRef}`);

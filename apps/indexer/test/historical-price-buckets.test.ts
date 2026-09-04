@@ -6,6 +6,7 @@ const WEETH = "0x01f0a31698c4d065659b9bdc21b3610292a1c506";
 const LEGACY_WEETH = "0xca0bfd5f735924e34cc567146989e467ffbbce1a";
 const USDT = "0xf55bec9cafdbe8730f096aa55dad6d22d44099df";
 const SCR = "0xd29687c813d741e2f938f4ac377128810e217b1b";
+const ETHFI = "0x056a5fa5da84ceb7f93d36e545c5905607d8bd81";
 
 describe("checked-in historical price buckets", () => {
   it("resolves the affected Scroll weETH event with one direct 15-minute bucket lookup", () => {
@@ -60,6 +61,23 @@ describe("checked-in historical price buckets", () => {
     expect(historicalPriceAt(534352, SCR, Date.parse("2025-02-06T09:45:00Z") / 1000)?.source).toBe("scrollScrUsd");
   });
 
+  it("prices Scroll ETHFI from checked-in cross-chain buckets while its PriceProvider route reverts", () => {
+    expect(historicalPriceAt(534352, ETHFI, Date.parse("2025-05-05T15:47:02Z") / 1000)).toMatchObject({
+      asset: "ETHFI",
+      priceUsdE18: 511_000_000_000_000_000n,
+      source: "binanceEthfiUsdt",
+      sourceChainId: 0,
+      sourceAddresses: ["ETHFIUSDT"],
+    });
+  });
+
+  it("uses the ETHFI constant only for the verified provider-revert interval", () => {
+    expect(historicalPriceAt(534352, ETHFI, Date.parse("2025-04-30T16:11:29Z") / 1000)).toBeNull();
+    expect(historicalPriceAt(534352, ETHFI, Date.parse("2025-04-30T16:11:30Z") / 1000)).not.toBeNull();
+    expect(historicalPriceAt(534352, ETHFI, Date.parse("2025-05-08T15:53:23Z") / 1000)).not.toBeNull();
+    expect(historicalPriceAt(534352, ETHFI, Date.parse("2025-05-08T15:53:24Z") / 1000)).toBeNull();
+  });
+
   it("enforces exact validity boundaries independently of a partially covered bucket", () => {
     expect(historicalPriceAt(534352, WEETH, Date.parse("2024-11-27T11:21:09Z") / 1000)).toBeNull();
     expect(historicalPriceAt(534352, WEETH, Date.parse("2025-03-24T18:15:33Z") / 1000)).not.toBeNull();
@@ -72,6 +90,7 @@ describe("checked-in historical price buckets", () => {
       [`534352:${WEETH}`]: 11_261,
       [`534352:${USDT}`]: 11_718,
       [`534352:${SCR}`]: 11_718,
+      [`534352:${ETHFI}`]: 768,
     };
     for (const [routeId, expectedCount] of Object.entries(expectedCounts)) {
       const prices = constants.routes[routeId].pricesByBucketId!;
@@ -106,6 +125,10 @@ describe("checked-in historical price buckets", () => {
       },
       binanceScrUsdt: {
         address: "SCRUSDT",
+        event: "15m kline open",
+      },
+      binanceEthfiUsdt: {
+        address: "ETHFIUSDT",
         event: "15m kline open",
       },
     });
