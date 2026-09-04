@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { type ReactNode, Suspense } from "react";
+import { DashboardNavLink } from "@/components/dashboard-nav-link";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { ExplorerData } from "@/lib/envio";
 
@@ -21,7 +22,7 @@ type DashboardShellProps = {
   children: ReactNode;
 };
 
-export function DashboardShell({ active, children, data, dataPromise }: DashboardShellProps) {
+export function DashboardShell({ children, data, dataPromise }: DashboardShellProps) {
   return (
     <div className="min-h-screen bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
       <header className="sticky top-0 z-40 border-b border-border bg-background/92 backdrop-blur-xl">
@@ -46,9 +47,9 @@ export function DashboardShell({ active, children, data, dataPromise }: Dashboar
             className="hidden min-w-0 items-center gap-5 overflow-x-auto text-sm font-medium text-muted-foreground lg:flex"
           >
             {navigation.map((item) => (
-              <NavLink active={item.id === active} href={item.href} key={item.href}>
+              <DashboardNavLink href={item.href} key={item.href}>
                 {item.label}
-              </NavLink>
+              </DashboardNavLink>
             ))}
           </nav>
           <div className="ml-auto">
@@ -60,9 +61,9 @@ export function DashboardShell({ active, children, data, dataPromise }: Dashboar
           className="mx-auto flex w-full max-w-[1540px] gap-1 overflow-x-auto border-t border-border px-8 py-2 sm:px-12 lg:hidden"
         >
           {navigation.map((item) => (
-            <NavLink active={item.id === active} compact href={item.href} key={item.href}>
+            <DashboardNavLink compact href={item.href} key={item.href}>
               {item.label}
-            </NavLink>
+            </DashboardNavLink>
           ))}
         </nav>
       </header>
@@ -111,28 +112,6 @@ function FooterSocialLink({ children, href, label }: { children: ReactNode; href
     >
       {children}
     </a>
-  );
-}
-
-function NavLink({
-  active,
-  children,
-  compact = false,
-  href,
-}: {
-  active: boolean;
-  children: ReactNode;
-  compact?: boolean;
-  href: (typeof navigation)[number]["href"];
-}) {
-  return (
-    <Link
-      aria-current={active ? "page" : undefined}
-      className={`whitespace-nowrap rounded-full px-3 py-1.5 transition-colors hover:text-foreground ${compact ? "text-xs" : "text-sm"} ${active ? "bg-muted text-foreground" : "text-muted-foreground"}`}
-      href={href}
-    >
-      {children}
-    </Link>
   );
 }
 

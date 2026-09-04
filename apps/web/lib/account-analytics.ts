@@ -132,9 +132,8 @@ export type AccountAnalyticsPage = {
   hasNextPage: boolean;
 };
 
-const ACCOUNT_FIELDS = `id chainId safeAddress tokenCount transactionCount lifetimeDepositedUsd lifetimeSpentUsd lifetimeWithdrawnUsd lifetimeCashbackUsd lifetimeCashbackGeneratedUsd lifetimeCashbackReceivedUsd lifetimeCashbackGeneratedForOthersUsd lifetimeCashbackRegularUsd lifetimeCashbackSpenderUsd lifetimeCashbackPromotionUsd lifetimeCashbackReferralUsd lifetimeCashbackOtherUsd creditSpendUsd debitSpendUsd borrowedUsd repaidUsd eventLedgerOutstandingDebtUsd debtStatus pricedBalanceUsd currentBalanceUsd netWorthUsd unpricedPositionCount firstActivityAt lastActivityAt`;
+const ACCOUNT_FIELDS = `id chainId safeAddress tierId:currentTierId tokenCount transactionCount lifetimeDepositedUsd lifetimeSpentUsd lifetimeWithdrawnUsd lifetimeCashbackUsd lifetimeCashbackGeneratedUsd lifetimeCashbackReceivedUsd lifetimeCashbackGeneratedForOthersUsd lifetimeCashbackRegularUsd lifetimeCashbackSpenderUsd lifetimeCashbackPromotionUsd lifetimeCashbackReferralUsd lifetimeCashbackOtherUsd creditSpendUsd debitSpendUsd borrowedUsd repaidUsd eventLedgerOutstandingDebtUsd debtStatus pricedBalanceUsd currentBalanceUsd netWorthUsd unpricedPositionCount firstActivityAt lastActivityAt`;
 const ACCOUNT_LIST_QUERY = `query AccountList($limit:Int!,$offset:Int!,$where:AccountMetric_bool_exp!,$orderBy:[AccountMetric_order_by!]!){AccountMetric(limit:$limit,offset:$offset,where:$where,order_by:$orderBy){${ACCOUNT_FIELDS}}}`;
-const ACCOUNT_TIERS_QUERY = `query AccountTiers($where:SafeTierState_bool_exp!,$limit:Int!){SafeTierState(where:$where,limit:$limit,order_by:{updatedAt:desc}){chainId safe tierId}}`;
 const ACCOUNT_DAILY_METRIC_LIMIT = 5000;
 const ACCOUNT_DAILY_FALLBACK_LIMIT = 5000;
 const ACCOUNT_DETAIL_QUERY = `query AccountDetail($accountWhere:AccountMetric_bool_exp!,$tokenWhere:AccountTokenMetric_bool_exp!,$dayWhere:AccountDailyMetric_bool_exp!,$eventWhere:AccountTokenEvent_bool_exp!,$priceWhere:TokenPriceCurrent_bool_exp!,$activityLimit:Int!){AccountMetric(where:$accountWhere,limit:10){${ACCOUNT_FIELDS}} AccountTokenMetric(where:$tokenWhere,limit:300,order_by:[{currentBalanceUsd:desc_nulls_last},{id:asc}]){id chainId currentBalanceAmount currentBalanceUsd currentBalanceValuationStatus safeInflowAmount safeOutflowAmount safeBalanceAmount updatedAt depositedAmount depositedUsd spentAmount spentUsd withdrawnAmount withdrawnUsd cashbackAmount cashbackUsd borrowedUsd repaidUsd outstandingDebtUsd outstandingDebtStatus token{address symbol name decimals}} TokenPriceCurrent(where:$priceWhere,limit:300){tokenId priceUsdE18 priceStatus observedAt token{address chainId}} AccountDailyMetric(where:$dayWhere,limit:${ACCOUNT_DAILY_METRIC_LIMIT},order_by:{day:desc}){day chainId depositedUsd spentUsd creditSpendUsd debitSpendUsd withdrawnUsd cashbackUsd borrowedUsd repaidUsd closingBalanceUsd closingBalanceStatus transactionCount pricingCoverageRatio} AccountTokenEvent(where:$eventWhere,limit:$activityLimit,order_by:[{timestamp:desc},{chainId:asc},{blockNumber:desc},{logIndex:desc},{legIndex:desc},{id:asc}]){id chainId category direction fundingMode status amountRaw amountUsd valuationStatus valuationSource cashbackType timestamp transactionHash token{address symbol name decimals}}}`;
@@ -247,7 +246,7 @@ export async function loadAccountAnalyticsPage({
     where,
     orderBy: [{ [orderField]: "desc_nulls_last" }, { id: "asc" }],
   });
-  const accounts = await attachAccountTiers(data.AccountMetric.slice(0, size).map(account));
+  const accounts = data.AccountMetric.slice(0, size).map(account);
   return {
     accounts,
     hasNextPage: data.AccountMetric.length > size,
@@ -294,7 +293,7 @@ export async function loadAccountAnalyticsDetail(
     },
     activityLimit: 50,
   });
-  const accounts = await attachAccountTiers(data.AccountMetric.map(account));
+  const accounts = data.AccountMetric.map(account);
   const currentPrices = new Map(
     data.TokenPriceCurrent.map((row) => {
       return [
@@ -474,26 +473,6 @@ export function aggregateAccountMetrics(rows: AccountAnalyticsMetric[]): Account
       ? null
       : result.currentBalanceUsd - result.eventLedgerOutstandingDebtUsd;
   return result;
-}
-
-async function attachAccountTiers(accounts: AccountAnalyticsMetric[]) {
-  if (!accounts.length) return accounts;
-  const data = await graphql<{ SafeTierState: Array<Record<string, unknown>> }>(ACCOUNT_TIERS_QUERY, {
-    where: {
-      _or: accounts.map((row) => ({
-        chainId: { _eq: row.chainId },
-        safe: { _eq: row.safeAddress.toLowerCase() },
-      })),
-    },
-    limit: accounts.length,
-  });
-  const tiers = new Map(
-    data.SafeTierState.map((row) => [`${integer(row.chainId)}:${string(row.safe).toLowerCase()}`, integer(row.tierId)]),
-  );
-  return accounts.map((row) => ({
-    ...row,
-    tierId: tiers.get(`${row.chainId}:${row.safeAddress.toLowerCase()}`) ?? null,
-  }));
 }
 
 type AccountFlowUsdField =

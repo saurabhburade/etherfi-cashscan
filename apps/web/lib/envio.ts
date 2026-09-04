@@ -600,11 +600,6 @@ const CASH_SAFE_STATE_QUERY = /* GraphQL */ `
     $cashbackWhere: PendingCashbackBalance_bool_exp!
   ) {
     SafeTierState(limit: 5000, where: $tierWhere) { chainId safe tierId updatedAt }
-    tier0: SafeTierState_aggregate(where: { _and: [$tierWhere, { tierId: { _eq: 0 } }] }) { aggregate { count } }
-    tier1: SafeTierState_aggregate(where: { _and: [$tierWhere, { tierId: { _eq: 1 } }] }) { aggregate { count } }
-    tier2: SafeTierState_aggregate(where: { _and: [$tierWhere, { tierId: { _eq: 2 } }] }) { aggregate { count } }
-    tier3: SafeTierState_aggregate(where: { _and: [$tierWhere, { tierId: { _eq: 3 } }] }) { aggregate { count } }
-    tier4: SafeTierState_aggregate(where: { _and: [$tierWhere, { tierId: { _eq: 4 } }] }) { aggregate { count } }
     SafeLendState(limit: 5000, where: $lendWhere) { chainId safe status finalizeTime updatedAt }
     SafeModeState(limit: 5000, where: $modeWhere) { chainId safe currentModeId pendingModeId activationTime updatedAt }
     SafeSpendingLimitState(limit: 5000, where: $limitWhere) {
@@ -615,14 +610,11 @@ const CASH_SAFE_STATE_QUERY = /* GraphQL */ `
     PendingCashbackBalance(limit: 5000, where: $cashbackWhere) { chainId recipient tokenAddress amountUsd }
   }
 `;
-const TIER_SAFE_STATE_QUERY = /* GraphQL */ `
-  query EtherFiCashExplorerTierState($where: SafeTierState_bool_exp!) {
-    SafeTierState(limit: 5000, where: $where) { chainId safe tierId updatedAt }
-    tier0: SafeTierState_aggregate(where: { _and: [$where, { tierId: { _eq: 0 } }] }) { aggregate { count } }
-    tier1: SafeTierState_aggregate(where: { _and: [$where, { tierId: { _eq: 1 } }] }) { aggregate { count } }
-    tier2: SafeTierState_aggregate(where: { _and: [$where, { tierId: { _eq: 2 } }] }) { aggregate { count } }
-    tier3: SafeTierState_aggregate(where: { _and: [$where, { tierId: { _eq: 3 } }] }) { aggregate { count } }
-    tier4: SafeTierState_aggregate(where: { _and: [$where, { tierId: { _eq: 4 } }] }) { aggregate { count } }
+export const TIER_COUNT_METRICS_QUERY = /* GraphQL */ `
+  query EtherFiCashExplorerTierCounts($where: SafeTierCountMetric_bool_exp!) {
+    SafeTierCountMetric(limit: 100, where: $where, order_by: [{ chainId: asc }, { tierId: asc }]) {
+      id chainId tierId safeCount updatedAt updatedBlock
+    }
   }
 `;
 const CASH_HISTORY_QUERY = /* GraphQL */ `
@@ -716,18 +708,14 @@ type RampTokenMetricsResponse = { RampVolumeSnapshot_aggregate?: AggregateRespon
 type FxRatesResponse = { DailyFxRate: Row[]; PriceFeedState: Row[] };
 type DebtMetricsResponse = { DebtPosition_aggregate?: AggregateResponse; DebtPosition: Row[] };
 type CashSafeStateResponse = {
-  SafeTierState: Row[];
-  tier0?: AggregateResponse;
-  tier1?: AggregateResponse;
-  tier2?: AggregateResponse;
-  tier3?: AggregateResponse;
-  tier4?: AggregateResponse;
-  SafeLendState: Row[];
-  SafeModeState: Row[];
-  SafeSpendingLimitState: Row[];
-  PendingWithdrawalState: Row[];
-  PendingCashbackBalance: Row[];
+  SafeTierState?: Row[];
+  SafeLendState?: Row[];
+  SafeModeState?: Row[];
+  SafeSpendingLimitState?: Row[];
+  PendingWithdrawalState?: Row[];
+  PendingCashbackBalance?: Row[];
 };
+type TierCountMetricsResponse = { SafeTierCountMetric: Row[] };
 type CashHistoryResponse = {
   SafeTierChange_aggregate?: AggregateResponse;
   SafeTierChange: Row[];
@@ -786,7 +774,7 @@ const explorerDataOperationNames = [
   "fxRates",
   "debtMetrics",
   "cashSafeState",
-  "tierSafeState",
+  "tierCountMetrics",
   "cashHistory",
   "tierHistory",
   "cashOperations",
@@ -796,9 +784,9 @@ const explorerDataOperationNames = [
 type ExplorerDataOperation = (typeof explorerDataOperationNames)[number];
 export type ExplorerDataProfile = "full" | "home" | "stats" | "tokens" | "accounts" | "transactions" | "status";
 
-// Keep the default loader compatible with its pre-profile request set. The
-// narrower tier/status operations are alternatives for route profiles, not
-// additions to the legacy full fan-out.
+// Narrower tier/status operations are alternatives for route profiles. The
+// compact tier metric is shared with the full profile so tier totals never
+// require per-tier aggregate scans.
 const fullExplorerDataOperations: readonly ExplorerDataOperation[] = [
   "core",
   "balances",
@@ -816,6 +804,7 @@ const fullExplorerDataOperations: readonly ExplorerDataOperation[] = [
   "fxRates",
   "debtMetrics",
   "cashSafeState",
+  "tierCountMetrics",
   "cashHistory",
   "cashOperations",
   "cashConfiguration",
@@ -833,11 +822,11 @@ const profileOperations: Record<ExplorerDataProfile, readonly ExplorerDataOperat
     "cashbackTotal",
     "rampTokenMetrics",
     "fxRates",
-    "tierSafeState",
+    "tierCountMetrics",
     "tierHistory",
   ],
   tokens: ["status"],
-  accounts: ["core", "globalActiveSafes", "tierSafeState"],
+  accounts: ["core", "globalActiveSafes", "tierCountMetrics"],
   transactions: ["core", "spendBuckets"],
   status: ["status"],
 };
@@ -877,7 +866,7 @@ export async function loadExplorerData(
       fxRates,
       debtMetrics,
       cashSafeState,
-      tierSafeState,
+      tierCountMetrics,
       cashHistory,
       tierHistory,
       cashOperations,
@@ -982,8 +971,13 @@ export async function loadExplorerData(
             adminSecret,
           )
         : Promise.resolve(null),
-      includes("tierSafeState")
-        ? graphqlOptional<CashSafeStateResponse>(endpoint, TIER_SAFE_STATE_QUERY, { where: chainWhere }, adminSecret)
+      includes("tierCountMetrics")
+        ? graphqlOptional<TierCountMetricsResponse>(
+            endpoint,
+            TIER_COUNT_METRICS_QUERY,
+            { where: chainWhere },
+            adminSecret,
+          )
         : Promise.resolve(null),
       includes("cashHistory")
         ? graphqlOptional<CashHistoryResponse>(
@@ -1090,20 +1084,18 @@ export async function loadExplorerData(
         amountUsd: token ? indexedTokenAmountUsd(String(row.amount), token) : null,
       };
     });
-    const selectedSafeState = cashSafeState ?? tierSafeState;
+    const selectedSafeState = cashSafeState;
     const history = cashHistoryForDisplay(cashHistory ?? tierHistory);
     const cash = deriveCashSafeData({
       tierStates: selectedSafeState?.SafeTierState ?? [],
       lendStates: selectedSafeState?.SafeLendState ?? [],
-      tierDistribution: cashSafeState
-        ? [cashSafeState.tier0, cashSafeState.tier1, cashSafeState.tier2, cashSafeState.tier3, cashSafeState.tier4]
-            .map((aggregate, tierId) => ({ tierId, safeCount: integer(aggregate?.aggregate?.count) }))
-            .filter((row) => row.safeCount > 0)
-        : tierSafeState
-          ? [tierSafeState.tier0, tierSafeState.tier1, tierSafeState.tier2, tierSafeState.tier3, tierSafeState.tier4]
-              .map((aggregate, tierId) => ({ tierId, safeCount: integer(aggregate?.aggregate?.count) }))
-              .filter((row) => row.safeCount > 0)
-          : undefined,
+      // The additive metric query is optional during reindexing. Do not derive
+      // a protocol-wide distribution from the bounded SafeTierState rows.
+      tierDistribution: includes("tierCountMetrics")
+        ? tierCountMetrics
+          ? tierDistributionFromMetricRows(tierCountMetrics.SafeTierCountMetric)
+          : []
+        : undefined,
       modeStates: selectedSafeState?.SafeModeState ?? [],
       spendingLimitStates: selectedSafeState?.SafeSpendingLimitState ?? [],
       pendingWithdrawals: selectedSafeState?.PendingWithdrawalState ?? [],
@@ -1792,6 +1784,25 @@ function buildDebtTokens(rows: Row[], tokenById: Map<string, TokenRecord>): Debt
     grouped.set(key, current);
   }
   return [...grouped.values()].sort((a, b) => b.outstandingUsd - a.outstandingUsd);
+}
+
+/** Convert the compact per-chain metric rows to the Explorer tier distribution. */
+export function tierDistributionFromMetricRows(
+  rows: ReadonlyArray<{ chainId?: unknown; tierId?: unknown; safeCount?: unknown }>,
+  chainId?: number,
+): Array<{ tierId: number; safeCount: number }> {
+  const counts = new Map<number, number>();
+  for (const row of rows) {
+    if (chainId !== undefined && Number(row.chainId) !== chainId) continue;
+    const tierId = Number(row.tierId);
+    const safeCount = integer(row.safeCount);
+    if (!Number.isInteger(tierId) || tierId < 0 || !Number.isFinite(safeCount)) continue;
+    counts.set(tierId, (counts.get(tierId) ?? 0) + safeCount);
+  }
+  return [...counts.entries()]
+    .map(([tierId, safeCount]) => ({ tierId, safeCount }))
+    .filter((row) => row.safeCount > 0)
+    .sort((left, right) => left.tierId - right.tierId);
 }
 
 export function deriveCashSafeData(rows: {

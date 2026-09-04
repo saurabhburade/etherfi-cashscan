@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CASH_EXPLORER_ACCOUNT_TOKEN_METRICS_QUERY,
   CASH_EXPLORER_EVENT_LEGS_QUERY,
@@ -12,7 +12,10 @@ import {
   decodeCashExplorerCursor,
   encodeCashExplorerCursor,
   exactCashExplorerEventLabel,
+  loadCashExplorerPage,
 } from "./cash-explorer";
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("Cash Explorer keyset cursor", () => {
   const cursor = {
@@ -180,7 +183,11 @@ describe("Cash Explorer bounded query contract", () => {
   it("requests event legs, aggregate metrics, and current price status without history scans", () => {
     expect(CASH_EXPLORER_LATEST_EVENTS_QUERY).toContain("limit: $limit");
     expect(CASH_EXPLORER_LATEST_EVENTS_QUERY).toContain("actorAddress");
-    expect(CASH_EXPLORER_EVENT_LEGS_QUERY).toContain("tokenLegs(order_by: { legIndex: asc })");
+    expect(CASH_EXPLORER_LATEST_EVENTS_QUERY).not.toContain("tokenLegs");
+    expect(CASH_EXPLORER_EVENT_LEGS_QUERY).toContain("ScannerEventTokenLeg");
+    expect(CASH_EXPLORER_EVENT_LEGS_QUERY).toContain("$scannerEventIds: [String!]!");
+    expect(CASH_EXPLORER_EVENT_LEGS_QUERY).toContain("scannerEvent_id: { _in: $scannerEventIds }");
+    expect(CASH_EXPLORER_EVENT_LEGS_QUERY).toContain("order_by: [{ scannerEvent_id: asc }, { legIndex: asc }]");
     expect(CASH_EXPLORER_EVENT_LEGS_QUERY).toContain("token { address name symbol decimals }");
     expect(CASH_EXPLORER_EVENT_LEGS_QUERY).not.toContain("tokenAddress");
     expect(CASH_EXPLORER_ACCOUNT_TOKEN_METRICS_QUERY).toContain("AccountTokenMetric(where: $where, limit: $limit");
@@ -191,5 +198,74 @@ describe("Cash Explorer bounded query contract", () => {
     expect(CASH_EXPLORER_TOKEN_DAY_METRICS_QUERY).toContain("eventCount creditUsd debitUsd volumeUsd usdStatus");
     expect(CASH_EXPLORER_PRICE_STATUS_QUERY).toContain("TokenPriceCurrent(where: $where, limit: $limit");
     expect(CASH_EXPLORER_PRICE_STATUS_QUERY).toContain("priceUsd priceStatus sourceType updatedAt");
+  });
+});
+
+describe("Cash Explorer event-leg batching", () => {
+  const event = (id: string, logIndex: number) => ({
+    id,
+    eventType: "SpendSettled",
+    chainId: 10,
+    blockNumber: "123",
+    logIndex,
+    contractAddress: "0x0000000000000000000000000000000000000001",
+    actorAddress: "0x0000000000000000000000000000000000000002",
+    timestamp: "2026-09-01T12:00:00.000Z",
+    transactionHash: "0xabc",
+    amountUsd: "1000000",
+    priceStatus: "priced",
+  });
+
+  const leg = (scannerEventId: string, legIndex: number, symbol: string) => ({
+    scannerEvent_id: scannerEventId,
+    legIndex,
+    amount: "1000000",
+    direction: "debit",
+    amountUsd: "1000000",
+    priceStatus: "priced",
+    token: { address: `0x${legIndex}`.padEnd(42, "0"), name: `${symbol} Coin`, symbol, decimals: 6 },
+  });
+
+  it("fetches headers once and groups one batched leg response for the selected page", async () => {
+    const calls: Array<{ query: string; variables: Record<string, unknown> }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const request = JSON.parse(String(init.body)) as { query: string; variables: Record<string, unknown> };
+        calls.push(request);
+        const data = request.query.includes("ScannerEventTokenLeg")
+          ? { ScannerEventTokenLeg: [leg("event-1", 0, "USDC"), leg("event-1", 1, "USDT"), leg("event-2", 0, "DAI")] }
+          : { ScannerEvent: [event("event-1", 3), event("event-2", 2), event("event-3", 1)] };
+        return new Response(JSON.stringify({ data }), { status: 200 });
+      }),
+    );
+
+    const page = await loadCashExplorerPage("https://indexer.example/graphql", "secret", { pageSize: 2 });
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.variables).toMatchObject({ limit: 3, where: {} });
+    expect(calls[1]?.variables).toEqual({ scannerEventIds: ["event-1", "event-2"] });
+    expect(page.events.map((item) => item.tokenLegs.map((tokenLeg) => tokenLeg.symbol))).toEqual([
+      ["USDC", "USDT"],
+      ["DAI"],
+    ]);
+    expect(page.events[0]?.amountUsd).toBe(1);
+    expect(decodeCashExplorerCursor(page.nextCursor)).toEqual({
+      timestamp: "2026-09-01T12:00:00.000Z",
+      chainId: 10,
+      blockNumber: "123",
+      logIndex: 2,
+      id: "event-2",
+    });
+  });
+
+  it("does not request event legs for an empty page", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: { ScannerEvent: [] } }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(loadCashExplorerPage("https://indexer.example/graphql", undefined, {})).resolves.toEqual({
+      events: [],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

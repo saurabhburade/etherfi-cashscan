@@ -2918,6 +2918,23 @@ async function bumpTierMetric(context: any, event: BlockEvent, tierId: number, e
     transitionCount: current.transitionCount + 1n,
   });
 }
+
+async function bumpSafeTierCount(context: any, event: BlockEvent, tierId: number, delta: bigint) {
+  const id = `${event.chainId}:${tierId}`;
+  const current = (await context.SafeTierCountMetric.get(id)) ?? {
+    id,
+    chainId: event.chainId,
+    tierId,
+    safeCount: 0n,
+  };
+  context.SafeTierCountMetric.set({
+    ...current,
+    safeCount: current.safeCount + delta < 0n ? 0n : current.safeCount + delta,
+    updatedAt: ts(event),
+    updatedBlock: asBigInt(event.block.number),
+  });
+}
+
 cashIndexer.onEvent({ contract: "CashEventEmitter", event: "SafeTiersSet" }, async ({ event, context }) => {
   const base = event as unknown as BlockEvent;
   for (let arrayIndex = 0; arrayIndex < event.params.safes.length; arrayIndex += 1) {
@@ -2964,9 +2981,14 @@ cashIndexer.onEvent({ contract: "CashEventEmitter", event: "SafeTiersSet" }, asy
         metadata: JSON.stringify({ previousTierId, tierId, arrayIndex }),
       }),
     );
-    await bumpTierMetric(context, base, tierId, previousTierId === tierId ? 0n : 1n, 0n);
-    if (previousTierId !== undefined && previousTierId !== tierId)
-      await bumpTierMetric(context, base, previousTierId, 0n, 1n);
+    if (previousTierId !== tierId) {
+      await bumpSafeTierCount(context, base, tierId, 1n);
+      await bumpTierMetric(context, base, tierId, 1n, 0n);
+      if (previousTierId !== undefined) {
+        await bumpSafeTierCount(context, base, previousTierId, -1n);
+        await bumpTierMetric(context, base, previousTierId, 0n, 1n);
+      }
+    }
   }
 });
 cashIndexer.onEvent(

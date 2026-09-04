@@ -341,6 +341,15 @@ type SafeTierState {
   updatedAt: Timestamp!
   updatedBlock: BigInt!
 }
+type SafeTierCountMetric @index(fields: [["chainId", "ASC"], ["tierId", "ASC"]]) {
+  # Stable availability key: chainId:tierId.
+  id: ID!
+  chainId: Int!
+  tierId: Int!
+  safeCount: BigInt!
+  updatedAt: Timestamp!
+  updatedBlock: BigInt!
+}
 # The UI reads this per-chain history newest first.
 type SafeTierChange
   @index(
@@ -1343,15 +1352,15 @@ type ScannerEvent
   id: ID!
   chainId: Int! @index
   eventType: String! @index
-  contractAddress: String!
-  actorAddress: String
+  contractAddress: String! @index
+  actorAddress: String @index
   tokenAddress: String
   amount: BigInt
   amountUsd: BigInt
   usdStatus: String!
   blockNumber: BigInt!
   timestamp: Timestamp!
-  transactionHash: String!
+  transactionHash: String! @index
   logIndex: Int!
   tokenLegs: [ScannerEventTokenLeg!]! @derivedFrom(field: "scannerEvent")
 }

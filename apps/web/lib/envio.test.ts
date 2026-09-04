@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ACTIVITY_EVENT_TYPES_QUERY,
   ACTIVITY_PAGE_QUERY,
@@ -8,11 +8,18 @@ import {
   EVENTS_QUERY,
   eventWhere,
   explorerDataOperations,
+  loadExplorerData,
+  TIER_COUNT_METRICS_QUERY,
   TOKEN_ACTIVITY_EVENT_TYPES_QUERY,
   TOKEN_ANALYTICS_QUERY,
   type TokenRecord,
+  tierDistributionFromMetricRows,
   tokenAnalyticsRows,
 } from "./envio";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("activity token normalization", () => {
   it("promotes a single withdrawal token and amount from protocol metadata", () => {
@@ -92,11 +99,11 @@ describe("event query contract", () => {
       "cashbackTotal",
       "rampTokenMetrics",
       "fxRates",
-      "tierSafeState",
+      "tierCountMetrics",
       "tierHistory",
     ]);
     expect(explorerDataOperations("transactions")).toEqual(["core", "spendBuckets"]);
-    expect(explorerDataOperations("accounts")).toEqual(["core", "globalActiveSafes", "tierSafeState"]);
+    expect(explorerDataOperations("accounts")).toEqual(["core", "globalActiveSafes", "tierCountMetrics"]);
     expect(explorerDataOperations("tokens")).toEqual(["status"]);
     expect(explorerDataOperations("status")).toEqual(["status"]);
     expect(explorerDataOperations("stats")).not.toEqual(
@@ -113,9 +120,39 @@ describe("event query contract", () => {
   it("keeps the default profile free of alternative duplicate operations", () => {
     const full = explorerDataOperations();
     expect(full).not.toContain("status");
-    expect(full).not.toEqual(expect.arrayContaining(["cashSafeState", "tierSafeState"]));
+    expect(full).toEqual(expect.arrayContaining(["cashSafeState", "tierCountMetrics"]));
     expect(full).not.toEqual(expect.arrayContaining(["cashHistory", "tierHistory"]));
     expect(new Set(full).size).toBe(full.length);
+  });
+
+  it("uses compact, chain-filterable tier count metrics instead of SafeTierState scans", () => {
+    expect(TIER_COUNT_METRICS_QUERY).toContain("SafeTierCountMetric_bool_exp!");
+    expect(TIER_COUNT_METRICS_QUERY).toContain("SafeTierCountMetric(limit: 100, where: $where");
+    expect(TIER_COUNT_METRICS_QUERY).toContain("id chainId tierId safeCount updatedAt updatedBlock");
+    expect(TIER_COUNT_METRICS_QUERY).not.toContain("SafeTierState");
+    expect(TIER_COUNT_METRICS_QUERY).not.toContain("_aggregate");
+  });
+
+  it("sends the requested chain predicate to tier count metrics", async () => {
+    const requests: Array<{ query: string; variables: Record<string, unknown> }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const request = JSON.parse(String(init?.body)) as { query: string; variables: Record<string, unknown> };
+        requests.push(request);
+        const data = request.query.includes("SafeTierCountMetric")
+          ? { SafeTierCountMetric: [{ chainId: 10, tierId: 1, safeCount: "3" }] }
+          : { ActiveSafe_aggregate: { aggregate: { count: 3 } }, DailyCashMetric: [] };
+        return new Response(JSON.stringify({ data }), { status: 200 });
+      }),
+    );
+
+    const data = await loadExplorerData({ chainId: 10 }, "accounts");
+
+    expect(requests.find((request) => request.query.includes("SafeTierCountMetric"))?.variables).toEqual({
+      where: { chainId: { _eq: 10 } },
+    });
+    expect(data.tierDistribution).toEqual([{ tierId: 1, safeCount: 3 }]);
   });
 
   it("uses lookahead limit and offset pagination without an aggregate count", () => {
@@ -461,6 +498,42 @@ describe("token analytics metric contract", () => {
 });
 
 describe("deriveCashSafeData", () => {
+  it("aggregates compact tier metrics globally or for one chain", () => {
+    const metrics = [
+      { chainId: 10, tierId: 0, safeCount: "2" },
+      { chainId: 10, tierId: 1, safeCount: "3" },
+      { chainId: 8453, tierId: 0, safeCount: "5" },
+      { chainId: 8453, tierId: 1, safeCount: "7" },
+    ];
+
+    expect(tierDistributionFromMetricRows(metrics)).toEqual([
+      { tierId: 0, safeCount: 7 },
+      { tierId: 1, safeCount: 10 },
+    ]);
+    expect(tierDistributionFromMetricRows(metrics, 10)).toEqual([
+      { tierId: 0, safeCount: 2 },
+      { tierId: 1, safeCount: 3 },
+    ]);
+  });
+
+  it("keeps tier distribution empty when the optional metric entity is unavailable", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const request = JSON.parse(String(init?.body)) as { query: string };
+        if (request.query.includes("SafeTierCountMetric")) {
+          return new Response(JSON.stringify({ errors: [{ message: "field does not exist" }] }), { status: 200 });
+        }
+        return new Response(
+          JSON.stringify({ data: { ActiveSafe_aggregate: { aggregate: { count: 1 } }, DailyCashMetric: [] } }),
+          { status: 200 },
+        );
+      }),
+    );
+
+    return expect(loadExplorerData({ chainId: 10 }, "accounts")).resolves.toMatchObject({ tierDistribution: [] });
+  });
+
   it("groups bounded tier and mode history rows", () => {
     const data = deriveCashSafeData({
       tierStates: [{ tierId: 2 }, { tierId: 2 }, { tierId: 1 }],

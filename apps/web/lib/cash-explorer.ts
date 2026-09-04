@@ -63,22 +63,18 @@ export const CASH_EXPLORER_LATEST_EVENTS_QUERY = /* GraphQL */ `
       order_by: [{ timestamp: desc }, { chainId: asc }, { blockNumber: desc }, { logIndex: desc }, { id: asc }]
     ) {
       id eventType chainId blockNumber logIndex contractAddress actorAddress timestamp transactionHash amountUsd priceStatus: usdStatus
-      tokenLegs(order_by: { legIndex: asc }) {
-        legIndex amount direction amountUsd priceStatus
-        token { address name symbol decimals }
-      }
     }
   }
 `;
 
 export const CASH_EXPLORER_EVENT_LEGS_QUERY = /* GraphQL */ `
-  query CashExplorerEventLegs($where: ScannerEvent_bool_exp!, $limit: Int!) {
-    ScannerEvent(where: $where, limit: $limit) {
-      id
-      tokenLegs(order_by: { legIndex: asc }) {
-        legIndex amount direction amountUsd priceStatus
-        token { address name symbol decimals }
-      }
+  query CashExplorerEventLegs($scannerEventIds: [String!]!) {
+    ScannerEventTokenLeg(
+      where: { scannerEvent_id: { _in: $scannerEventIds } }
+      order_by: [{ scannerEvent_id: asc }, { legIndex: asc }]
+    ) {
+      scannerEvent_id legIndex amount direction amountUsd priceStatus
+      token { address name symbol decimals }
     }
   }
 `;
@@ -268,10 +264,20 @@ export async function loadCashExplorerPage(
     adminSecret,
   );
   const rows = eventsData.ScannerEvent.slice(0, pageSize);
-  const events = rows.map((row) => {
-    const tokenLegs = ((row.tokenLegs ?? []) as Row[]).map((leg) => {
+  const eventIds = rows.map((row) => string(row, "id"));
+  const legsByEventId = new Map<string, CashExplorerTokenLeg[]>();
+  if (eventIds.length) {
+    const legsData = await graphql<{ ScannerEventTokenLeg: Row[] }>(
+      endpoint,
+      CASH_EXPLORER_EVENT_LEGS_QUERY,
+      { scannerEventIds: eventIds },
+      adminSecret,
+    );
+    for (const leg of legsData.ScannerEventTokenLeg) {
       const token = (leg.token ?? {}) as Row;
-      return {
+      const scannerEventId = string(leg, "scannerEvent_id");
+      const tokenLegs = legsByEventId.get(scannerEventId) ?? [];
+      tokenLegs.push({
         token: string(token, "address"),
         amount: string(leg, "amount"),
         direction: string(leg, "direction") as CashExplorerTokenLeg["direction"],
@@ -280,8 +286,11 @@ export async function loadCashExplorerPage(
         symbol: string(token, "symbol"),
         name: string(token, "name"),
         decimals: nullableNumber(token, "decimals"),
-      } satisfies CashExplorerTokenLeg;
-    });
+      });
+      legsByEventId.set(scannerEventId, tokenLegs);
+    }
+  }
+  const events = rows.map((row) => {
     return {
       id: string(row, "id"),
       eventType: string(row, "eventType"),
@@ -294,7 +303,7 @@ export async function loadCashExplorerPage(
       transactionHash: string(row, "transactionHash"),
       amountUsd: cashExplorerUsd(row.amountUsd),
       priceStatus: string(row, "priceStatus"),
-      tokenLegs,
+      tokenLegs: legsByEventId.get(string(row, "id")) ?? [],
     } satisfies CashExplorerEvent;
   });
   const last = events.at(-1);

@@ -75,6 +75,33 @@ describe("CashEventEmitter coverage", () => {
     expect(handlers).toContain('status: "amount_updated"');
   });
 
+  it("materializes compact, non-negative Safe tier counts for real tier transitions only", () => {
+    const schema = read("../schema.graphql");
+    expect(schema).toContain('type SafeTierCountMetric @index(fields: [["chainId", "ASC"], ["tierId", "ASC"]])');
+    expect(schema.match(/type SafeTierCountMetric[\s\S]*?\n\}/)?.[0]).toContain("safeCount: BigInt!");
+    expect(handlers).toContain("async function bumpSafeTierCount");
+    expect(handlers).toContain("safeCount: current.safeCount + delta < 0n ? 0n : current.safeCount + delta");
+
+    const safeTiersSet = handlers.slice(
+      handlers.indexOf('cashIndexer.onEvent({ contract: "CashEventEmitter", event: "SafeTiersSet" }'),
+      handlers.indexOf('cashIndexer.onEvent(\n  { contract: "CashEventEmitter", event: "TierCashbackPercentageSet" }'),
+    );
+    // First assignment increments only the new tier; a transition moves one
+    // count between tiers; repeating the same tier bypasses both writes.
+    expect(safeTiersSet).toContain("if (previousTierId !== tierId) {");
+    expect(safeTiersSet).toContain("await bumpSafeTierCount(context, base, tierId, 1n)");
+    expect(safeTiersSet).toContain("if (previousTierId !== undefined) {");
+    expect(safeTiersSet).toContain("await bumpSafeTierCount(context, base, previousTierId, -1n)");
+  });
+
+  it("indexes only the ScannerEvent fields used by exact explorer searches", () => {
+    const schema = read("../schema.graphql");
+    const scannerEvent = schema.match(/type ScannerEvent[\s\S]*?\n\}/)?.[0] ?? "";
+    expect(scannerEvent).toContain("actorAddress: String @index");
+    expect(scannerEvent).toContain("contractAddress: String! @index");
+    expect(scannerEvent).toContain("transactionHash: String! @index");
+  });
+
   it("tracks credit/debit spending and pending cashback settlement without double counting", () => {
     expect(handlers).toContain("creditSpendUsd: amountUsd");
     expect(handlers).toContain("debitSpendUsd: amountUsd");
