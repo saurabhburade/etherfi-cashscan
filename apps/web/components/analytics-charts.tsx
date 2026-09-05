@@ -642,26 +642,6 @@ function ProfilePie({
     surface === "secondary"
       ? "bg-secondary/50 text-secondary-foreground"
       : "border border-border/40 bg-card text-card-foreground";
-  if (!data.length)
-    return (
-      <article className={`rounded-2xl p-5 sm:p-6 ${surfaceClass}`}>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <span className="text-sm font-semibold text-muted-foreground">{label}</span>
-            <h3 className="mt-2 text-xl font-normal tracking-[-.03em]">by transaction group</h3>
-          </div>
-          <ChartExportActions
-            containerRef={chartContainerRef}
-            filename={`${slug(label)}.svg`}
-            title={`Ether.fi: ${label}`}
-            value={totalLabel}
-          />
-        </div>
-        <div ref={chartContainerRef}>
-          <ChartEmpty label="No SpendBucketMetric entities indexed yet" />
-        </div>
-      </article>
-    );
   return (
     <article className={`rounded-2xl p-5 sm:p-6 ${surfaceClass}`}>
       <div className="flex items-start justify-between gap-3">
@@ -676,34 +656,40 @@ function ProfilePie({
           value={totalLabel}
         />
       </div>
-      <div className="mt-6 grid items-center gap-6 sm:grid-cols-[240px_minmax(0,1fr)]" ref={chartContainerRef}>
-        <PieChart className="max-w-60" cornerRadius={3} data={data} innerRadius={72} padAngle={0.018}>
-          <PieCenter defaultLabel="All" valueClassName="text-lg" />
-          {data.map((row, index) => (
-            <PieSlice color={row.color} hoverEffect="grow" index={index} key={row.label} />
-          ))}
-        </PieChart>
-        <div className="chart-html-legend space-y-3">
-          {data.map((row) => (
+      {data.length ? (
+        <div className="mt-6 grid items-center gap-6 sm:grid-cols-[240px_minmax(0,1fr)]" ref={chartContainerRef}>
+          <PieChart className="max-w-60" cornerRadius={3} data={data} innerRadius={72} padAngle={0.018}>
+            <PieCenter defaultLabel="All" valueClassName="text-lg" />
+            {data.map((row, index) => (
+              <PieSlice color={row.color} hoverEffect="grow" index={index} key={row.label} />
+            ))}
+          </PieChart>
+          <div className="chart-html-legend space-y-3">
+            {data.map((row) => (
+              <div
+                className="flex items-center gap-3 text-xs"
+                data-chart-legend-label={row.label}
+                data-chart-legend-value={moneyValues ? money(row.value) : compact.format(row.value)}
+                key={row.label}
+              >
+                <span className="chart-html-legend-swatch size-1.5 rounded-full" style={{ background: row.color }} />
+                <span className="flex-1 text-muted-foreground">{row.label}</span>
+                <span className="text-foreground">{moneyValues ? money(row.value) : compact.format(row.value)}</span>
+              </div>
+            ))}
             <div
-              className="flex items-center gap-3 text-xs"
-              data-chart-legend-label={row.label}
-              data-chart-legend-value={moneyValues ? money(row.value) : compact.format(row.value)}
-              key={row.label}
+              className="border-t border-border pt-3 text-right text-sm text-foreground"
+              data-chart-legend-total={`All · ${totalLabel}`}
             >
-              <span className="chart-html-legend-swatch size-1.5 rounded-full" style={{ background: row.color }} />
-              <span className="flex-1 text-muted-foreground">{row.label}</span>
-              <span className="text-foreground">{moneyValues ? money(row.value) : compact.format(row.value)}</span>
+              All · {totalLabel}
             </div>
-          ))}
-          <div
-            className="border-t border-border pt-3 text-right text-sm text-foreground"
-            data-chart-legend-total={`All · ${totalLabel}`}
-          >
-            All · {totalLabel}
           </div>
         </div>
-      </div>
+      ) : (
+        <div ref={chartContainerRef}>
+          <ChartEmpty label="No SpendBucketMetric entities indexed yet" />
+        </div>
+      )}
     </article>
   );
 }
