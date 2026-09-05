@@ -73,6 +73,10 @@ export function CashAccountAnalytics({
   const pending = data.pendingActions;
   const modeSeries = dailyModeSeries(modeChanges);
   const tierSeries = dailyTierSeries(transitions);
+  const modeChangeCount = modeChanges.reduce(
+    (total, row) => total + numeric(value(row, "count", "modeChanges", "changeCount")),
+    0,
+  );
   const tierTransitionCount = tierSeries.reduce((total, row) => total + row.upgrades + row.segments, 0);
   const tierDistribution = effectiveTierCounts(
     tiers.map((row) => ({
@@ -102,12 +106,7 @@ export function CashAccountAnalytics({
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1.6fr)_minmax(260px,.8fr)]">
             <Trend
               title="Credit vs debit mode changes"
-              value={number(
-                modeChanges.reduce(
-                  (total, row) => total + numeric(value(row, "count", "modeChanges", "changeCount")),
-                  0,
-                ),
-              )}
+              value={number(modeChangeCount)}
               hasData={modeSeries.some((row) => row.credit || row.debit)}
               empty="No funding-mode changes have been indexed for this network scope yet."
             >
@@ -133,15 +132,7 @@ export function CashAccountAnalytics({
             <Definitions title="Mode KPIs">
               <Definition label="Credit spend" value={money(creditSpendUsd)} />
               <Definition label="Debit spend" value={money(debitSpendUsd)} />
-              <Definition
-                label="Mode-change events"
-                value={number(
-                  modeChanges.reduce(
-                    (total, row) => total + numeric(value(row, "count", "modeChanges", "changeCount")),
-                    0,
-                  ),
-                )}
-              />
+              <Definition label="Mode-change events" value={number(modeChangeCount)} />
             </Definitions>
           </div>
           <CompactTable
@@ -350,14 +341,13 @@ function isUpgrade(row: Record<string, unknown>) {
   return from < to && from !== 4 && to !== 4;
 }
 function dailyModeSeries(rows: Record<string, unknown>[]) {
-  const points = new Map<string, { date: Date; credit: number; debit: number; changes: number }>();
+  const points = new Map<string, { date: Date; credit: number; debit: number }>();
   for (const row of rows) {
     const dateKey = day(row);
     if (!dateKey) continue;
     const count = numeric(value(row, "count", "modeChanges", "changeCount"));
     const modeId = numeric(value(row, "newModeId", "modeId", "mode"));
-    const point = points.get(dateKey) ?? { date: new Date(`${dateKey}T00:00:00Z`), credit: 0, debit: 0, changes: 0 };
-    point.changes += count;
+    const point = points.get(dateKey) ?? { date: new Date(`${dateKey}T00:00:00Z`), credit: 0, debit: 0 };
     if (modeId === 0) point.credit += count;
     if (modeId === 1) point.debit += count;
     points.set(dateKey, point);

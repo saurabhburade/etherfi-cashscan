@@ -33,21 +33,12 @@ const colors = [
 ];
 
 export function accountPortfolioSlices(detail: AccountAnalyticsDetail): AccountChartSlice[] {
-  const ranked = detail.tokens
-    .filter((row) => row.currentBalanceUsd !== null && row.currentBalanceUsd > 0)
-    .sort((a, b) => (b.currentBalanceUsd ?? 0) - (a.currentBalanceUsd ?? 0));
-  const visible = ranked.slice(0, 6).map((row, index) => ({
-    label: tokenLabel(row),
-    value: row.currentBalanceUsd ?? 0,
-    color: colors[index],
-  }));
-  const other = ranked.slice(6).reduce((sum, row) => sum + (row.currentBalanceUsd ?? 0), 0);
-  return other > 0 ? [...visible, { label: "Other", value: other, color: colors[6] }] : visible;
+  return accountTokenMetricSlices(detail, "currentBalanceUsd");
 }
 
 export function accountTokenMetricSlices(
   detail: AccountAnalyticsDetail,
-  key: "safeInflowUsd" | "depositedUsd" | "spentUsd" | "withdrawnUsd" | "cashbackUsd",
+  key: "currentBalanceUsd" | "safeInflowUsd" | "depositedUsd" | "spentUsd" | "withdrawnUsd" | "cashbackUsd",
 ): AccountChartSlice[] {
   const ranked = detail.tokens
     .filter((row) => row[key] !== null && (row[key] ?? 0) > 0)
