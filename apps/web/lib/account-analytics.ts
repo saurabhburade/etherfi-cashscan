@@ -136,7 +136,9 @@ const ACCOUNT_FIELDS = `id chainId safeAddress tierId:currentTierId tokenCount t
 const ACCOUNT_LIST_QUERY = `query AccountList($limit:Int!,$offset:Int!,$where:AccountMetric_bool_exp!,$orderBy:[AccountMetric_order_by!]!){AccountMetric(limit:$limit,offset:$offset,where:$where,order_by:$orderBy){${ACCOUNT_FIELDS}}}`;
 const ACCOUNT_DAILY_METRIC_LIMIT = 5000;
 const ACCOUNT_DAILY_FALLBACK_LIMIT = 5000;
-const ACCOUNT_DETAIL_QUERY = `query AccountDetail($accountWhere:AccountMetric_bool_exp!,$tokenWhere:AccountTokenMetric_bool_exp!,$dayWhere:AccountDailyMetric_bool_exp!,$eventWhere:AccountTokenEvent_bool_exp!,$priceWhere:TokenPriceCurrent_bool_exp!,$activityLimit:Int!){AccountMetric(where:$accountWhere,limit:10){${ACCOUNT_FIELDS}} AccountTokenMetric(where:$tokenWhere,limit:300,order_by:[{currentBalanceUsd:desc_nulls_last},{id:asc}]){id chainId currentBalanceAmount currentBalanceUsd currentBalanceValuationStatus safeInflowAmount safeOutflowAmount safeBalanceAmount updatedAt depositedAmount depositedUsd spentAmount spentUsd withdrawnAmount withdrawnUsd cashbackAmount cashbackUsd borrowedUsd repaidUsd outstandingDebtUsd outstandingDebtStatus token{address symbol name decimals}} TokenPriceCurrent(where:$priceWhere,limit:300){tokenId priceUsdE18 priceStatus observedAt token{address chainId}} AccountDailyMetric(where:$dayWhere,limit:${ACCOUNT_DAILY_METRIC_LIMIT},order_by:{day:desc}){day chainId depositedUsd spentUsd creditSpendUsd debitSpendUsd withdrawnUsd cashbackUsd borrowedUsd repaidUsd closingBalanceUsd closingBalanceStatus transactionCount pricingCoverageRatio} AccountTokenEvent(where:$eventWhere,limit:$activityLimit,order_by:[{timestamp:desc},{chainId:asc},{blockNumber:desc},{logIndex:desc},{legIndex:desc},{id:asc}]){id chainId category direction fundingMode status amountRaw amountUsd valuationStatus valuationSource cashbackType timestamp transactionHash token{address symbol name decimals}}}`;
+export const ACCOUNT_SUMMARY_QUERY = `query AccountSummary($where:AccountMetric_bool_exp!){AccountMetric(where:$where,limit:10){${ACCOUNT_FIELDS}}}`;
+export const ACCOUNT_POSITIONS_QUERY = `query AccountPositions($tokenWhere:AccountTokenMetric_bool_exp!,$priceWhere:TokenPriceCurrent_bool_exp!){AccountTokenMetric(where:$tokenWhere,limit:300,order_by:[{currentBalanceUsd:desc_nulls_last},{id:asc}]){id chainId currentBalanceAmount currentBalanceUsd currentBalanceValuationStatus safeInflowAmount safeOutflowAmount safeBalanceAmount updatedAt depositedAmount depositedUsd spentAmount spentUsd withdrawnAmount withdrawnUsd cashbackAmount cashbackUsd borrowedUsd repaidUsd outstandingDebtUsd outstandingDebtStatus token{address symbol name decimals}} TokenPriceCurrent(where:$priceWhere,limit:300){tokenId priceUsdE18 priceStatus observedAt token{address chainId}}}`;
+export const ACCOUNT_DAYS_QUERY = `query AccountDays($where:AccountDailyMetric_bool_exp!){AccountDailyMetric(where:$where,limit:${ACCOUNT_DAILY_METRIC_LIMIT},order_by:{day:desc}){day chainId depositedUsd spentUsd creditSpendUsd debitSpendUsd withdrawnUsd cashbackUsd borrowedUsd repaidUsd closingBalanceUsd closingBalanceStatus transactionCount pricingCoverageRatio}}`;
 const ACCOUNT_DAILY_FALLBACK_QUERY = `query AccountDailyFallback($eventWhere:AccountTokenEvent_bool_exp!,$dailyEventLimit:Int!){AccountDailyFallbackEvent:AccountTokenEvent(where:$eventWhere,limit:$dailyEventLimit,order_by:[{timestamp:asc},{chainId:asc},{blockNumber:asc},{logIndex:asc},{legIndex:asc},{id:asc}]){id economicActionId chainId category fundingMode status amountUsd timestamp}}`;
 
 const number = (value: unknown): number | null => (value == null ? null : Number(value));
@@ -253,36 +255,21 @@ export async function loadAccountAnalyticsPage({
   };
 }
 
-export async function loadAccountAnalyticsDetail(
-  chainId: number | null,
-  safeAddress: string,
-): Promise<AccountAnalyticsDetail> {
-  if (!accountAnalyticsEnabled)
-    return {
-      account: null,
-      chainIds: [],
-      tokens: [],
-      days: [],
-      activity: [],
-      safeInflowUsd: null,
-      safeOutflowUsd: null,
-      balanceUpdatedAt: null,
-      priceObservedAt: null,
-    };
+export type AccountAnalyticsSummary = Pick<AccountAnalyticsDetail, "account" | "chainIds">;
+export type AccountAnalyticsPositions = Pick<
+  AccountAnalyticsDetail,
+  "tokens" | "safeInflowUsd" | "safeOutflowUsd" | "balanceUpdatedAt" | "priceObservedAt"
+>;
+export type AccountAnalyticsDays = Pick<AccountAnalyticsDetail, "days">;
+
+function accountDetailPredicates(chainId: number | null, safeAddress: string) {
   const safe = safeAddress.toLowerCase();
   const withChain = <T extends Record<string, unknown>>(where: T) =>
     chainId === null ? where : { _and: [where, { chainId: { _eq: chainId } }] };
-  const data = await graphql<{
-    AccountMetric: Array<Record<string, unknown>>;
-    AccountTokenMetric: Array<Record<string, unknown>>;
-    TokenPriceCurrent: Array<Record<string, unknown>>;
-    AccountDailyMetric: Array<Record<string, unknown>>;
-    AccountTokenEvent: Array<Record<string, unknown>>;
-  }>(ACCOUNT_DETAIL_QUERY, {
+  return {
     accountWhere: withChain({ safeAddress: { _eq: safe } }),
     tokenWhere: withChain({ accountAddress: { _eq: safe } }),
     dayWhere: withChain({ accountAddress: { _eq: safe } }),
-    eventWhere: withChain({ accountAddress: { _eq: safe } }),
     priceWhere: {
       token: {
         _and: [
@@ -291,9 +278,42 @@ export async function loadAccountAnalyticsDetail(
         ],
       },
     },
-    activityLimit: 50,
+  };
+}
+
+export async function loadAccountAnalyticsSummary(
+  chainId: number | null,
+  safeAddress: string,
+): Promise<AccountAnalyticsSummary> {
+  if (!accountAnalyticsEnabled) return { account: null, chainIds: [] };
+  const { accountWhere } = accountDetailPredicates(chainId, safeAddress);
+  const data = await graphql<{ AccountMetric: Array<Record<string, unknown>> }>(ACCOUNT_SUMMARY_QUERY, {
+    where: accountWhere,
   });
   const accounts = data.AccountMetric.map(account);
+  return {
+    account: aggregateAccountMetrics(accounts),
+    chainIds: [...new Set(accounts.map((row) => row.chainId))].sort((a, b) => a - b),
+  };
+}
+
+export async function loadAccountAnalyticsPositions(
+  chainId: number | null,
+  safeAddress: string,
+): Promise<AccountAnalyticsPositions> {
+  if (!accountAnalyticsEnabled)
+    return {
+      tokens: [],
+      safeInflowUsd: null,
+      safeOutflowUsd: null,
+      balanceUpdatedAt: null,
+      priceObservedAt: null,
+    };
+  const { tokenWhere, priceWhere } = accountDetailPredicates(chainId, safeAddress);
+  const data = await graphql<{
+    AccountTokenMetric: Array<Record<string, unknown>>;
+    TokenPriceCurrent: Array<Record<string, unknown>>;
+  }>(ACCOUNT_POSITIONS_QUERY, { tokenWhere, priceWhere });
   const currentPrices = new Map(
     data.TokenPriceCurrent.map((row) => {
       return [
@@ -340,6 +360,24 @@ export async function loadAccountAnalyticsDetail(
       token: tokenValue,
     };
   });
+  return {
+    tokens,
+    safeInflowUsd: sumComplete(tokens.map((row) => row.safeInflowUsd)),
+    safeOutflowUsd: sumComplete(tokens.map((row) => row.safeOutflowUsd)),
+    balanceUpdatedAt: latest(tokens.map((row) => row.balanceUpdatedAt)),
+    priceObservedAt: latest(tokens.map((row) => row.priceObservedAt)),
+  };
+}
+
+export async function loadAccountAnalyticsDays(
+  chainId: number | null,
+  safeAddress: string,
+): Promise<AccountAnalyticsDays> {
+  if (!accountAnalyticsEnabled) return { days: [] };
+  const { dayWhere } = accountDetailPredicates(chainId, safeAddress);
+  const data = await graphql<{ AccountDailyMetric: Array<Record<string, unknown>> }>(ACCOUNT_DAYS_QUERY, {
+    where: dayWhere,
+  });
   const indexedDays = data.AccountDailyMetric.map((row) => ({
     day: string(row.day),
     chainId: integer(row.chainId),
@@ -357,35 +395,30 @@ export async function loadAccountAnalyticsDetail(
     transactionCount: integer(row.transactionCount),
     pricingCoverageRatio: number(row.pricingCoverageRatio) ?? 0,
   }));
-  const fallbackDays = accountDailyFallbackRequired(indexedDays)
-    ? await loadAccountDailyFallbackDays(withChain({ accountAddress: { _eq: safe } }))
-    : [];
+  const fallbackDays = accountDailyFallbackRequired(indexedDays) ? await loadAccountDailyFallbackDays(dayWhere) : [];
   return {
-    account: aggregateAccountMetrics(accounts),
-    chainIds: [...new Set(accounts.map((row) => row.chainId))].sort((a, b) => a - b),
-    tokens,
     days: accountDaysWithEventFallback(indexedDays, fallbackDays),
-    activity: data.AccountTokenEvent.map((row) => ({
-      id: string(row.id),
-      chainId: integer(row.chainId),
-      category: string(row.category),
-      direction: string(row.direction),
-      fundingMode: row.fundingMode == null ? null : string(row.fundingMode),
-      status: string(row.status),
-      amountRaw: string(row.amountRaw),
-      amountUsd: accountUsd(row.amountUsd),
-      valuationStatus: string(row.valuationStatus),
-      valuationSource: row.valuationSource == null ? null : string(row.valuationSource),
-      cashbackType: row.cashbackType == null ? null : string(row.cashbackType),
-      timestamp: string(row.timestamp),
-      transactionHash: string(row.transactionHash),
-      token: token(row),
-    })),
-    safeInflowUsd: sumComplete(tokens.map((row) => row.safeInflowUsd)),
-    safeOutflowUsd: sumComplete(tokens.map((row) => row.safeOutflowUsd)),
-    balanceUpdatedAt: latest(tokens.map((row) => row.balanceUpdatedAt)),
-    priceObservedAt: latest(tokens.map((row) => row.priceObservedAt)),
   };
+}
+
+export function combineAccountAnalyticsDetail(
+  summary: AccountAnalyticsSummary,
+  positions: AccountAnalyticsPositions,
+  days: AccountAnalyticsDays,
+): AccountAnalyticsDetail {
+  return { ...summary, ...positions, ...days, activity: [] };
+}
+
+export async function loadAccountAnalyticsDetail(
+  chainId: number | null,
+  safeAddress: string,
+): Promise<AccountAnalyticsDetail> {
+  const [summary, positions, days] = await Promise.all([
+    loadAccountAnalyticsSummary(chainId, safeAddress),
+    loadAccountAnalyticsPositions(chainId, safeAddress),
+    loadAccountAnalyticsDays(chainId, safeAddress),
+  ]);
+  return combineAccountAnalyticsDetail(summary, positions, days);
 }
 
 export function valueAtCurrentPrice(raw: string, decimals: number | null, priceUsd: number | null) {

@@ -288,32 +288,11 @@ const HOURLY_QUERY = /* GraphQL */ `
   }
 `;
 
-export const EVENTS_QUERY = /* GraphQL */ `
-  query EtherFiCashExplorerEvents(
-    $spendWhere: ProtocolEvent_bool_exp!
-    $cashbackWhere: ProtocolEvent_bool_exp!
-  ) {
-    latestSpends: ProtocolEvent(
+export const LATEST_EVENTS_QUERY = /* GraphQL */ `
+  query EtherFiCashExplorerLatestEvents($where: ProtocolEvent_bool_exp!) {
+    ProtocolEvent(
       limit: 10
-      where: $spendWhere
-      order_by: [{ timestamp: desc }, { chainId: asc }, { blockNumber: desc }, { logIndex: desc }, { id: asc }]
-    ) {
-      id
-      eventType
-      chainId
-      blockNumber
-      contractAddress
-      actor
-      tokenAddress
-      amount
-      amountUsd
-      timestamp
-      transactionHash
-      metadata
-    }
-    latestCashbacks: ProtocolEvent(
-      limit: 10
-      where: $cashbackWhere
+      where: $where
       order_by: [{ timestamp: desc }, { chainId: asc }, { blockNumber: desc }, { logIndex: desc }, { id: asc }]
     ) {
       id
@@ -678,6 +657,7 @@ type StatusResponse = { Token_aggregate?: AggregateResponse };
 type GlobalActiveSafeResponse = { GlobalActiveSafe_aggregate?: AggregateResponse };
 type SpendBucketsResponse = { SpendBucketMetric: Row[] };
 type HourlyResponse = { HourlySpendMetric: Row[] };
+type LatestEventsResponse = { ProtocolEvent: Row[] };
 type EventsResponse = { latestSpends: Row[]; latestCashbacks: Row[] };
 type ActivityPageResponse = {
   ProtocolEvent: Row[];
@@ -782,7 +762,16 @@ const explorerDataOperationNames = [
 ] as const;
 
 type ExplorerDataOperation = (typeof explorerDataOperationNames)[number];
-export type ExplorerDataProfile = "full" | "home" | "stats" | "tokens" | "accounts" | "transactions" | "status";
+export type ExplorerDataProfile =
+  | "full"
+  | "home"
+  | "homeOverview"
+  | "homeActivity"
+  | "stats"
+  | "tokens"
+  | "accounts"
+  | "transactions"
+  | "status";
 
 // Narrower tier/status operations are alternatives for route profiles. The
 // compact tier metric is shared with the full profile so tier totals never
@@ -813,6 +802,8 @@ const fullExplorerDataOperations: readonly ExplorerDataOperation[] = [
 const profileOperations: Record<ExplorerDataProfile, readonly ExplorerDataOperation[]> = {
   full: fullExplorerDataOperations,
   home: ["core", "globalActiveSafes", "events", "tokens"],
+  homeOverview: ["core", "globalActiveSafes"],
+  homeActivity: ["events", "tokens"],
   stats: [
     "globalActiveSafes",
     "spendBuckets",
@@ -899,14 +890,26 @@ export async function loadExplorerData(
         ? graphqlOptional<HourlyResponse>(endpoint, HOURLY_QUERY, { where: chainWhere }, adminSecret)
         : Promise.resolve(null),
       includes("events")
-        ? graphqlOptional<EventsResponse>(
-            endpoint,
-            EVENTS_QUERY,
-            {
-              spendWhere: eventWhereForType(filters, "spend"),
-              cashbackWhere: eventWhereForType(filters, "cashback"),
-            },
-            adminSecret,
+        ? Promise.all([
+            graphqlOptional<LatestEventsResponse>(
+              endpoint,
+              LATEST_EVENTS_QUERY,
+              { where: eventWhereForType(filters, "spend") },
+              adminSecret,
+            ),
+            graphqlOptional<LatestEventsResponse>(
+              endpoint,
+              LATEST_EVENTS_QUERY,
+              { where: eventWhereForType(filters, "cashback") },
+              adminSecret,
+            ),
+          ]).then(([spends, cashbacks]): EventsResponse | null =>
+            spends || cashbacks
+              ? {
+                  latestSpends: spends?.ProtocolEvent ?? [],
+                  latestCashbacks: cashbacks?.ProtocolEvent ?? [],
+                }
+              : null,
           )
         : Promise.resolve(null),
       includes("tokens")

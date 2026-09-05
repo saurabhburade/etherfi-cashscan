@@ -158,16 +158,17 @@ function ActivityPanel({ title, activities }: { title: string; activities: Activ
 }
 
 export default function HomePage() {
-  const dataPromise = loadExplorerData({}, "home");
+  const overviewPromise = loadExplorerData({}, "homeOverview");
+  const activityPromise = loadExplorerData({}, "homeActivity");
 
   return (
-    <DashboardShell active="overview" dataPromise={dataPromise}>
+    <DashboardShell active="overview" dataPromise={overviewPromise}>
       <main className="pb-20">
         <Suspense fallback={<ChartGridSkeleton cards={2} flushBottom topLevel />}>
-          <OverviewCharts dataPromise={dataPromise} />
+          <OverviewCharts dataPromise={overviewPromise} />
         </Suspense>
         <Suspense fallback={<ActivityGridSkeleton />}>
-          <OverviewActivity dataPromise={dataPromise} />
+          <OverviewActivity dataPromise={activityPromise} />
         </Suspense>
       </main>
     </DashboardShell>
