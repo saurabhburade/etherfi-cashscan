@@ -1,8 +1,9 @@
 import { EventTableColumnGroup, eventTableClassName } from "@/components/event-table";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const skeletonIds = ["primary", "secondary", "tertiary", "quaternary", "quinary", "senary"];
+const chartCardIds = ["primary", "secondary", "tertiary", "quaternary", "quinary", "senary"];
 const activityIds = ["one", "two", "three", "four"];
+const transactionColumnIds = ["event", "time", "network", "account", "transaction"];
 const transactionRowIds = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
 
 export function ChartGridSkeleton({
@@ -23,7 +24,7 @@ export function ChartGridSkeleton({
         <div className="h-7 w-64 max-w-3/4 rounded-full bg-secondary/70" />
         <div className="mt-3 h-4 w-[34rem] max-w-full rounded-full bg-secondary/45" />
         <div className="mt-8 grid gap-5 lg:grid-cols-2">
-          {skeletonIds.slice(0, cards).map((cardId) => (
+          {chartCardIds.slice(0, cards).map((cardId) => (
             <div className="overflow-hidden rounded-2xl bg-secondary/50 p-6" key={cardId}>
               <div className="h-4 w-32 rounded-full bg-secondary" />
               <div className="mt-4 h-9 w-24 rounded-full bg-secondary" />
@@ -72,7 +73,7 @@ export function TransactionTableSkeleton() {
         <EventTableColumnGroup />
         <TableHeader>
           <TableRow className="border-white/[.07] bg-transparent hover:bg-transparent">
-            {skeletonIds.slice(0, 5).map((column) => (
+            {transactionColumnIds.map((column) => (
               <TableHead key={column}>
                 <div className="h-3 w-20 rounded-full bg-secondary" />
               </TableHead>
@@ -91,7 +92,7 @@ export function TransactionTableSkeleton() {
                   </div>
                 </div>
               </TableCell>
-              {skeletonIds.slice(0, 4).map((column) => (
+              {transactionColumnIds.slice(1).map((column) => (
                 <TableCell key={`${row}-${column}`}>
                   <div className="h-3 w-24 max-w-full rounded-full bg-secondary/75" />
                 </TableCell>

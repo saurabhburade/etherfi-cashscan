@@ -159,7 +159,6 @@ const PieChartCore = memo(function PieChartCore({
   geometryScrubbing,
 }: PieChartInnerProps) {
   const [internalHoveredIndex, setInternalHoveredIndex] = useState<number | null>(null);
-  const [animationKey] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Use controlled or uncontrolled hover state
@@ -308,7 +307,7 @@ const PieChartCore = memo(function PieChartCore({
       hoverOffset,
       hoveredIndex,
       setHoveredIndex,
-      animationKey,
+      animationKey: 0,
       isLoaded: effectiveIsLoaded,
       enterTransition,
       enterStaggerScale,
@@ -331,7 +330,6 @@ const PieChartCore = memo(function PieChartCore({
       hoverOffset,
       hoveredIndex,
       setHoveredIndex,
-      animationKey,
       effectiveIsLoaded,
       enterTransition,
       enterStaggerScale,

@@ -5,9 +5,9 @@ import {
   activityRow,
   cashHistoryForDisplay,
   deriveCashSafeData,
-  EVENTS_QUERY,
   eventWhere,
   explorerDataOperations,
+  LATEST_EVENTS_QUERY,
   loadExplorerData,
   TIER_COUNT_METRICS_QUERY,
   TOKEN_ACTIVITY_EVENT_TYPES_QUERY,
@@ -90,6 +90,8 @@ describe("event query contract", () => {
 
   it("omits unrelated explorer operations for every route profile", () => {
     expect(explorerDataOperations("home")).toEqual(["core", "globalActiveSafes", "events", "tokens"]);
+    expect(explorerDataOperations("homeOverview")).toEqual(["core", "globalActiveSafes"]);
+    expect(explorerDataOperations("homeActivity")).toEqual(["events", "tokens"]);
     expect(explorerDataOperations("stats")).toEqual([
       "globalActiveSafes",
       "spendBuckets",
@@ -162,17 +164,40 @@ describe("event query contract", () => {
   });
 
   it("uses the complete deterministic feed order", () => {
-    expect(EVENTS_QUERY).toContain(
+    expect(LATEST_EVENTS_QUERY).toContain(
       "order_by: [{ timestamp: desc }, { chainId: asc }, { blockNumber: desc }, { logIndex: desc }, { id: asc }]",
     );
   });
 
-  it("loads homepage spends and cashbacks independently", () => {
-    expect(EVENTS_QUERY).toContain("latestSpends: ProtocolEvent(");
-    expect(EVENTS_QUERY).toContain("latestCashbacks: ProtocolEvent(");
-    expect(EVENTS_QUERY.match(/limit: 10/g)).toHaveLength(2);
-    expect(EVENTS_QUERY).toContain("where: $spendWhere");
-    expect(EVENTS_QUERY).toContain("where: $cashbackWhere");
+  it("uses one reusable bounded query for independently requested homepage feeds", () => {
+    expect(LATEST_EVENTS_QUERY).toContain("ProtocolEvent(");
+    expect(LATEST_EVENTS_QUERY.match(/limit: 10/g)).toHaveLength(1);
+    expect(LATEST_EVENTS_QUERY).toContain("where: $where");
+    expect(LATEST_EVENTS_QUERY).not.toContain("latestSpends");
+    expect(LATEST_EVENTS_QUERY).not.toContain("latestCashbacks");
+  });
+
+  it("requests homepage spend and cashback feeds in separate operations", async () => {
+    const requests: Array<{ query: string; variables: Record<string, unknown> }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const request = JSON.parse(String(init?.body)) as { query: string; variables: Record<string, unknown> };
+        requests.push(request);
+        return new Response(
+          JSON.stringify({ data: request.query.includes("LatestEvents") ? { ProtocolEvent: [] } : { Token: [] } }),
+        );
+      }),
+    );
+
+    await loadExplorerData({}, "homeActivity");
+
+    const eventRequests = requests.filter((request) => request.query.includes("LatestEvents"));
+    expect(eventRequests).toHaveLength(2);
+    expect(eventRequests.map((request) => request.variables)).toEqual([
+      { where: { eventType: { _eq: "spend" } } },
+      { where: { eventType: { _eq: "cashback" } } },
+    ]);
   });
 
   it("uses indexable exact predicates for supported search keys", () => {

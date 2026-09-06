@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  ACCOUNT_DAYS_QUERY,
+  ACCOUNT_POSITIONS_QUERY,
+  ACCOUNT_SUMMARY_QUERY,
   type AccountAnalyticsMetric,
   accountAnalyticsEnabled,
   accountDailyFallbackRequired,
@@ -15,6 +18,15 @@ import {
 describe("account analytics feature contract", () => {
   it("is disabled unless the additive explorer schema is explicitly enabled", () => {
     expect(accountAnalyticsEnabled).toBe(process.env.CASH_EXPLORER_SCHEMA_ENABLED === "true");
+  });
+
+  it("splits account summary, positions, and days without duplicating activity", () => {
+    expect(ACCOUNT_SUMMARY_QUERY).toContain("query AccountSummary");
+    expect(ACCOUNT_POSITIONS_QUERY).toContain("query AccountPositions");
+    expect(ACCOUNT_DAYS_QUERY).toContain("query AccountDays");
+    for (const query of [ACCOUNT_SUMMARY_QUERY, ACCOUNT_POSITIONS_QUERY, ACCOUNT_DAYS_QUERY]) {
+      expect(query).not.toContain("AccountTokenEvent");
+    }
   });
 
   it("decodes Envio account USD-e6 and token price-e18 values at the UI boundary", () => {
@@ -331,50 +343,49 @@ describe("account analytics feature contract", () => {
   it("does not put the expensive daily fallback alias in the primary detail request", async () => {
     vi.stubEnv("CASH_EXPLORER_SCHEMA_ENABLED", "true");
     vi.resetModules();
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          data: {
-            AccountMetric: [],
-            AccountTokenMetric: [],
-            TokenPriceCurrent: [],
-            AccountDailyMetric: [
-              {
-                day: "2025-01-01",
-                chainId: 10,
-                depositedUsd: "0",
-                spentUsd: "0",
-                creditSpendUsd: "0",
-                debitSpendUsd: "0",
-                withdrawnUsd: "0",
-                cashbackUsd: "0",
-                borrowedUsd: "0",
-                repaidUsd: "0",
-                closingBalanceUsd: null,
-                closingBalanceStatus: "not_reconstructed",
-                transactionCount: "0",
-                pricingCoverageRatio: "0",
-              },
-            ],
-            AccountTokenEvent: [],
-          },
-        }),
-      ),
-    );
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body));
+      const data = request.query.includes("query AccountSummary")
+        ? { AccountMetric: [] }
+        : request.query.includes("query AccountPositions")
+          ? { AccountTokenMetric: [], TokenPriceCurrent: [] }
+          : {
+              AccountDailyMetric: [
+                {
+                  day: "2025-01-01",
+                  chainId: 10,
+                  depositedUsd: "0",
+                  spentUsd: "0",
+                  creditSpendUsd: "0",
+                  debitSpendUsd: "0",
+                  withdrawnUsd: "0",
+                  cashbackUsd: "0",
+                  borrowedUsd: "0",
+                  repaidUsd: "0",
+                  closingBalanceUsd: null,
+                  closingBalanceStatus: "not_reconstructed",
+                  transactionCount: "0",
+                  pricingCoverageRatio: "0",
+                },
+              ],
+            };
+      return new Response(JSON.stringify({ data }));
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     try {
       const { loadAccountAnalyticsDetail } = await import("./account-analytics");
       await loadAccountAnalyticsDetail(10, "0xsafe");
 
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      const request = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-      expect(request.query).not.toContain("AccountDailyFallbackEvent");
-      expect(request.query).not.toContain("dailyEventLimit");
-      expect(request.variables).toMatchObject({
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      const requests = fetchMock.mock.calls.map((call) => JSON.parse(String(call[1]?.body)));
+      expect(requests.every((request) => !request.query.includes("AccountDailyFallbackEvent"))).toBe(true);
+      expect(requests.every((request) => !request.query.includes("AccountTokenEvent"))).toBe(true);
+      expect(requests.find((request) => request.query.includes("query AccountPositions"))?.variables).toMatchObject({
         tokenWhere: { _and: [{ accountAddress: { _eq: "0xsafe" } }, { chainId: { _eq: 10 } }] },
-        dayWhere: { _and: [{ accountAddress: { _eq: "0xsafe" } }, { chainId: { _eq: 10 } }] },
-        eventWhere: { _and: [{ accountAddress: { _eq: "0xsafe" } }, { chainId: { _eq: 10 } }] },
+      });
+      expect(requests.find((request) => request.query.includes("query AccountDays"))?.variables).toEqual({
+        where: { _and: [{ accountAddress: { _eq: "0xsafe" } }, { chainId: { _eq: 10 } }] },
       });
     } finally {
       vi.unstubAllGlobals();
@@ -388,28 +399,26 @@ describe("account analytics feature contract", () => {
     vi.resetModules();
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       const request = JSON.parse(String(init?.body));
-      const data = request.query.includes("query AccountDetail")
-        ? {
-            AccountMetric: [],
-            AccountTokenMetric: [],
-            TokenPriceCurrent: [],
-            AccountDailyMetric: [],
-            AccountTokenEvent: [],
-          }
-        : {
-            AccountDailyFallbackEvent: [
-              {
-                id: "deposit",
-                economicActionId: "deposit-action",
-                chainId: 10,
-                category: "deposit",
-                fundingMode: null,
-                status: "completed",
-                amountUsd: "100000000",
-                timestamp: "2025-01-01T01:00:00Z",
-              },
-            ],
-          };
+      const data = request.query.includes("query AccountSummary")
+        ? { AccountMetric: [] }
+        : request.query.includes("query AccountPositions")
+          ? { AccountTokenMetric: [], TokenPriceCurrent: [] }
+          : request.query.includes("query AccountDays")
+            ? { AccountDailyMetric: [] }
+            : {
+                AccountDailyFallbackEvent: [
+                  {
+                    id: "deposit",
+                    economicActionId: "deposit-action",
+                    chainId: 10,
+                    category: "deposit",
+                    fundingMode: null,
+                    status: "completed",
+                    amountUsd: "100000000",
+                    timestamp: "2025-01-01T01:00:00Z",
+                  },
+                ],
+              };
       return new Response(JSON.stringify({ data }));
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -418,8 +427,9 @@ describe("account analytics feature contract", () => {
       const { loadAccountAnalyticsDetail } = await import("./account-analytics");
       const detail = await loadAccountAnalyticsDetail(10, "0xsafe");
 
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      const fallbackRequest = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+      const fallbackCall = fetchMock.mock.calls.find((call) => String(call[1]?.body).includes("AccountDailyFallback"));
+      const fallbackRequest = JSON.parse(String(fallbackCall?.[1]?.body));
       expect(fallbackRequest.query).toContain("AccountDailyFallbackEvent");
       expect(fallbackRequest.variables.dailyEventLimit).toBe(5_001);
       expect(fallbackRequest.variables.eventWhere).toEqual({

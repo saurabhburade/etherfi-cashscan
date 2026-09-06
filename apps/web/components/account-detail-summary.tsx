@@ -51,7 +51,11 @@ export function AccountDetailSummary({ detail, safe }: { detail: AccountAnalytic
       value: lowerBoundUsd(displayedBalanceUsd, hasUnpricedPositions),
       detail: [
         hasUnpricedPositions ? `Excludes ${unpricedDetail}` : null,
-        detail.balanceUpdatedAt ? `balance state ${timeAgo(detail.balanceUpdatedAt)}` : "balance state unavailable",
+        detail.balanceUpdatedAt
+          ? `balance state ${timeAgo(detail.balanceUpdatedAt)}`
+          : account.lastActivityAt
+            ? `account state ${timeAgo(account.lastActivityAt)}`
+            : "balance state unavailable",
       ]
         .filter(Boolean)
         .join(" · "),

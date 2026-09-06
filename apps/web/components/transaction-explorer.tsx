@@ -27,7 +27,6 @@ export function TransactionExplorer({
   const [query, setQuery] = useState("");
   const [chainId, setChainId] = useState(0);
   const [eventType, setEventType] = useState("all");
-  const [page, setPage] = useState(1);
   const [cursor, setCursor] = useState<string | undefined>();
   const [cursorHistory, setCursorHistory] = useState<Array<string | undefined>>([]);
   const [result, setResult] = useState(initialPage);
@@ -45,8 +44,8 @@ export function TransactionExplorer({
     [initialPage.activity],
   );
   const eventTypes = availableEventTypes?.length ? availableEventTypes : pageEventTypes;
-  const currentPage = page;
-  const firstItem = result.activity.length ? (currentPage - 1) * pageSize + 1 : 0;
+  const page = cursorHistory.length + 1;
+  const firstItem = result.activity.length ? (page - 1) * pageSize + 1 : 0;
   const lastItem = firstItem ? firstItem + result.activity.length - 1 : 0;
   const hasFilters = query !== "" || chainId !== 0 || eventType !== "all";
 
@@ -87,13 +86,16 @@ export function TransactionExplorer({
     return () => controller.abort();
   }, [account, chainId, cursor, deferredQuery, eventType, page, tokenScopeParam]);
 
+  function resetPagination() {
+    setCursor(undefined);
+    setCursorHistory([]);
+  }
+
   function clearFilters() {
     setQuery("");
     setChainId(0);
     setEventType("all");
-    setPage(1);
-    setCursor(undefined);
-    setCursorHistory([]);
+    resetPagination();
   }
 
   return (
@@ -113,9 +115,7 @@ export function TransactionExplorer({
             className="h-10 w-full rounded-xl border border-border bg-background pr-10 pl-10 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-ring focus:ring-3 focus:ring-ring/20"
             onChange={(event) => {
               setQuery(event.target.value);
-              setPage(1);
-              setCursor(undefined);
-              setCursorHistory([]);
+              resetPagination();
             }}
             placeholder="Search address, token, event or transaction hash"
             type="search"
@@ -127,9 +127,7 @@ export function TransactionExplorer({
               className="absolute top-1/2 right-2 grid size-7 -translate-y-1/2 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"
               onClick={() => {
                 setQuery("");
-                setPage(1);
-                setCursor(undefined);
-                setCursorHistory([]);
+                resetPagination();
               }}
               type="button"
             >
@@ -144,9 +142,7 @@ export function TransactionExplorer({
             className="h-10 w-full appearance-none rounded-xl border border-border bg-background px-3 text-sm text-foreground outline-none transition focus:border-ring focus:ring-3 focus:ring-ring/20 sm:w-36"
             onChange={(event) => {
               setChainId(Number(event.target.value));
-              setPage(1);
-              setCursor(undefined);
-              setCursorHistory([]);
+              resetPagination();
             }}
             value={chainId}
           >
@@ -165,9 +161,7 @@ export function TransactionExplorer({
             className="h-10 w-full appearance-none rounded-xl border border-border bg-background px-3 text-sm text-foreground outline-none transition focus:border-ring focus:ring-3 focus:ring-ring/20 sm:w-48"
             onChange={(event) => {
               setEventType(event.target.value);
-              setPage(1);
-              setCursor(undefined);
-              setCursorHistory([]);
+              resetPagination();
             }}
             value={eventType}
           >
@@ -190,7 +184,7 @@ export function TransactionExplorer({
       <div className="mt-6">
         {loading ? <TransactionTableSkeleton /> : <EventTable activity={result.activity} />}
         {error ? <p className="mt-3 text-sm font-medium text-destructive">{error}</p> : null}
-        {currentPage > 1 || result.hasNextPage ? (
+        {page > 1 || result.hasNextPage ? (
           <nav aria-label="Transaction pagination" className="mt-4 flex items-center justify-between gap-4">
             <p className="text-sm font-medium text-muted-foreground">
               {firstItem}–{lastItem}
@@ -198,25 +192,23 @@ export function TransactionExplorer({
             <div className="flex items-center gap-2">
               <Button
                 aria-label="Previous page"
-                disabled={currentPage === 1 || loading}
+                disabled={page === 1 || loading}
                 onClick={() => {
                   setCursor(cursorHistory.at(-1));
                   setCursorHistory((history) => history.slice(0, -1));
-                  setPage(currentPage - 1);
                 }}
                 size="icon"
                 variant="outline"
               >
                 <ChevronLeft aria-hidden="true" />
               </Button>
-              <span className="min-w-20 text-center text-sm font-medium text-foreground">Page {currentPage}</span>
+              <span className="min-w-20 text-center text-sm font-medium text-foreground">Page {page}</span>
               <Button
                 aria-label="Next page"
                 disabled={!result.hasNextPage || loading}
                 onClick={() => {
                   setCursorHistory((history) => [...history, cursor]);
                   setCursor(result.nextCursor);
-                  setPage(currentPage + 1);
                 }}
                 size="icon"
                 variant="outline"

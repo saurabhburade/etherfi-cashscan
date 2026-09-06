@@ -46,23 +46,34 @@ function dateFormatter(first: Date, last: Date): Intl.DateTimeFormat {
 
 /** SVG-native time/category labels, so chart exports retain their x-axis context. */
 export function CartesianXAxis({ numTicks = 5 }: CartesianXAxisProps) {
-  const { barScale, bandWidth, barXAccessor, data, dateLabels, innerHeight, innerWidth, xAccessor, xScale } =
-    useChartStable();
+  const { barScale, bandWidth, barXAccessor, data, innerHeight, innerWidth, xAccessor, xScale } = useChartStable();
   const ticks = useMemo(() => {
     const indices = evenlySpacedIndices(data.length, numTicks);
     const dates = data.map(xAccessor);
-    const formatter = dates.length ? dateFormatter(dates[0]!, dates.at(-1)!) : null;
-    return indices.map((index) => {
-      const point = data[index]!;
+    const firstDate = dates[0];
+    const lastDate = dates.at(-1);
+    if (!(firstDate && lastDate)) {
+      return [];
+    }
+
+    const formatter = dateFormatter(firstDate, lastDate);
+    return indices.flatMap((index) => {
+      const point = data[index];
+      const date = dates[index];
+      if (!(point && date)) {
+        return [];
+      }
       const category = barXAccessor?.(point);
       const barX = category && barScale ? (barScale(category) ?? 0) + (bandWidth ?? 0) / 2 : undefined;
-      return {
-        index,
-        label: formatter ? formatter.format(dates[index]!) : (dateLabels[index] ?? ""),
-        x: barX ?? xScale(dates[index]!),
-      };
+      return [
+        {
+          index,
+          label: formatter.format(date),
+          x: barX ?? xScale(date),
+        },
+      ];
     });
-  }, [bandWidth, barScale, barXAccessor, data, dateLabels, numTicks, xAccessor, xScale]);
+  }, [bandWidth, barScale, barXAccessor, data, numTicks, xAccessor, xScale]);
 
   return (
     <g aria-hidden="true" className="chart-cartesian-x-axis" fill="var(--chart-label)" fontSize={11} opacity={0.62}>
