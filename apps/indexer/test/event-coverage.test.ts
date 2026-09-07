@@ -138,17 +138,14 @@ describe("Dune-parity event coverage", () => {
     });
   }
 
-  it("uses spend-token emitter filters on Optimism and Safe topic filters on Scroll", () => {
+  it("uses spend-token emitter filters without Safe address topic arrays", () => {
     expect(config).toContain("- name: TrackedSafeTransfer");
     expect(config).toContain("abi_file_path: ./abis/erc20.json");
     expect(handlers).toContain('contract: "LendGateway", event: "ReserveRegistered"');
     expect(handlers).toContain("context.chain.TrackedSafeTransfer.add(event.params.asset)");
-    expect(handlers).toContain("context.chain.TrackedSafeTransfer.add(event.params.deployed)");
-    expect(handlers).toContain("context.chain.TrackedSafeTransfer.add(event.params.safe)");
     expect(handlers).toContain('contract: "TrackedSafeTransfer"');
-    expect(handlers).toContain("wildcard: true");
-    expect(handlers).toContain("from: chain.TrackedSafeTransfer.addresses");
-    expect(handlers).toContain("to: chain.TrackedSafeTransfer.addresses");
+    expect(handlers).not.toContain("wildcard: true");
+    expect(handlers).not.toContain("chain.TrackedSafeTransfer.addresses");
   });
 });
 

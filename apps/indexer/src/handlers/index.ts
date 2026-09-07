@@ -4600,17 +4600,6 @@ async function bumpSafeTransferBalance(
   });
 }
 
-indexer.contractRegister(
-  { contract: "EtherFiSafeFactory", event: "BeaconProxyDeployed" },
-  async ({ event, context }) => {
-    if (event.chainId === CHAIN_IDS.scroll) context.chain.TrackedSafeTransfer.add(event.params.deployed);
-  },
-);
-
-indexer.contractRegister({ contract: "UserSafeFactory", event: "UserSafeDeployed" }, async ({ event, context }) => {
-  if (event.chainId === CHAIN_IDS.scroll) context.chain.TrackedSafeTransfer.add(event.params.safe);
-});
-
 const OPTIMISM_SPEND_ASSETS = new Set([
   "0x0b2c639c533813f4aa9d7837caf62653d097ff85", // USDC
   "0x94b008aa00579c1307b0ef2c499ad98a8ce58e58", // USDT
@@ -4628,37 +4617,6 @@ indexer.contractRegister({ contract: "LendGateway", event: "ReserveRegistered" }
     context.chain.TrackedSafeTransfer.add(event.params.asset);
   }
 });
-
-indexer.onEvent(
-  {
-    contract: "TrackedSafeTransfer",
-    event: "Transfer",
-    wildcard: true,
-    where: ({ chain }) =>
-      chain.id === CHAIN_IDS.scroll
-        ? { params: [{ from: chain.TrackedSafeTransfer.addresses }, { to: chain.TrackedSafeTransfer.addresses }] }
-        : false,
-  },
-  async ({ event, context }) => {
-    const base = event as unknown as BlockEvent;
-    const from = lower(event.params.from);
-    const to = lower(event.params.to);
-    const token = lower(event.srcAddress);
-    const value = event.params.value;
-    const [trackedFrom, trackedTo] = await Promise.all([
-      context.UserSafe.get(accountId(event.chainId, from)),
-      context.UserSafe.get(accountId(event.chainId, to)),
-    ]);
-
-    if (trackedFrom && trackedTo && from === to) {
-      await bumpSafeTransferBalance(context, base, from, token, value, value);
-    } else {
-      if (trackedFrom) await bumpSafeTransferBalance(context, base, from, token, 0n, value);
-      if (trackedTo) await bumpSafeTransferBalance(context, base, to, token, value, 0n);
-    }
-    await recordToken(context, base, token);
-  },
-);
 
 indexer.onEvent(
   {

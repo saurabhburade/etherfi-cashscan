@@ -11,7 +11,7 @@ reconstructing every wallet or protocol balance.
 | Legacy Scroll top-up | `LegacyTopUpDest.TopUp` / `TopUpBatch` | Credits the same balance ledger |
 | Settled spend | current and legacy `Spend` | Debits each token amount from the destination safe |
 | Spend token valuation | current and legacy `Spend` | Stores one event-implied USD price observation per token-array index |
-| Safe ERC-20 movement | `Transfer` from Optimism spend-token emitters; Safe-topic filtered on Scroll | Credits/debits `SafeTokenBalance` after batched `UserSafe` endpoint checks |
+| Safe ERC-20 movement | `Transfer` from Optimism spend-token emitters | Credits/debits `SafeTokenBalance` after batched `UserSafe` endpoint checks |
 | Top-up recipient ranking | destination top-up events | Increments `TopUpRecipientMetric` by Safe and network |
 | Cashback receiver ranking | paid `Cashback` and `PendingCashbackCleared` | Increments received reward count and event USD in `CashbackReceiverMetric` |
 
@@ -66,10 +66,11 @@ matching `Transfer` logs. On Optimism, Envio filters by the small current
 LendGateway spend-asset set. The token emitters are registered from the existing
 `ReserveRegistered` history so this optimization does not change the production
 config fingerprint. Handlers then batch-load the `from` and `to` `UserSafe`
-records and discard unrelated transfers. Scroll has no equivalent registry and
-retains indexed Safe `from`/`to` topic filters. Safe-to-Safe transfers update
-both accounts. Raw balance reconstruction requires no `eth_call`; its separate
-USD projection may use the bucketed, batched PriceProvider effect.
+records and discard unrelated transfers. There is no Safe-address topic array.
+Scroll has no equivalent token registry, so direct ERC-20 Safe balance tracking
+is disabled there. Safe-to-Safe transfers update both accounts on Optimism. Raw
+balance reconstruction requires no `eth_call`; its separate USD projection may
+use the bucketed, batched PriceProvider effect.
 
 This ledger does not cover native ETH, non-standard tokens that change balances
 without compliant `Transfer` logs, or activity before the configured factory
