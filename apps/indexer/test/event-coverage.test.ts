@@ -139,10 +139,10 @@ describe("Dune-parity event coverage", () => {
   }
 
   it("uses spend-token emitter filters on Optimism and Safe topic filters on Scroll", () => {
-    expect(config).toContain("- name: SpendAssetToken");
     expect(config).toContain("- name: TrackedSafeTransfer");
     expect(config).toContain("abi_file_path: ./abis/erc20.json");
-    expect(handlers).toContain("context.chain.SpendAssetToken.add(event.params.asset)");
+    expect(handlers).toContain('contract: "LendGateway", event: "ReserveRegistered"');
+    expect(handlers).toContain("context.chain.TrackedSafeTransfer.add(event.params.asset)");
     expect(handlers).toContain("context.chain.TrackedSafeTransfer.add(event.params.deployed)");
     expect(handlers).toContain("context.chain.TrackedSafeTransfer.add(event.params.safe)");
     expect(handlers).toContain('contract: "TrackedSafeTransfer"');
@@ -164,7 +164,6 @@ describe("Cash Lend Gateway / Aave V4 Spoke coverage", () => {
         "ReserveRegistered",
         "ReserveDeregistered",
         "PositionManagerApproved",
-        "SpendAssetSet",
         "Supplied",
         "Withdrawn",
         "Borrowed",

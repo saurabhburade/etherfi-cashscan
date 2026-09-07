@@ -62,15 +62,14 @@ described above.
 ## Separate Safe wallet ledger
 
 `SafeTokenBalance` reconstructs ERC-20 balances per factory-discovered Safe from
-matching `Transfer` logs. On Optimism, Envio filters by the small set of token
-emitters seeded from the current LendGateway spend assets and dynamically adds
-every asset seen in `SpendAssetSet`. Handlers then batch-load the `from` and `to`
-`UserSafe` records and discard unrelated transfers. Registration remains
-monotonic when `spendable` becomes false so later transfers of an existing Safe
-balance are not missed. Scroll has no equivalent registry and retains indexed
-Safe `from`/`to` topic filters. Safe-to-Safe transfers update both accounts. Raw
-balance reconstruction requires no `eth_call`; its separate USD projection may
-use the bucketed, batched PriceProvider effect.
+matching `Transfer` logs. On Optimism, Envio filters by the small current
+LendGateway spend-asset set. The token emitters are registered from the existing
+`ReserveRegistered` history so this optimization does not change the production
+config fingerprint. Handlers then batch-load the `from` and `to` `UserSafe`
+records and discard unrelated transfers. Scroll has no equivalent registry and
+retains indexed Safe `from`/`to` topic filters. Safe-to-Safe transfers update
+both accounts. Raw balance reconstruction requires no `eth_call`; its separate
+USD projection may use the bucketed, batched PriceProvider effect.
 
 This ledger does not cover native ETH, non-standard tokens that change balances
 without compliant `Transfer` logs, or activity before the configured factory

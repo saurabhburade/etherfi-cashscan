@@ -22,15 +22,6 @@
   },
   {
     "type": "event",
-    "name": "SpendAssetSet",
-    "anonymous": false,
-    "inputs": [
-      { "indexed": true, "name": "asset", "type": "address" },
-      { "indexed": false, "name": "spendable", "type": "bool" }
-    ]
-  },
-  {
-    "type": "event",
     "name": "Supplied",
     "anonymous": false,
     "inputs": [
