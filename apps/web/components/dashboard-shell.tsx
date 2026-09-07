@@ -121,11 +121,13 @@ function DataNotice({ data }: { data: ExplorerData }) {
       ? ["Indexer connected.", "No entities have been indexed yet."]
       : ["Live source unavailable.", "No fixture data is shown."];
   return (
-    <div className="mx-auto mt-4 flex w-[calc(100%-2rem)] max-w-[1510px] justify-between rounded-2xl border border-amber-400/15 bg-amber-400/[.06] px-4 py-3 text-xs text-amber-200">
-      <span>
-        <strong>{copy[0]}</strong> {copy[1]}
-        {data.errorMessage ? ` ${data.errorMessage}` : ""}
-      </span>
+    <div className="mx-auto mt-4 w-full max-w-[1540px] px-8 sm:px-12 lg:px-24 xl:px-32">
+      <div className="flex justify-between rounded-2xl border border-amber-400/15 bg-amber-400/[.06] px-4 py-3 text-xs text-amber-200">
+        <span>
+          <strong>{copy[0]}</strong> {copy[1]}
+          {data.errorMessage ? ` ${data.errorMessage}` : ""}
+        </span>
+      </div>
     </div>
   );
 }

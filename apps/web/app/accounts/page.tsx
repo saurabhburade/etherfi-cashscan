@@ -74,7 +74,7 @@ async function AccountList() {
 
 function Empty({ title, body }: { title: string; body: string }) {
   return (
-    <div className="rounded-2xl border border-border/40 bg-card p-10 text-center">
+    <div className="mt-8 rounded-2xl border border-border/40 bg-card p-10 text-center">
       <h2 className="font-medium">{title}</h2>
       <p className="mt-2 text-sm text-muted-foreground">{body}</p>
     </div>
