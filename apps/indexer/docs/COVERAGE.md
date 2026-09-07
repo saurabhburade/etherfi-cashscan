@@ -11,7 +11,7 @@ reconstructing every wallet or protocol balance.
 | Legacy Scroll top-up | `LegacyTopUpDest.TopUp` / `TopUpBatch` | Credits the same balance ledger |
 | Settled spend | current and legacy `Spend` | Debits each token amount from the destination safe |
 | Spend token valuation | current and legacy `Spend` | Stores one event-implied USD price observation per token-array index |
-| Safe ERC-20 movement | wildcard `Transfer`, topic-filtered to factory-discovered Safes | Credits/debits `SafeTokenBalance` from the token contract's logs |
+| Safe ERC-20 movement | `Transfer` from Optimism spend-token emitters; Safe-topic filtered on Scroll | Credits/debits `SafeTokenBalance` after batched `UserSafe` endpoint checks |
 | Top-up recipient ranking | destination top-up events | Increments `TopUpRecipientMetric` by Safe and network |
 | Cashback receiver ranking | paid `Cashback` and `PendingCashbackCleared` | Increments received reward count and event USD in `CashbackReceiverMetric` |
 
@@ -62,11 +62,15 @@ described above.
 ## Separate Safe wallet ledger
 
 `SafeTokenBalance` reconstructs ERC-20 balances per factory-discovered Safe from
-all matching `Transfer` logs. Envio dynamically registers Safe addresses from
-the current and legacy factories, then applies indexed `from`/`to` topic filters
-to the wildcard ERC-20 event signature. Safe-to-Safe transfers update both
-accounts. Raw balance reconstruction requires no `eth_call`; its separate USD
-projection may use the bucketed, batched PriceProvider effect.
+matching `Transfer` logs. On Optimism, Envio filters by the small set of token
+emitters seeded from the current LendGateway spend assets and dynamically adds
+every asset seen in `SpendAssetSet`. Handlers then batch-load the `from` and `to`
+`UserSafe` records and discard unrelated transfers. Registration remains
+monotonic when `spendable` becomes false so later transfers of an existing Safe
+balance are not missed. Scroll has no equivalent registry and retains indexed
+Safe `from`/`to` topic filters. Safe-to-Safe transfers update both accounts. Raw
+balance reconstruction requires no `eth_call`; its separate USD projection may
+use the bucketed, batched PriceProvider effect.
 
 This ledger does not cover native ETH, non-standard tokens that change balances
 without compliant `Transfer` logs, or activity before the configured factory
@@ -90,8 +94,9 @@ event's numeric `Mode` (0 and 1 respectively).
 
 ## Deliberately excluded
 
-- Unfiltered global ERC-20 `Transfer` storage. Only transfers involving a
-  dynamically registered Ether.fi Safe are retained.
+- Unfiltered global ERC-20 `Transfer` storage. Only transfers emitted by tracked
+  spend assets are fetched on Optimism, and only Safe-involved transfers are
+  retained after batched database checks.
 - Source-chain top-up factories and routing events.
 - Unrelated standalone protocol events outside the verified Cash, debt, ramp,
   oracle, and safe-factory surfaces listed below.

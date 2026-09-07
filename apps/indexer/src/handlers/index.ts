@@ -1,3 +1,4 @@
+import { CHAIN_IDS } from "@etherfi/contracts";
 import { indexer } from "envio";
 import {
   currentTokenPriceEffect,
@@ -4602,12 +4603,18 @@ async function bumpSafeTransferBalance(
 indexer.contractRegister(
   { contract: "EtherFiSafeFactory", event: "BeaconProxyDeployed" },
   async ({ event, context }) => {
-    context.chain.TrackedSafeTransfer.add(event.params.deployed);
+    if (event.chainId === CHAIN_IDS.scroll) context.chain.TrackedSafeTransfer.add(event.params.deployed);
   },
 );
 
 indexer.contractRegister({ contract: "UserSafeFactory", event: "UserSafeDeployed" }, async ({ event, context }) => {
-  context.chain.TrackedSafeTransfer.add(event.params.safe);
+  if (event.chainId === CHAIN_IDS.scroll) context.chain.TrackedSafeTransfer.add(event.params.safe);
+});
+
+indexer.contractRegister({ contract: "LendGateway", event: "SpendAssetSet" }, async ({ event, context }) => {
+  // Registration is deliberately monotonic. A disabled spend asset can remain
+  // in a Safe and must stay indexed so a later transfer-out updates its balance.
+  context.chain.SpendAssetToken.add(event.params.asset);
 });
 
 indexer.onEvent(
@@ -4615,9 +4622,10 @@ indexer.onEvent(
     contract: "TrackedSafeTransfer",
     event: "Transfer",
     wildcard: true,
-    where: ({ chain }) => ({
-      params: [{ from: chain.TrackedSafeTransfer.addresses }, { to: chain.TrackedSafeTransfer.addresses }],
-    }),
+    where: ({ chain }) =>
+      chain.id === CHAIN_IDS.scroll
+        ? { params: [{ from: chain.TrackedSafeTransfer.addresses }, { to: chain.TrackedSafeTransfer.addresses }] }
+        : false,
   },
   async ({ event, context }) => {
     const base = event as unknown as BlockEvent;
@@ -4639,6 +4647,30 @@ indexer.onEvent(
     await recordToken(context, base, token);
   },
 );
+
+indexer.onEvent({ contract: "SpendAssetToken", event: "Transfer" }, async ({ event, context }) => {
+  const base = event as unknown as BlockEvent;
+  const from = lower(event.params.from);
+  const to = lower(event.params.to);
+  const token = lower(event.srcAddress);
+
+  // Envio preloads these independent reads in batches across the event batch.
+  // Keep them before writes so unrelated transfers return with no entity work.
+  const [trackedFrom, trackedTo] = await Promise.all([
+    context.UserSafe.get(accountId(event.chainId, from)),
+    context.UserSafe.get(accountId(event.chainId, to)),
+  ]);
+  if (!trackedFrom && !trackedTo) return;
+
+  const value = event.params.value;
+  if (trackedFrom && trackedTo && from === to) {
+    await bumpSafeTransferBalance(context, base, from, token, value, value);
+  } else {
+    if (trackedFrom) await bumpSafeTransferBalance(context, base, from, token, 0n, value);
+    if (trackedTo) await bumpSafeTransferBalance(context, base, to, token, value, 0n);
+  }
+  await recordToken(context, base, token);
+});
 
 indexer.onEvent({ contract: "EtherFiSafeFactory", event: "BeaconProxyDeployed" }, async ({ event, context }) => {
   recordSafe(context, event as unknown as BlockEvent, event.params.deployed, "beacon_proxy", event.params.salt);
