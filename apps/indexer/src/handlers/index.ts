@@ -4600,7 +4600,7 @@ async function bumpSafeTransferBalance(
   });
 }
 
-const OPTIMISM_SPEND_ASSETS = new Set([
+const OPTIMISM_SPEND_ASSETS = [
   "0x0b2c639c533813f4aa9d7837caf62653d097ff85", // USDC
   "0x94b008aa00579c1307b0ef2c499ad98a8ce58e58", // USDT
   "0xdcb612005417dc906ff72c87df732e5a90d49e11", // EURC
@@ -4608,7 +4608,8 @@ const OPTIMISM_SPEND_ASSETS = new Set([
   "0xca5921df65e2e1b0b98ae91c0187ba80d4124898", // liquidRESERVE
   "0xcc476b1a49bcdf5192561e87b6fb8ea78aa28c13", // weEUR
   "0x80eede496655fb9047dd39d9f418d5483ed600df", // frxUSD
-]);
+] as const;
+const OPTIMISM_SPEND_ASSET_SET = new Set<string>(OPTIMISM_SPEND_ASSETS);
 
 const SCROLL_SPEND_ASSETS = [
   "0x06efdbff2a14a7c8e15944d1f4a48f9f95f663a4", // USDC
@@ -4621,24 +4622,22 @@ const SCROLL_SPEND_ASSETS = [
 indexer.contractRegister(
   { contract: "EtherFiSafeFactory", event: "BeaconProxyDeployed" },
   async ({ event, context }) => {
-    if (event.chainId === CHAIN_IDS.scroll) {
-      for (const asset of SCROLL_SPEND_ASSETS) context.chain.TrackedSafeTransfer.add(asset);
-    }
+    const assets = event.chainId === CHAIN_IDS.optimism ? OPTIMISM_SPEND_ASSETS : SCROLL_SPEND_ASSETS;
+    for (const asset of assets) context.chain.TrackedSafeTransfer.add(asset);
   },
 );
 
 indexer.contractRegister({ contract: "CashEventEmitter", event: "Spend" }, async ({ event, context }) => {
   // On a resumed production index, the next Spend registers the emitters even
   // when the historical factory events are already behind the checkpoint.
-  if (event.chainId === CHAIN_IDS.scroll) {
-    for (const asset of SCROLL_SPEND_ASSETS) context.chain.TrackedSafeTransfer.add(asset);
-  }
+  const assets = event.chainId === CHAIN_IDS.optimism ? OPTIMISM_SPEND_ASSETS : SCROLL_SPEND_ASSETS;
+  for (const asset of assets) context.chain.TrackedSafeTransfer.add(asset);
 });
 
 indexer.contractRegister({ contract: "LendGateway", event: "ReserveRegistered" }, async ({ event, context }) => {
   // Reuse this already-indexed event so production can adopt token-emitter
   // filtering without an incompatible ABI/config migration.
-  if (event.chainId === CHAIN_IDS.optimism && OPTIMISM_SPEND_ASSETS.has(lower(event.params.asset))) {
+  if (event.chainId === CHAIN_IDS.optimism && OPTIMISM_SPEND_ASSET_SET.has(lower(event.params.asset))) {
     context.chain.TrackedSafeTransfer.add(event.params.asset);
   }
 });

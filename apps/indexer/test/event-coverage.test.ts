@@ -144,7 +144,9 @@ describe("Dune-parity event coverage", () => {
     expect(handlers).toContain('contract: "LendGateway", event: "ReserveRegistered"');
     expect(handlers).toContain("context.chain.TrackedSafeTransfer.add(event.params.asset)");
     expect(handlers).toContain('contract: "CashEventEmitter", event: "Spend"');
-    expect(handlers).toContain("for (const asset of SCROLL_SPEND_ASSETS)");
+    expect(handlers).toContain("OPTIMISM_SPEND_ASSETS");
+    expect(handlers).toContain("SCROLL_SPEND_ASSETS");
+    expect(handlers).toContain("for (const asset of assets)");
     expect(handlers).toContain('contract: "TrackedSafeTransfer"');
     expect(handlers).not.toContain("wildcard: true");
     expect(handlers).not.toContain("chain.TrackedSafeTransfer.addresses");
