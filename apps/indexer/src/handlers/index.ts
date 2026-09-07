@@ -4610,6 +4610,31 @@ const OPTIMISM_SPEND_ASSETS = new Set([
   "0x80eede496655fb9047dd39d9f418d5483ed600df", // frxUSD
 ]);
 
+const SCROLL_SPEND_ASSETS = [
+  "0x06efdbff2a14a7c8e15944d1f4a48f9f95f663a4", // USDC
+  "0xf55bec9cafdbe8730f096aa55dad6d22d44099df", // USDT
+  "0x397f939c3b91a74c321ea7129396492ba9cdce82", // frxUSD
+  "0x08c6f91e2b681faf5e17227f2a44c307b3c1364c", // liquidUSD
+  "0xb7fb3768caac98354eadf514b48f28f2fe822bf0", // liquidRESERVE
+] as const;
+
+indexer.contractRegister(
+  { contract: "EtherFiSafeFactory", event: "BeaconProxyDeployed" },
+  async ({ event, context }) => {
+    if (event.chainId === CHAIN_IDS.scroll) {
+      for (const asset of SCROLL_SPEND_ASSETS) context.chain.TrackedSafeTransfer.add(asset);
+    }
+  },
+);
+
+indexer.contractRegister({ contract: "CashEventEmitter", event: "Spend" }, async ({ event, context }) => {
+  // On a resumed production index, the next Spend registers the emitters even
+  // when the historical factory events are already behind the checkpoint.
+  if (event.chainId === CHAIN_IDS.scroll) {
+    for (const asset of SCROLL_SPEND_ASSETS) context.chain.TrackedSafeTransfer.add(asset);
+  }
+});
+
 indexer.contractRegister({ contract: "LendGateway", event: "ReserveRegistered" }, async ({ event, context }) => {
   // Reuse this already-indexed event so production can adopt token-emitter
   // filtering without an incompatible ABI/config migration.
@@ -4622,7 +4647,7 @@ indexer.onEvent(
   {
     contract: "TrackedSafeTransfer",
     event: "Transfer",
-    where: ({ chain }) => chain.id === CHAIN_IDS.optimism,
+    where: ({ chain }) => chain.id === CHAIN_IDS.optimism || chain.id === CHAIN_IDS.scroll,
   },
   async ({ event, context }) => {
     const base = event as unknown as BlockEvent;
