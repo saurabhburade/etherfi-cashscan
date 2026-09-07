@@ -47,6 +47,7 @@ const detail = (overrides: Partial<AccountAnalyticsDetail> = {}): AccountAnalyti
     tokenCount: 2,
     transactionCount: 2,
     lifetimeDepositedUsd: 7,
+    unpricedDepositCount: 0,
     lifetimeSpentUsd: 4,
     lifetimeWithdrawnUsd: 1,
     lifetimeCashbackUsd: 0.1,

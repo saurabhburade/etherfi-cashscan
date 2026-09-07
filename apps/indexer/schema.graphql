@@ -1001,7 +1001,8 @@ type AccountMetric
   tierUpdatedAt: Timestamp
   tokenCount: BigInt!
   transactionCount: BigInt!
-  lifetimeDepositedUsd: BigInt @index
+  lifetimeDepositedUsd: BigInt! @index
+  unpricedDepositCount: BigInt!
   lifetimeSpentUsd: BigInt @index
   lifetimeWithdrawnUsd: BigInt
   lifetimeCashbackUsd: BigInt
@@ -1277,22 +1278,6 @@ type TokenPriceCurrent {
   referenceTokenAddress: String
   referenceBlockNumber: BigInt
   referenceObservedAt: Timestamp
-}
-type CanonicalTokenPriceBucket
-  @index(fields: [["canonicalAsset", "ASC"], ["bucketStart", "DESC"], ["chainId", "ASC"], ["tokenAddress", "ASC"]])
-{
-  id: ID!
-  canonicalAsset: String! @index
-  chainId: Int! @index
-  tokenAddress: String! @index
-  tokenId: String! @index
-  token: Token
-  priceUsdE18: BigInt!
-  observedAt: Timestamp! @index
-  bucketStart: Timestamp! @index
-  blockNumber: BigInt! @index
-  logIndex: Int!
-  sourceType: String! @index
 }
 type CanonicalAssetPriceBucket @index(fields: [["canonicalAsset", "ASC"], ["bucketId", "DESC"]]) {
   # Stable cross-chain identity: canonicalAsset:fifteenMinuteBucketId.

@@ -22,7 +22,7 @@ materialization seams below.
 | `LendingMarket`, `LendingReserve`, `LendingEvent`, `LendingEventLeg` | Gateway and Aave V4 Spoke logs | Event-derived; event-priced USD preferred | Maps existing `LendingReserveState`/`LendingSourceEvent` without removing them. |
 | `LendingPosition`, `LendingPositionSnapshot` | Lending logs plus exact block state | Handler state plus block-exact cached effect | Supersedes worker-created position snapshots. |
 | `LendingAccountSnapshot` | Exact block lending aggregate | Effect-derived, chain-scoped and cached | Supersedes archive snapshot worker output. |
-| `TokenPriceSource`, `TokenPriceObservation`, `TokenPriceCurrent`, `CanonicalTokenPriceBucket`, `CanonicalAssetPriceBucket`, `PriceAnomaly` | Spend-implied prices first; fresh local/common indexed prices second; same-chain oracle last | Event-derived plus cached block-exact effect | Supersedes price backfill/refresh and anomaly worker tables. |
+| `TokenPriceSource`, `TokenPriceObservation`, `TokenPriceCurrent`, `CanonicalAssetPriceBucket`, `PriceAnomaly` | Spend-implied prices first; fresh local/common indexed prices second; same-chain oracle last | Event-derived plus cached block-exact effect | Shared verified-asset buckets use `canonicalAsset:fifteenMinuteBucketId`; supersedes price backfill/refresh and anomaly worker tables. |
 
 For every canonical event source, the ID is `chainId:transactionHash:logIndex`.
 A token or lending leg appends its deterministic index. IDs and addresses are
@@ -67,6 +67,10 @@ fetches retain their exact source block provenance, update the chain-local price
 entities, and update the common PostgreSQL bucket with source chain, token,
 block hash/number, log index, timestamp, type, and observation ID. Handlers
 never issue a cross-chain historical RPC call.
+Verified pre-provider gaps are served from checked-in 15-minute constants. This
+includes Scroll USDC from Binance `USDCUSDT` candles for 2024-11-22 through the
+Scroll PriceProvider deployment on 2025-03-24; runtime handlers never call
+Binance or another off-chain API.
 Known pre-deployment event blocks skip guaranteed failures, candidates more than
 50 percent away from the prior valid price are rejected, and unavailable calls
 remain nullable.

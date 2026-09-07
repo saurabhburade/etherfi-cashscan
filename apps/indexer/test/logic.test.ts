@@ -93,6 +93,26 @@ describe("indexer identities", () => {
     expect(uniqueLowercase(["0xAbC", "0xabc", "0xDEF"])).toEqual(["0xabc", "0xdef"]);
   });
 
+  it.each([
+    ["top-up", 1_000n, 250n, 0n, 1_250n],
+    ["spend", 1_000n, 0n, 250n, 750n],
+    ["withdrawal", 1_000n, 0n, 250n, 750n],
+    ["paid cashback", 1_000n, 250n, 0n, 1_250n],
+    ["borrow", 1_000n, 250n, 0n, 1_250n],
+    ["repayment", 1_000n, 0n, 250n, 750n],
+  ])(
+    "counts a %s and its Transfer only once regardless of log order",
+    (_eventType, opening, inflow, outflow, expected) => {
+      const transferFirst = applyBalanceDelta(opening, inflow, outflow);
+      const protocolAfter = applyBalanceDelta(transferFirst, 0n, 0n);
+      const protocolFirst = applyBalanceDelta(opening, 0n, 0n);
+      const transferAfter = applyBalanceDelta(protocolFirst, inflow, outflow);
+
+      expect(protocolAfter).toBe(expected);
+      expect(transferAfter).toBe(expected);
+    },
+  );
+
   it("never turns excess repayment or liquidation into negative debt", () => {
     expect(outstandingDebt(1_000n, 250n)).toBe(750n);
     expect(outstandingDebt(1_000n, 1_010n)).toBe(0n);

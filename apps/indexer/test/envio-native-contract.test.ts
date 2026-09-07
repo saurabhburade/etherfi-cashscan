@@ -131,12 +131,6 @@ const entities: readonly EntityContract[] = [
     population: "event-and-effect",
   },
   {
-    name: "CanonicalTokenPriceBucket",
-    fields: ["id", "canonicalAsset", "tokenId", "chainId", "tokenAddress", "bucketStart", "priceUsdE18"],
-    indexed: ["canonicalAsset", "tokenId", "chainId", "tokenAddress", "bucketStart"],
-    population: "event",
-  },
-  {
     name: "CanonicalAssetPriceBucket",
     fields: [
       "id",

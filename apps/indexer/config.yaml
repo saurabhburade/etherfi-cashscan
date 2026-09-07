@@ -102,9 +102,9 @@ contracts:
     abi_file_path: ./abis/legacy-safe-factory.json
     events:
       - event: UserSafeDeployed
-  # Addresses registered under this contract are Safe addresses. Wildcard
-  # Transfer matching uses them only as indexed from/to topic filters; the
-  # event emitter itself remains the ERC-20 token contract.
+  # ERC-20 token emitter addresses are registered dynamically and persisted
+  # by Envio. Safe membership is checked in the handler; Safe addresses are
+  # never included in this contract's RPC log filter.
   - name: TrackedSafeTransfer
     abi_file_path: ./abis/erc20.json
     events:

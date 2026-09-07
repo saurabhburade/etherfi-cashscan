@@ -25,11 +25,15 @@ export function AccountDetailSummary({ detail, safe }: { detail: AccountAnalytic
       ? null
       : account.pricedBalanceUsd - account.eventLedgerOutstandingDebtUsd);
   const unpricedDetail = `${account.unpricedPositionCount} unpriced token ${account.unpricedPositionCount === 1 ? "position" : "positions"}`;
+  const hasUnpricedDeposits = account.unpricedDepositCount > 0;
+  const unpricedDepositDetail = `${account.unpricedDepositCount} unpriced ${account.unpricedDepositCount === 1 ? "deposit" : "deposits"}`;
   const metrics = [
     {
       label: "Cash top-ups",
-      value: usd(account.lifetimeDepositedUsd),
-      detail: "Cash TopUp events · event-time USD",
+      value: lowerBoundUsd(account.lifetimeDepositedUsd ?? 0, hasUnpricedDeposits),
+      detail: ["Cash TopUp events · event-time USD", hasUnpricedDeposits ? unpricedDepositDetail : null]
+        .filter(Boolean)
+        .join(" · "),
     },
     {
       label: "Spend volume",

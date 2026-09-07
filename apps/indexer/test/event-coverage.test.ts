@@ -109,6 +109,50 @@ describe("CashEventEmitter coverage", () => {
     expect(handlers).toMatch(/-event\.params\.cashbackAmount,\s+-event\.params\.cashbackInUsd/);
     expect(handlers).toContain("current.amount + amountDelta < 0n ? 0n");
   });
+
+  it("uses ERC-20 Transfer as the only source of exact Safe balance movement", () => {
+    const canonicalLeg = handlers.slice(
+      handlers.indexOf("async function canonicalTokenLeg"),
+      handlers.indexOf("async function scannerOnlyTokenLeg"),
+    );
+    const exactWalletBalance = handlers.slice(
+      handlers.indexOf("async function applyExactWalletBalance"),
+      handlers.indexOf("function addMetricUsd"),
+    );
+    const transferBalance = handlers.slice(
+      handlers.indexOf("async function bumpSafeTransferBalance"),
+      handlers.indexOf("const OPTIMISM_SPEND_ASSETS"),
+    );
+
+    // Every protocol balance event goes through canonicalTokenLeg, which owns
+    // economic metrics but cannot apply another exact Safe balance delta.
+    expect(canonicalLeg).not.toContain("safeBalanceAmount:");
+    expect(canonicalLeg).not.toContain("safeInflowAmount:");
+    expect(canonicalLeg).not.toContain("safeOutflowAmount:");
+    expect(canonicalLeg).toContain(
+      "applyExactWalletBalance(context, event, accountAddress, tokenAddress, exactWallet.amount, valuation)",
+    );
+
+    // Only a matched Transfer supplies movement; protocol calls may reprice
+    // the already-known amount but pass no inflow or outflow.
+    expect(exactWalletBalance).toContain("safeBalanceAmount: nextAmount");
+    expect(exactWalletBalance).toContain("safeInflowAmount: metric.safeInflowAmount + inflow");
+    expect(exactWalletBalance).toContain("safeOutflowAmount: metric.safeOutflowAmount + outflow");
+    expect(transferBalance).toContain(
+      "applyExactWalletBalance(context, event, safe, token, nextAmount, undefined, { inflow, outflow })",
+    );
+  });
+
+  it("keeps priced deposit totals after an unpriced deposit", () => {
+    const accountMetric = handlers.slice(
+      handlers.indexOf("async function canonicalAccountMetric"),
+      handlers.indexOf("const dailyId", handlers.indexOf("async function canonicalAccountMetric")),
+    );
+    expect(accountMetric).toContain("delta.depositedUsd === null ? 1n : 0n");
+    expect(accountMetric).not.toContain(
+      "lifetimeDepositedUsd: addMetricUsd(current.lifetimeDepositedUsd, delta.depositedUsd)",
+    );
+  });
 });
 
 describe("Dune-parity event coverage", () => {

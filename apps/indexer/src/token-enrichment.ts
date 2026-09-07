@@ -85,21 +85,13 @@ export type VerifiedCrossChainPricePeer = {
 };
 
 /**
- * Resolve the shared asset identity only when the exact token address is in
- * the checked-in registry and another configured Cash chain has the same
- * canonical asset. Runtime ERC-20 symbols never participate in this mapping.
+ * Resolve the canonical price identity only when the exact token address is
+ * in the checked-in registry. Runtime ERC-20 symbols never participate in
+ * this mapping, so an unverified token cannot inherit another asset's price.
  */
 export function verifiedCanonicalPriceAsset(chainId: number, tokenAddress: string): string | null {
   const local = TOKEN_REGISTRY[chainId]?.[tokenAddress.toLowerCase()];
-  if (!local) return null;
-  const canonicalAsset = canonicalOracleSymbol(local.symbol);
-  return Object.entries(TOKEN_REGISTRY).some(
-    ([candidateChainId, tokens]) =>
-      Number(candidateChainId) !== chainId &&
-      Object.values(tokens).some((metadata) => canonicalOracleSymbol(metadata.symbol) === canonicalAsset),
-  )
-    ? canonicalAsset
-    : null;
+  return local ? canonicalOracleSymbol(local.symbol) : null;
 }
 
 /**
@@ -126,10 +118,6 @@ export function verifiedCrossChainPricePeers(chainId: number, tokenAddress: stri
             })),
     )
     .sort((a, b) => a.chainId - b.chainId || a.tokenAddress.localeCompare(b.tokenAddress));
-}
-
-export function tokenPriceBucketId(chainId: number, tokenAddress: string, bucketStart: string): string {
-  return `${chainId}:${tokenAddress.toLowerCase()}:${bucketStart}`;
 }
 
 /**

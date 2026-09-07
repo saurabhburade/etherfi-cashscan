@@ -62,6 +62,15 @@ const sources = {
     maxStalenessSeconds: 900,
     event: "15m kline open",
   },
+  binanceUsdcUsdt: {
+    chainId: 0,
+    pair: "USDC/USDT",
+    address: "USDCUSDT",
+    proxyAddress: "USDCUSDT",
+    decimals: 18,
+    maxStalenessSeconds: 900,
+    event: "15m kline open",
+  },
 };
 
 const outputRoutes = [
@@ -95,6 +104,15 @@ const outputRoutes = [
 const SCR_ROUTE_ID = "534352:0xd29687c813d741e2f938f4ac377128810e217b1b";
 const SCR_ORACLE_BUCKET_START = BigInt(Math.floor(Date.parse("2025-02-06T09:45:00Z") / 1000));
 const binanceOnlyRoutes = [
+  {
+    id: "534352:0x06efdbff2a14a7c8e15944d1f4a48f9f95f663a4",
+    asset: "USDC",
+    validFrom: "2024-11-22T17:00:41Z",
+    validUntilExclusive: "2025-03-24T18:15:34Z",
+    source: "binanceUsdcUsdt",
+    sourceKeys: ["binanceUsdcUsdt"],
+    symbol: "USDCUSDT",
+  },
   {
     id: "534352:0x056a5fa5da84ceb7f93d36e545c5905607d8bd81",
     asset: "ETHFI",

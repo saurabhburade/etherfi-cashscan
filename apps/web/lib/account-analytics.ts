@@ -10,6 +10,7 @@ export type AccountAnalyticsMetric = {
   tokenCount: number;
   transactionCount: number;
   lifetimeDepositedUsd: number | null;
+  unpricedDepositCount: number;
   lifetimeSpentUsd: number | null;
   lifetimeWithdrawnUsd: number | null;
   /** Backward-compatible received cashback total. */
@@ -132,7 +133,7 @@ export type AccountAnalyticsPage = {
   hasNextPage: boolean;
 };
 
-const ACCOUNT_FIELDS = `id chainId safeAddress tierId:currentTierId tokenCount transactionCount lifetimeDepositedUsd lifetimeSpentUsd lifetimeWithdrawnUsd lifetimeCashbackUsd lifetimeCashbackGeneratedUsd lifetimeCashbackReceivedUsd lifetimeCashbackGeneratedForOthersUsd lifetimeCashbackRegularUsd lifetimeCashbackSpenderUsd lifetimeCashbackPromotionUsd lifetimeCashbackReferralUsd lifetimeCashbackOtherUsd creditSpendUsd debitSpendUsd borrowedUsd repaidUsd eventLedgerOutstandingDebtUsd debtStatus pricedBalanceUsd currentBalanceUsd netWorthUsd unpricedPositionCount firstActivityAt lastActivityAt`;
+const ACCOUNT_FIELDS = `id chainId safeAddress tierId:currentTierId tokenCount transactionCount lifetimeDepositedUsd unpricedDepositCount lifetimeSpentUsd lifetimeWithdrawnUsd lifetimeCashbackUsd lifetimeCashbackGeneratedUsd lifetimeCashbackReceivedUsd lifetimeCashbackGeneratedForOthersUsd lifetimeCashbackRegularUsd lifetimeCashbackSpenderUsd lifetimeCashbackPromotionUsd lifetimeCashbackReferralUsd lifetimeCashbackOtherUsd creditSpendUsd debitSpendUsd borrowedUsd repaidUsd eventLedgerOutstandingDebtUsd debtStatus pricedBalanceUsd currentBalanceUsd netWorthUsd unpricedPositionCount firstActivityAt lastActivityAt`;
 const ACCOUNT_LIST_QUERY = `query AccountList($limit:Int!,$offset:Int!,$where:AccountMetric_bool_exp!,$orderBy:[AccountMetric_order_by!]!){AccountMetric(limit:$limit,offset:$offset,where:$where,order_by:$orderBy){${ACCOUNT_FIELDS}}}`;
 const ACCOUNT_DAILY_METRIC_LIMIT = 5000;
 const ACCOUNT_DAILY_FALLBACK_LIMIT = 5000;
@@ -179,6 +180,7 @@ function account(row: Record<string, unknown>): AccountAnalyticsMetric {
     tokenCount: integer(row.tokenCount),
     transactionCount: integer(row.transactionCount),
     lifetimeDepositedUsd: accountUsd(row.lifetimeDepositedUsd),
+    unpricedDepositCount: integer(row.unpricedDepositCount),
     lifetimeSpentUsd: accountUsd(row.lifetimeSpentUsd),
     lifetimeWithdrawnUsd: accountUsd(row.lifetimeWithdrawnUsd),
     lifetimeCashbackUsd: accountUsd(row.lifetimeCashbackUsd),
@@ -461,7 +463,6 @@ async function loadAccountDailyFallbackDays(eventWhere: Record<string, unknown>)
 }
 
 const nullableMetricKeys = [
-  "lifetimeDepositedUsd",
   "lifetimeSpentUsd",
   "lifetimeWithdrawnUsd",
   "lifetimeCashbackUsd",
@@ -490,6 +491,8 @@ export function aggregateAccountMetrics(rows: AccountAnalyticsMetric[]): Account
     tierId: rows.find((row) => row.tierId !== null)?.tierId ?? null,
     tokenCount: rows.reduce((sum, row) => sum + row.tokenCount, 0),
     transactionCount: rows.reduce((sum, row) => sum + row.transactionCount, 0),
+    lifetimeDepositedUsd: rows.reduce((sum, row) => sum + (row.lifetimeDepositedUsd ?? 0), 0),
+    unpricedDepositCount: rows.reduce((sum, row) => sum + row.unpricedDepositCount, 0),
     pricedBalanceUsd: rows.reduce((sum, row) => sum + row.pricedBalanceUsd, 0),
     unpricedPositionCount: rows.reduce((sum, row) => sum + row.unpricedPositionCount, 0),
     firstActivityAt: earliest(rows.map((row) => row.firstActivityAt)),

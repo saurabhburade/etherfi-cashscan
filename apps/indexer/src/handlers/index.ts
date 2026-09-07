@@ -32,12 +32,7 @@ import {
   uniqueLowercase,
   ZERO_ADDRESS,
 } from "../logic.js";
-import {
-  canonicalAssetPriceBucketId,
-  tokenFromRegistry,
-  tokenPriceBucketId,
-  verifiedCanonicalPriceAsset,
-} from "../token-enrichment.js";
+import { canonicalAssetPriceBucketId, tokenFromRegistry, verifiedCanonicalPriceAsset } from "../token-enrichment.js";
 import { decodeSnapshotEffectResult } from "./state-enrichment.js";
 
 // Alias keeps the current Cash handlers visually grouped while preserving the
@@ -1059,34 +1054,6 @@ async function resolveCanonicalValuation(
           updatedAt: observedAt,
           updatedBlock: asBigInt(event.block.number),
         });
-        const canonicalAsset = verifiedCanonicalPriceAsset(event.chainId, tokenAddress);
-        if (canonicalAsset) {
-          const bucketStart = fifteenMinuteBucket(observedAt);
-          const bucketId = tokenPriceBucketId(event.chainId, tokenAddress, bucketStart);
-          const existingBucket = await context.CanonicalTokenPriceBucket.get(bucketId);
-          const shouldReplace =
-            !existingBucket ||
-            existingBucket.observedAt.getTime() < observedAt.getTime() ||
-            (existingBucket.observedAt.getTime() === observedAt.getTime() &&
-              (existingBucket.blockNumber < asBigInt(event.block.number) ||
-                (existingBucket.blockNumber === asBigInt(event.block.number) &&
-                  existingBucket.logIndex < event.logIndex)));
-          if (shouldReplace)
-            context.CanonicalTokenPriceBucket.set({
-              id: bucketId,
-              canonicalAsset,
-              chainId: event.chainId,
-              tokenAddress: lower(tokenAddress),
-              tokenId,
-              token_id: tokenId,
-              priceUsdE18,
-              observedAt,
-              bucketStart: new Date(bucketStart),
-              blockNumber: asBigInt(event.block.number),
-              logIndex: event.logIndex,
-              sourceType: "event_implied",
-            });
-        }
         await publishCanonicalAssetPriceBucket(context, event, tokenAddress, priceUsdE18, {
           blockNumber: asBigInt(event.block.number),
           blockHash: event.block.hash,
@@ -1407,7 +1374,7 @@ async function canonicalTokenLeg(
   amount: bigint,
   amountUsd?: bigint,
   fundingMode?: string,
-  options: { status?: string; cashbackType?: string; affectsSafeBalance?: boolean; createScannerLeg?: boolean } = {},
+  options: { status?: string; cashbackType?: string; createScannerLeg?: boolean } = {},
 ) {
   const accountAddress = await canonicalAccount(context, event, rawAccount);
   const tokenAddress = lower(rawToken);
@@ -1481,11 +1448,8 @@ async function canonicalTokenLeg(
     const accountMetric = await ensureAccountMetric(context, event, accountAddress);
     context.AccountMetric.set({ ...accountMetric, tokenCount: accountMetric.tokenCount + 1n });
   }
-  const affectsSafeBalance = options.affectsSafeBalance ?? (category !== "borrow" && category !== "repayment");
   const inflow = direction === "in" ? amount : 0n;
   const outflow = direction === "out" ? amount : 0n;
-  const safeInflow = affectsSafeBalance ? inflow : 0n;
-  const safeOutflow = affectsSafeBalance ? outflow : 0n;
   const addUsd = (currentValue: bigint | undefined, applies: boolean) =>
     !applies ? currentValue : resolvedAmountUsd === undefined ? undefined : (currentValue ?? 0n) + resolvedAmountUsd;
   const isCompleted = (options.status ?? "completed") === "completed";
@@ -1504,9 +1468,6 @@ async function canonicalTokenLeg(
     balance: applyBalanceDelta(current.balance, inflow, outflow),
     inflow: current.inflow + inflow,
     outflow: current.outflow + outflow,
-    safeBalanceAmount: applyBalanceDelta(current.safeBalanceAmount, safeInflow, safeOutflow),
-    safeInflowAmount: current.safeInflowAmount + safeInflow,
-    safeOutflowAmount: current.safeOutflowAmount + safeOutflow,
     depositCount: current.depositCount + (isDeposit ? 1n : 0n),
     depositedAmount: current.depositedAmount + (isDeposit ? inflow : 0n),
     depositedUsd: addUsd(current.depositedUsd, isDeposit),
@@ -1654,6 +1615,7 @@ async function ensureAccountMetric(context: any, event: BlockEvent, rawAccount: 
       tokenCount: 0n,
       transactionCount: 0n,
       lifetimeDepositedUsd: 0n,
+      unpricedDepositCount: 0n,
       lifetimeSpentUsd: 0n,
       lifetimeWithdrawnUsd: 0n,
       lifetimeCashbackUsd: 0n,
@@ -1688,6 +1650,7 @@ async function applyExactWalletBalance(
   rawToken: string,
   nextAmount: bigint,
   knownValuation?: CanonicalValuation,
+  movement: { inflow?: bigint; outflow?: bigint } = {},
 ) {
   const accountAddress = await canonicalAccount(context, event, rawAccount);
   const tokenAddress = lower(rawToken);
@@ -1712,6 +1675,8 @@ async function applyExactWalletBalance(
   const previousUsd = metric.currentBalanceUsd;
   const previousUnpriced = previousAmount > 0n && previousUsd === undefined;
   const nextUnpriced = nextAmount > 0n && nextUsd === undefined;
+  const inflow = movement.inflow ?? 0n;
+  const outflow = movement.outflow ?? 0n;
   context.AccountTokenMetric.set({
     ...metric,
     currentBalanceAmount: nextAmount,
@@ -1719,6 +1684,8 @@ async function applyExactWalletBalance(
     currentBalanceValuationStatus:
       nextAmount === 0n ? "zero_balance" : nextUsd === undefined ? "unpriced" : "latest_indexed_price",
     safeBalanceAmount: nextAmount,
+    safeInflowAmount: metric.safeInflowAmount + inflow,
+    safeOutflowAmount: metric.safeOutflowAmount + outflow,
     usdStatus: nextUsd === undefined ? "unpriced" : "priced",
     updatedAt: ts(event),
     updatedBlock: asBigInt(event.block.number),
@@ -1762,6 +1729,9 @@ async function canonicalAccountMetric(
   const cashbackReceivedUsd = addMetricUsd(current.lifetimeCashbackReceivedUsd, delta.cashbackReceivedUsd);
   const borrowedUsd = addMetricUsd(current.borrowedUsd, delta.borrowedUsd);
   const repaidUsd = addMetricUsd(current.repaidUsd, delta.repaidUsd);
+  const lifetimeDepositedUsd =
+    (current.lifetimeDepositedUsd ?? 0n) +
+    (delta.depositedUsd === undefined || delta.depositedUsd === null ? 0n : delta.depositedUsd);
   const outstandingDebtUsd =
     borrowedUsd === undefined || repaidUsd === undefined ? undefined : outstandingDebt(borrowedUsd, repaidUsd);
   const next = {
@@ -1771,7 +1741,10 @@ async function canonicalAccountMetric(
     cashbackReceivedUsd:
       addMetricUsd(current.cashbackReceivedUsd, delta.cashbackReceivedUsd) ?? current.cashbackReceivedUsd,
     transactionCount: current.transactionCount + (countTransaction ? 1n : 0n),
-    lifetimeDepositedUsd: addMetricUsd(current.lifetimeDepositedUsd, delta.depositedUsd),
+    // Keep the known-priced subtotal usable. Missing event-time prices are
+    // represented separately instead of poisoning every later deposit.
+    lifetimeDepositedUsd,
+    unpricedDepositCount: current.unpricedDepositCount + (delta.depositedUsd === null ? 1n : 0n),
     lifetimeSpentUsd: spendUsd,
     lifetimeWithdrawnUsd: addMetricUsd(current.lifetimeWithdrawnUsd, delta.withdrawnUsd),
     lifetimeCashbackUsd: cashbackReceivedUsd,
@@ -2256,8 +2229,6 @@ async function handleRepayment(event: any, context: any, repaymentType: string) 
       "out",
       event.params.debtAmount,
       event.params.debtAmountInUsd,
-      undefined,
-      { affectsSafeBalance: false },
     );
     await canonicalAccountMetric(context, base, safe, { repaidUsd: event.params.debtAmountInUsd });
   }
@@ -2317,9 +2288,6 @@ indexer.onEvent({ contract: "CashEventEmitter", event: "RepayLendTokenAmount" },
     "repay",
     "out",
     event.params.debtAmount,
-    undefined,
-    undefined,
-    { affectsSafeBalance: false },
   );
   await canonicalAccountMetric(context, base, safe, { repaidUsd: null });
   context.DebtEvent.set({
@@ -2369,7 +2337,6 @@ indexer.onEvent({ contract: "CashEventEmitter", event: "LendBorrowed" }, async (
     event.params.amount,
     event.params.amountInUsd,
     "credit",
-    { affectsSafeBalance: false },
   );
   await canonicalAccountMetric(context, base, safe, { borrowedUsd: event.params.amountInUsd });
   context.DebtEvent.set({
@@ -2591,7 +2558,6 @@ async function handleWithdrawal(event: any, context: any, status: string) {
       undefined,
       {
         status: status === "requested" ? "pending" : status === "cancelled" ? "cancelled" : "completed",
-        affectsSafeBalance: financial,
       },
     );
     if (financial) {
@@ -2675,7 +2641,7 @@ cashIndexer.onEvent({ contract: "CashEventEmitter", event: "WithdrawalAmountUpda
     event.params.amount,
     undefined,
     undefined,
-    { status: "pending", affectsSafeBalance: false },
+    { status: "pending" },
   );
   await canonicalAccountMetric(context, base, safe, {});
   const id = accountId(event.chainId, safe);
@@ -3242,7 +3208,6 @@ async function recordDebtEvent(
     amount,
     undefined,
     eventType === "borrowed" ? "credit" : undefined,
-    { affectsSafeBalance: false },
   );
   await canonicalAccountMetric(
     context,
@@ -3382,9 +3347,6 @@ for (const [contract, managerVersion] of [
       "liquidation_repayment",
       "out",
       amount,
-      undefined,
-      undefined,
-      { affectsSafeBalance: false },
     );
     for (let index = 0; index < event.params.userCollateralLiquidated.length; index += 1) {
       const collateral = event.params.userCollateralLiquidated[index];
@@ -3400,9 +3362,6 @@ for (const [contract, managerVersion] of [
         "other",
         "out",
         collateral.amount,
-        undefined,
-        undefined,
-        { affectsSafeBalance: false },
       );
     }
     await canonicalAccountMetric(context, base, user, { repaidUsd: debtValuation.amountUsd ?? null });
@@ -3966,7 +3925,7 @@ async function recordLendingLeg(
     amount,
     undefined,
     canonicalType === "borrow" ? "credit" : undefined,
-    { affectsSafeBalance: false, createScannerLeg: false },
+    { createScannerLeg: false },
   );
   if (canonicalType === "borrow" || canonicalType === "repay")
     await canonicalAccountMetric(
@@ -4591,7 +4550,7 @@ async function bumpSafeTransferBalance(
     updatedBlock: asBigInt(event.block.number),
     transactionHash: lower(event.transaction.hash),
   });
-  await applyExactWalletBalance(context, event, safe, token, nextAmount);
+  await applyExactWalletBalance(context, event, safe, token, nextAmount, undefined, { inflow, outflow });
   await updateTokenAnalytics(context, event, token, {
     safeAccountCount: existing ? 0n : 1n,
     safeBalance: balanceChange(current.amount, nextAmount),

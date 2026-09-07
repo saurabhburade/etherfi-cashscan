@@ -214,7 +214,11 @@ function AccountTable({ rows }: { rows: AccountAnalyticsPage["accounts"] }) {
                     </span>
                   </Link>
                 </td>
-                <Metric value={row.lifetimeDepositedUsd} />
+                <Metric
+                  partial={row.unpricedDepositCount > 0}
+                  partialLabel={`${row.unpricedDepositCount} unpriced ${row.unpricedDepositCount === 1 ? "deposit" : "deposits"}`}
+                  value={row.lifetimeDepositedUsd ?? 0}
+                />
                 <Metric value={row.lifetimeSpentUsd} />
                 <Metric value={row.lifetimeWithdrawnUsd} />
                 <Metric value={row.eventLedgerOutstandingDebtUsd} />
@@ -236,17 +240,19 @@ function Metric({
   value,
   trailing = false,
   partial = false,
+  partialLabel = "priced assets",
 }: {
   value: number | null;
   trailing?: boolean;
   partial?: boolean;
+  partialLabel?: string;
 }) {
   return (
     <td className={`${trailing ? "px-4" : "px-3"} py-4 text-right`}>
       <span className="block whitespace-nowrap text-foreground">
         {value === null ? "Unpriced" : `${partial ? "≥" : ""}${compactUsd(value)}`}
       </span>
-      {partial ? <span className="mt-1 block text-xs text-muted-foreground">priced assets</span> : null}
+      {partial ? <span className="mt-1 block text-xs text-muted-foreground">{partialLabel}</span> : null}
     </td>
   );
 }
