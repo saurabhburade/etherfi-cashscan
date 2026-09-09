@@ -101,14 +101,14 @@ export function CashAccountAnalytics({
         <ExplorerSection
           id="funding-mode"
           title="Funding mode"
-          subtitle="Credit and debit are Cash funding modes, not physical card types. Network selection applies to these indexed event metrics."
+          subtitle="Credit and debit are Cash funding modes, not physical card types. Metrics reflect the selected network."
         >
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1.6fr)_minmax(260px,.8fr)]">
             <Trend
               title="Credit vs debit mode changes"
               value={number(modeChangeCount)}
               hasData={modeSeries.some((row) => row.credit || row.debit)}
-              empty="No funding-mode changes have been indexed for this network scope yet."
+              empty="No funding-mode changes available for the selected networks yet."
             >
               <BarChart
                 aspectRatio="2.4 / 1"
@@ -132,12 +132,12 @@ export function CashAccountAnalytics({
             <Definitions title="Mode KPIs">
               <Definition label="Credit spend" value={money(creditSpendUsd)} />
               <Definition label="Debit spend" value={money(debitSpendUsd)} />
-              <Definition label="Mode-change events" value={number(modeChangeCount)} />
+              <Definition label="Funding-mode changes" value={number(modeChangeCount)} />
             </Definitions>
           </div>
           <CompactTable
             title="Current funding-mode distribution"
-            empty="No effective Cash funding modes have been indexed yet."
+            empty="No Cash funding modes available yet."
             headings={["Mode", "Safes"]}
             rows={modes.map((row) => [
               mode(value(row, "modeId", "mode", "fundingMode", "effectiveMode")),
@@ -148,17 +148,13 @@ export function CashAccountAnalytics({
       ) : null}
 
       {show("tiers") ? (
-        <ExplorerSection
-          id="tiers"
-          title="Cash tiers"
-          subtitle="Tier IDs are mapped in this frontend: 0 Core, 1 Luxe, 2 Pinnacle, 3 VIP, 4 Business. Business transitions are shown as segment changes, never upgrades."
-        >
+        <ExplorerSection id="tiers" title="Cash tiers">
           <div className="grid gap-5 lg:grid-cols-2">
             <Trend
               title="Tier upgrades & segment changes"
               value={number(tierTransitionCount)}
               hasData={tierSeries.some((row) => row.upgrades > 0 || row.segments > 0)}
-              empty="No tier-transition history has been indexed yet."
+              empty="No tier changes available yet."
             >
               <AreaChart
                 aspectRatio="2.25 / 1"
@@ -202,7 +198,7 @@ export function CashAccountAnalytics({
             <CompactTable
               title="Recent tier transitions"
               empty="No tier transitions are available for this network scope."
-              headings={["From", "To", "Classification", "Events"]}
+              headings={["From", "To", "Classification", "Changes"]}
               rows={transitions.slice(0, 12).map((row) => {
                 const from = value(row, "fromTierId", "fromTier", "previousTier");
                 const to = value(row, "toTierId", "toTier", "nextTier", "tier");
@@ -222,7 +218,7 @@ export function CashAccountAnalytics({
         <ExplorerSection
           id="lend-adoption"
           title="Lend adoption & pending actions"
-          subtitle="Lend state is event-backed Cash account state. Pending entries are requested actions, not completed changes."
+          subtitle="Lending details reflect recorded Cash account activity. Pending entries are requested actions, not completed changes."
         >
           <div className="grid gap-5 lg:grid-cols-2">
             <Definitions title="Lend adoption">
@@ -245,17 +241,17 @@ export function CashAccountAnalytics({
         <ExplorerSection
           id="credit-liabilities"
           title="Credit liabilities"
-          subtitle="Borrow and repay are principal / event-time USD metrics. Cash events alone cannot reconstruct the exact accrued Aave payoff for a Safe."
+          subtitle="Borrowing and repayments show principal valued at transaction time. Exact Aave debt, including accrued interest, is unavailable."
         >
           <div className="grid gap-5 lg:grid-cols-2">
-            <Definitions title="Indexed liability metrics">
-              <Definition label="Borrowed (event USD)" value={money(data.borrowedUsd)} />
-              <Definition label="Repaid (event USD)" value={money(data.repaidUsd)} />
+            <Definitions title="Liability metrics">
+              <Definition label="Borrowed (USD at transaction time)" value={money(data.borrowedUsd)} />
+              <Definition label="Repaid (USD at transaction time)" value={money(data.repaidUsd)} />
               <Definition label="Outstanding (derived)" value={money(data.outstandingDebtUsd)} />
               <Definition label="Borrowers" value={number(data.borrowerCount)} />
             </Definitions>
             <Definitions title="Interpretation boundary">
-              <Definition label="Principal / event USD" value="Indexed and shown" />
+              <Definition label="Principal value at transaction time" value="Available" />
               <Definition label="Exact accrued payoff" value="Requires lending-state reconstruction" />
               <Definition label="Cash-only conclusion" value="Not an exact Aave debt quote" />
             </Definitions>
@@ -267,7 +263,7 @@ export function CashAccountAnalytics({
         <ExplorerSection
           id="cash-account-states"
           title="Safe account states"
-          subtitle="A Safe is an on-chain account, not a unique person. Values are the latest indexed Cash state and can be pending protocol actions."
+          subtitle="A Safe is an on-chain account, not a unique person. Values are the latest available Cash account details and can be pending protocol actions."
         >
           <StateTable rows={safes} />
         </ExplorerSection>
@@ -277,24 +273,24 @@ export function CashAccountAnalytics({
         <ExplorerSection
           id="cash-operations"
           title="Cash operations & configuration"
-          subtitle="Operational counters reflect indexed protocol events. Configuration is the observed protocol configuration, not a recommendation or product offer."
+          subtitle="Operational totals reflect recorded activity. Configuration is the observed protocol configuration, not a recommendation or product offer."
         >
           <div className="grid gap-5 lg:grid-cols-2">
             <Definitions title="Operations">
               <Definition label="Collateral resupplies" value={number(data.collateralResupplyCount)} />
               <Definition label="Lend supply failures" value={number(data.lendSupplyFailureCount)} />
-              <Definition label="Exact accrued Aave debt" value="Not derivable from Cash events" />
+              <Definition label="Exact accrued Aave debt" value="Unavailable from Cash activity alone" />
             </Definitions>
             <Definitions title="Boundaries">
-              <Definition label="Merchant / MCC" value="Not indexed" />
-              <Definition label="Pending authorizations" value="Not indexed" />
+              <Definition label="Merchant / MCC" value="Unavailable" />
+              <Definition label="Pending authorizations" value="Unavailable" />
               <Definition label="Safe identity" value="Not a unique person" />
             </Definitions>
           </div>
           {showTables ? (
             <CompactTable
               title="Protocol configuration"
-              empty="No Cash configuration snapshots have been indexed yet."
+              empty="No Cash settings available yet."
               headings={["Setting", "Observed value"]}
               rows={config.map((row) => [
                 label(value(row, "key", "name", "setting", "parameter")),
@@ -378,13 +374,13 @@ function ExplorerSection({
 }: {
   children: ReactNode;
   id: string;
-  subtitle: string;
+  subtitle?: string;
   title: string;
 }) {
   return (
     <section className="mt-16 scroll-mt-24 border-t border-border pt-16" id={id}>
       <h2 className="text-2xl font-normal tracking-[-.03em]">{title}</h2>
-      <p className="mt-2 text-sm text-muted-foreground">{subtitle}</p>
+      {subtitle ? <p className="mt-2 text-sm text-muted-foreground">{subtitle}</p> : null}
       <div className="mt-8">{children}</div>
     </section>
   );
@@ -481,7 +477,7 @@ function TierDistribution({ data }: { data: Array<{ color: string; label: string
         </div>
       ) : (
         <div className="grid min-h-52 place-items-center px-6 text-center text-sm text-muted-foreground">
-          No Safe tier states have been indexed yet.
+          No Safe tiers available yet.
         </div>
       )}
     </article>
@@ -539,7 +535,7 @@ function StateTable({ rows }: { rows: Record<string, unknown>[] }) {
   if (!rows.length)
     return (
       <article className="rounded-2xl border border-border bg-card px-6 py-12 text-center text-sm text-muted-foreground">
-        No Safe Cash-state snapshots have been indexed for this network scope yet.
+        No Safe account details available for the selected networks yet.
       </article>
     );
   return (
@@ -547,7 +543,7 @@ function StateTable({ rows }: { rows: Record<string, unknown>[] }) {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[900px] text-left text-sm">
           <caption className="px-5 py-5 text-left text-lg font-normal tracking-[-.02em] sm:px-6">
-            Latest indexed Safe Cash state
+            Latest Safe account details
           </caption>
           <thead className="border-y border-border text-xs text-muted-foreground">
             <tr>

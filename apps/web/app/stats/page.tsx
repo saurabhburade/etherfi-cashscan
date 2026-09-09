@@ -39,7 +39,7 @@ async function SpendStats({ dataPromise }: { dataPromise: Promise<ExplorerData> 
     <SpendOverviewCharts
       data={data}
       sections={["spend", "cashback", "cards", "transactions"]}
-      subtitle="Daily and cumulative spend, cashback, transaction, and active-card activity from indexed Cash events."
+      subtitle="Daily and cumulative Cash spend, cashback, transactions, and active cards."
       title="Spend Volume, Cashbacks, Payments & Cards"
     />
   );

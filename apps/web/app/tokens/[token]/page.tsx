@@ -81,8 +81,8 @@ async function TokenEvents({
 
   return (
     <section className="mt-16 border-t border-border pt-16" id="token-events">
-      <h2 className="text-2xl font-normal tracking-[-.03em] text-foreground">Token events</h2>
-      <p className="mt-2 text-sm text-muted-foreground">Latest indexed activity across every related token network.</p>
+      <h2 className="text-2xl font-normal tracking-[-.03em] text-foreground">Token activity</h2>
+      <p className="mt-2 text-sm text-muted-foreground">Latest activity across every related token network.</p>
       <div className="mt-8">
         <TransactionExplorer
           availableEventTypes={availableEventTypes}
@@ -97,7 +97,7 @@ async function TokenEvents({
 
 function TokenEventsSkeleton() {
   return (
-    <section aria-label="Loading token events" className="mt-16 border-t border-border pt-16">
+    <section aria-label="Loading token activity" className="mt-16 border-t border-border pt-16">
       <div className="mb-8 animate-pulse">
         <div className="h-7 w-40 rounded-full bg-secondary/70" />
         <div className="mt-3 h-4 w-96 max-w-full rounded-full bg-secondary/45" />

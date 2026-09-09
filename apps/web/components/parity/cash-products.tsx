@@ -79,7 +79,7 @@ export function CashProductPanels({
             <Metric
               label="Cashback issued"
               value={currency(product.cashbackUsd)}
-              note={`${count(product.cashbackCount)} indexed events`}
+              note={`${count(product.cashbackCount)} cashback payments`}
             />
             <Metric label="Combined ramp volume" value={currency(product.combinedRampUsd)} note="Onramp + offramp" />
             <Metric
@@ -88,10 +88,10 @@ export function CashProductPanels({
               note={
                 debtReady
                   ? `${count(product.borrowerCount)} borrowers`
-                  : "Event-priced volume only; full history pending"
+                  : "Volume valued at transaction time; full history pending"
               }
             />
-            <Metric label="Repaid" value={currency(product.repaidUsd)} note="Indexed repayment events" />
+            <Metric label="Repaid" value={currency(product.repaidUsd)} note="Recorded repayments" />
             <Metric
               label="Outstanding debt"
               value={debtReady ? currency(product.outstandingDebtUsd) : "Pending"}
@@ -100,8 +100,8 @@ export function CashProductPanels({
             <Metric label="Destination top-ups" value={count(data.topUpCount)} note="Settled ledger credits" />
           </div>
           <p className="mt-3 text-xs text-muted-foreground">
-            USD values use indexed or derived event values. They are not card-provider authorization or merchant
-            records.
+            USD values come from recorded activity or calculated amounts. They are not card-provider authorization or
+            merchant records.
           </p>
         </section>
       ) : null}
@@ -110,13 +110,13 @@ export function CashProductPanels({
         <ProductSection
           id="leaderboards"
           title="Protocol leaderboards"
-          subtitle="Rankings derived from indexed destination top-ups and settled cashback receipts. Network selection applies to both tables."
+          subtitle="Rankings based on destination top-ups and settled cashback receipts. Network selection applies to both tables."
         >
           <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <LeaderboardCard
               empty="Top-up recipient rankings require the leaderboard entity reindex."
               heading="Top deposit recipients"
-              note="Ranked by settled destination top-up count; the source funding wallet is not exposed by every destination event."
+              note="Ranked by settled destination top-up count; the source funding wallet is not available for every deposit."
               rows={product.topUpRecipients.map((row) => ({
                 account: row.account,
                 chainId: row.chainId,
@@ -151,7 +151,7 @@ export function CashProductPanels({
               hasData={product.cashbackCount > 0 || daily.some((row) => row.cashbackUsd !== 0)}
               label="Cashback history"
               value={currency(product.cashbackUsd)}
-              empty="No indexed cashback history yet."
+              empty="No cashback history available yet."
             >
               <BarChart
                 aspectRatio="2.5 / 1"
@@ -204,7 +204,7 @@ export function CashProductPanels({
         <ProductSection
           id="ramps"
           title="ether.fi Cash Payments (Onramp & Offramp Volumes)"
-          subtitle="Canonical onramp and offramp events with daily, weekly, and token-level derived USD volume."
+          subtitle="Onramp and offramp activity with daily, weekly, and token-level USD volume."
         >
           <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <TrendCard
@@ -216,7 +216,7 @@ export function CashProductPanels({
               }
               label="Daily ramp volume"
               value={currency(product.combinedRampUsd)}
-              empty="No indexed ramp history yet."
+              empty="No ramp history available yet."
             >
               <AreaChart
                 aspectRatio="2.25 / 1"
@@ -258,10 +258,6 @@ export function CashProductPanels({
             </TrendCard>
             <RampDistributionCard offrampUsd={product.offrampUsd} onrampUsd={product.onrampUsd} />
           </div>
-          <p className="mt-4 text-xs leading-5 text-muted-foreground">
-            EURC is converted with indexed daily Chainlink EUR/USD observations; the latest indexed observation is used
-            only when that UTC day has no rate.
-          </p>
         </ProductSection>
       ) : null}
 
@@ -269,7 +265,7 @@ export function CashProductPanels({
         <ProductSection
           id="debt"
           title="UserSafe Balances"
-          subtitle="Raw borrow, repay, liquidation and interest events are indexed. Exact historical USD/ETH AUM and accrued debt stay pending until pricing and full balance state are reconstructed."
+          subtitle="Borrowing, repayments, liquidations, and interest are available. Exact historical USD/ETH AUM and accrued debt stay pending until pricing and full balance state are reconstructed."
         >
           <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <TrendCard
@@ -280,7 +276,7 @@ export function CashProductPanels({
               }
               label="Daily borrowing & repayment"
               value={debtReady ? currency(product.outstandingDebtUsd) : "USD parity pending"}
-              empty="No event-priced UserSafe debt history yet."
+              empty="No UserSafe debt history with transaction-time values yet."
             >
               <BarChart
                 aspectRatio="2.25 / 1"
@@ -328,10 +324,10 @@ export function CashProductPanels({
             </TrendCard>
             <DefinitionCard title="Debt KPIs">
               <Definition
-                label="Borrowed (event USD)"
+                label="Borrowed (USD at transaction time)"
                 value={product.borrowedUsd !== 0 ? currency(product.borrowedUsd) : "Pending pricing"}
               />
-              <Definition label="Repaid (event USD)" value={currency(product.repaidUsd)} />
+              <Definition label="Repaid (USD at transaction time)" value={currency(product.repaidUsd)} />
               <Definition label="Borrowers" value={debtReady ? count(product.borrowerCount) : "Pending parity"} />
             </DefinitionCard>
           </div>
@@ -349,8 +345,8 @@ export function CashProductPanels({
               <Definition label="Historical ETH balance" value="Pending exact state" />
               <Definition label="Required source" value="Transfers + lend/collateral" />
             </DefinitionCard>
-            <DefinitionCard title="What is indexed now">
-              <Definition label="Safe discovery" value="Factory events" />
+            <DefinitionCard title="Available data">
+              <Definition label="Safe discovery" value="Account creation" />
               <Definition label="Debt lifecycle" value="Borrow · repay · liquidate" />
               <Definition label="Interest" value="Index updates retained" />
             </DefinitionCard>
@@ -543,7 +539,7 @@ function RampDistributionCard({ offrampUsd, onrampUsd }: { offrampUsd: number; o
           </div>
         ) : (
           <div className="grid min-h-52 place-items-center px-6 text-center text-sm text-muted-foreground">
-            No indexed ramp volume yet.
+            No ramp volume available yet.
           </div>
         )}
       </div>
@@ -757,7 +753,7 @@ function Status({ status }: { status: ExplorerData["coverage"][number]["status"]
     pending: "text-amber-600 dark:text-amber-300",
     offchain: "text-muted-foreground",
   };
-  const labels = { live: "Indexed", derived: "Derived", pending: "Pending", offchain: "Provider only" };
+  const labels = { live: "Available", derived: "Derived", pending: "Pending", offchain: "Provider only" };
   return <span className={`text-xs ${styles[status]}`}>{labels[status]}</span>;
 }
 function slug(value: string) {

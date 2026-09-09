@@ -24,14 +24,14 @@ export function AccountDetailSummary({ detail, safe }: { detail: AccountAnalytic
     (account.eventLedgerOutstandingDebtUsd === null
       ? null
       : account.pricedBalanceUsd - account.eventLedgerOutstandingDebtUsd);
-  const unpricedDetail = `${account.unpricedPositionCount} unpriced token ${account.unpricedPositionCount === 1 ? "position" : "positions"}`;
+  const unpricedDetail = `${account.unpricedPositionCount} token ${account.unpricedPositionCount === 1 ? "position has" : "positions have"} no price`;
   const hasUnpricedDeposits = account.unpricedDepositCount > 0;
-  const unpricedDepositDetail = `${account.unpricedDepositCount} unpriced ${account.unpricedDepositCount === 1 ? "deposit" : "deposits"}`;
+  const unpricedDepositDetail = `${account.unpricedDepositCount} ${account.unpricedDepositCount === 1 ? "deposit has" : "deposits have"} no price`;
   const metrics = [
     {
       label: "Cash top-ups",
       value: lowerBoundUsd(account.lifetimeDepositedUsd ?? 0, hasUnpricedDeposits),
-      detail: ["Cash TopUp events · event-time USD", hasUnpricedDeposits ? unpricedDepositDetail : null]
+      detail: ["Cash deposits · value at the time of transfer", hasUnpricedDeposits ? unpricedDepositDetail : null]
         .filter(Boolean)
         .join(" · "),
     },
@@ -43,7 +43,7 @@ export function AccountDetailSummary({ detail, safe }: { detail: AccountAnalytic
     {
       label: "Cashback received",
       value: usd(account.lifetimeCashbackUsd),
-      detail: "Paid rewards and cleared pending cashback · event-time USD",
+      detail: "Paid rewards and cleared pending cashback · value at the time of payment",
     },
     {
       label: "Cashback generated",
@@ -51,15 +51,15 @@ export function AccountDetailSummary({ detail, safe }: { detail: AccountAnalytic
       detail: `${usd(account.lifetimeCashbackGeneratedForOthersUsd)} generated for other recipients`,
     },
     {
-      label: hasUnpricedPositions ? "Priced balance" : "Latest indexed balance",
+      label: hasUnpricedPositions ? "Priced balance" : "Latest balance",
       value: lowerBoundUsd(displayedBalanceUsd, hasUnpricedPositions),
       detail: [
         hasUnpricedPositions ? `Excludes ${unpricedDetail}` : null,
         detail.balanceUpdatedAt
-          ? `balance state ${timeAgo(detail.balanceUpdatedAt)}`
+          ? timeAgo(detail.balanceUpdatedAt)
           : account.lastActivityAt
-            ? `account state ${timeAgo(account.lastActivityAt)}`
-            : "balance state unavailable",
+            ? timeAgo(account.lastActivityAt)
+            : "Update time unavailable",
       ]
         .filter(Boolean)
         .join(" · "),
@@ -68,8 +68,8 @@ export function AccountDetailSummary({ detail, safe }: { detail: AccountAnalytic
       label: hasUnpricedPositions ? "Priced net worth" : "Net worth",
       value: lowerBoundUsd(displayedNetWorthUsd, hasUnpricedPositions),
       detail: hasUnpricedPositions
-        ? `Priced balance minus event-ledger debt · excludes ${unpricedDetail}`
-        : "indexed balance minus event-ledger debt",
+        ? `Priced balance minus recorded debt · excludes ${unpricedDetail}`
+        : "Balance minus recorded debt",
     },
   ];
 
@@ -138,6 +138,6 @@ export function AccountDetailSummary({ detail, safe }: { detail: AccountAnalytic
   );
 }
 
-export const usd = (value: number | null) => (value == null ? "Unpriced" : money.format(value));
+export const usd = (value: number | null) => (value == null ? "Price unavailable" : money.format(value));
 const lowerBoundUsd = (value: number | null, partial: boolean) =>
-  value == null ? "Unpriced" : `${partial ? "≥" : ""}${money.format(value)}`;
+  value == null ? "Price unavailable" : `${partial ? "≥" : ""}${money.format(value)}`;

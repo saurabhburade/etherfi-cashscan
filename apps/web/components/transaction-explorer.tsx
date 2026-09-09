@@ -117,7 +117,7 @@ export function TransactionExplorer({
               setQuery(event.target.value);
               resetPagination();
             }}
-            placeholder="Search address, token, event or transaction hash"
+            placeholder="Search address, token, activity or transaction hash"
             type="search"
             value={query}
           />
@@ -156,7 +156,7 @@ export function TransactionExplorer({
         </label>
 
         <label>
-          <span className="sr-only">Filter by event</span>
+          <span className="sr-only">Filter by activity</span>
           <select
             className="h-10 w-full appearance-none rounded-xl border border-border bg-background px-3 text-sm text-foreground outline-none transition focus:border-ring focus:ring-3 focus:ring-ring/20 sm:w-48"
             onChange={(event) => {
@@ -165,7 +165,7 @@ export function TransactionExplorer({
             }}
             value={eventType}
           >
-            <option value="all">All event types</option>
+            <option value="all">All activity types</option>
             {eventTypes.map((type) => (
               <option key={type} value={type}>
                 {labelEvent(type)}
@@ -228,7 +228,7 @@ export function TransactionExplorerHeader() {
     <div className="max-w-3xl">
       <h1 className="text-2xl font-normal tracking-[-.03em] text-foreground">Transactions</h1>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">
-        Browse the latest indexed Cash activity across current and legacy destination networks.
+        Browse the latest Cash activity across current and legacy destination networks.
       </p>
     </div>
   );

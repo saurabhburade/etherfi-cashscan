@@ -384,7 +384,7 @@ export function AnalyticsCharts({
         <AnalyticsSection
           flushTop={flushTop}
           id="profiles"
-          subtitle={showProfileHeader ? "Seven USD brackets derived from indexed settled Spend events" : undefined}
+          subtitle={showProfileHeader ? "Settled spend grouped into seven USD ranges" : undefined}
           title={showProfileHeader ? "Transaction profiles" : undefined}
         >
           <div className="grid gap-5 lg:grid-cols-2">
@@ -403,8 +403,8 @@ export function AnalyticsCharts({
           <div className="overflow-hidden rounded-2xl border border-white/[.075] bg-[#181818]">
             <div className="flex flex-wrap items-end justify-between gap-3 border-b border-white/[.06] px-5 py-5 sm:px-6">
               <div>
-                <span className="text-sm text-zinc-500">Indexed token balances</span>
-                <h3 className="mt-2 text-xl font-normal tracking-[-.03em]">Destination event ledger</h3>
+                <span className="text-sm text-zinc-500">Token balances</span>
+                <h3 className="mt-2 text-xl font-normal tracking-[-.03em]">Account activity</h3>
               </div>
               <span className="text-[11px] text-zinc-600">
                 ERC-20 decimals · current verified oracle price when available
@@ -458,11 +458,7 @@ export function AnalyticsCharts({
       ) : null}
 
       {sections.includes("active-hours") ? (
-        <AnalyticsSection
-          id="active-hours"
-          subtitle="UTC hour-of-day aggregation from indexed Spend events"
-          title="Most active hours"
-        >
+        <AnalyticsSection id="active-hours" subtitle="Spend by hour of day (UTC)" title="Most active hours">
           <div className="grid gap-5 lg:grid-cols-2">
             <ScatterCard
               data={hourly}
@@ -498,20 +494,11 @@ export function TokenAnalyticsCharts({
   const repayments = tokenPieData(data, "repaidUsd", colorByToken);
 
   return (
-    <AnalyticsSection
-      flushTop={flushTop}
-      id="token-analytics"
-      subtitle={
-        showHeader
-          ? "Event-time USD where indexed. Top-up, Safe balance, and borrow USD use explicitly labeled latest indexed prices when required; unpriced tokens are excluded."
-          : undefined
-      }
-      title={showHeader ? "Tokens" : undefined}
-    >
+    <AnalyticsSection flushTop={flushTop} id="token-analytics" title={showHeader ? "Tokens" : undefined}>
       <div className="grid gap-5 lg:grid-cols-2">
-        <TokenPie data={safeBalances} label="Safe balances" moneyValues subtitle="by token · latest indexed price" />
+        <TokenPie data={safeBalances} label="Safe balances" moneyValues subtitle="by token · latest available price" />
         <TokenPie data={spend} label="Spend volume" moneyValues subtitle="by token" />
-        <TokenPie data={topUps} label="Top-up volume" moneyValues subtitle="by token · latest indexed price" />
+        <TokenPie data={topUps} label="Top-up volume" moneyValues subtitle="by token · latest available price" />
         <TokenPie
           centerLabel="Requests"
           data={withdrawals}
@@ -519,12 +506,7 @@ export function TokenAnalyticsCharts({
           subtitle="by token · request count"
           totalSuffix="requests"
         />
-        <TokenPie
-          data={borrows}
-          label="Borrow volume"
-          moneyValues
-          subtitle="by token · latest same-chain indexed price where required"
-        />
+        <TokenPie data={borrows} label="Borrow volume" moneyValues subtitle="by token" />
         <TokenPie data={repayments} label="Repayment volume" moneyValues subtitle="by token" />
       </div>
       {showTable ? <TokenFlowTable data={data} /> : null}
@@ -687,7 +669,7 @@ function ProfilePie({
         </div>
       ) : (
         <div ref={chartContainerRef}>
-          <ChartEmpty label="No SpendBucketMetric entities indexed yet" />
+          <ChartEmpty label="No spend distribution available yet" />
         </div>
       )}
     </article>
@@ -761,7 +743,7 @@ function TokenPie({
         </div>
       ) : (
         <div ref={chartContainerRef}>
-          <ChartEmpty label={`No indexed ${label.toLowerCase()} token aggregates yet`} />
+          <ChartEmpty label={`No ${label.toLowerCase()} data available yet`} />
         </div>
       )}
     </article>
@@ -775,10 +757,6 @@ function TokenFlowTable({ data }: { data: TokenAnalyticsRow[] }) {
       <div className="px-5 py-5 sm:px-6">
         <span className="text-sm font-semibold text-muted-foreground">Token flow ledger</span>
         <h3 className="mt-2 text-xl font-normal tracking-[-.03em]">balances, deposits, credits, spend and debt</h3>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Safe balance is reconstructed from tracked ERC-20 transfers and valued at the latest indexed token price.
-          Destination credits remain a separate flow metric.
-        </p>
       </div>
       {rows.length ? (
         <div className="overflow-x-auto">
@@ -819,7 +797,7 @@ function TokenFlowTable({ data }: { data: TokenAnalyticsRow[] }) {
                   </td>
                   <MetricCell
                     primary={tokenValue(row.reserveBalance, row)}
-                    secondary={row.reserveUsd === null ? "unpriced" : money(row.reserveUsd)}
+                    secondary={row.reserveUsd === null ? "price unavailable" : money(row.reserveUsd)}
                   />
                   <MetricCell primary={money(row.spendUsd)} />
                   <MetricCell
@@ -914,7 +892,7 @@ function ScatterCard({
             />
           </ScatterChart>
         ) : (
-          <ChartEmpty label="No HourlySpendMetric entities indexed yet" />
+          <ChartEmpty label="No hourly spend available yet" />
         )}
       </div>
     </article>
@@ -937,10 +915,10 @@ function tokenAnalyticsId(row: Pick<TokenAnalyticsRow, "chainId" | "token">) {
   return `${row.chainId}:${row.token}`;
 }
 function borrowValuationLabel(status: TokenAnalyticsRow["borrowedUsdStatus"]) {
-  if (status === "latest_indexed_price") return "latest indexed price";
+  if (status === "latest_indexed_price") return "latest available price";
   if (status === "latest_cross_chain_price") return "latest cross-chain price";
-  if (status === "event_time") return "event-time USD";
-  return "unpriced";
+  if (status === "event_time") return "value at transaction time";
+  return "price unavailable";
 }
 function tokenActivity(row: TokenAnalyticsRow) {
   return (

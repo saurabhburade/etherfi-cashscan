@@ -8,7 +8,7 @@ import { loadExplorerData, loadTokenAnalytics, type TokenAnalyticsRow } from "@/
 
 export const metadata: Metadata = {
   title: "Tokens · Ether.fi Cash Scanner",
-  description: "Explore indexed Ether.fi Cash token reserves, flows, spend, withdrawals, and debt.",
+  description: "Explore Ether.fi Cash token reserves, flows, spend, withdrawals, and debt.",
 };
 
 export default function TokensPage() {

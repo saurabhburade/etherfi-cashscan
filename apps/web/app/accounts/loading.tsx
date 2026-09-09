@@ -9,7 +9,7 @@ export default function AccountsLoading() {
         <section className="pt-6 sm:pt-8">
           <h1 className="text-2xl font-normal tracking-[-.03em] text-foreground">Accounts</h1>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Explore indexed Cash Safe balances, deposits, spend, withdrawals, and debt across every supported network.
+            Explore Cash Safe balances, deposits, spend, withdrawals, and debt across every supported network.
           </p>
         </section>
         <section aria-label="Loading account charts" className="mt-8 grid animate-pulse gap-5 lg:grid-cols-2">

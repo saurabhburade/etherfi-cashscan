@@ -25,12 +25,12 @@ export function TokenDetailSummary({ rows }: { rows: TokenAnalyticsRow[] }) {
   const topUps = tokenMetricSummary(rows, "topUpAmount", "topUpUsd");
   const borrowStatuses = new Set(rows.filter((row) => row.borrowedCount > 0).map((row) => row.borrowedUsdStatus));
   const borrowValuation = borrowStatuses.has("unpriced")
-    ? "USD price unavailable"
+    ? "price unavailable"
     : borrowStatuses.has("latest_cross_chain_price")
       ? "latest cross-chain price"
       : borrowStatuses.has("latest_indexed_price")
-        ? "latest indexed price"
-        : "event-time USD";
+        ? "latest available price"
+        : "value at transaction time";
   const metrics = [
     {
       label: "Safe balance",
@@ -43,25 +43,25 @@ export function TokenDetailSummary({ rows }: { rows: TokenAnalyticsRow[] }) {
     {
       label: "Spend volume",
       value: money.format(rows.reduce((total, row) => total + row.spendUsd, 0)),
-      detail: `${compact.format(rows.reduce((total, row) => total + row.spendCount, 0))} events`,
+      detail: `${compact.format(rows.reduce((total, row) => total + row.spendCount, 0))} payments`,
     },
     {
       label: "Top-up volume",
       value: topUps.usd === null ? topUps.tokenAmount : money.format(topUps.usd),
       detail: metricDetail(
-        `${compact.format(rows.reduce((total, row) => total + row.topUpCount, 0))} events`,
+        `${compact.format(rows.reduce((total, row) => total + row.topUpCount, 0))} deposits`,
         topUps.usd,
       ),
     },
     {
       label: "Borrowed",
       value: money.format(rows.reduce((total, row) => total + row.borrowedUsd, 0)),
-      detail: `${compact.format(rows.reduce((total, row) => total + row.borrowedCount, 0))} events · ${borrowValuation}`,
+      detail: `${compact.format(rows.reduce((total, row) => total + row.borrowedCount, 0))} borrows · ${borrowValuation}`,
     },
     {
       label: "Repaid",
       value: money.format(rows.reduce((total, row) => total + row.repaidUsd, 0)),
-      detail: `${compact.format(rows.reduce((total, row) => total + row.repaidCount, 0))} events`,
+      detail: `${compact.format(rows.reduce((total, row) => total + row.repaidCount, 0))} repayments`,
     },
     {
       label: "Withdrawals",
@@ -87,7 +87,7 @@ export function TokenDetailSummary({ rows }: { rows: TokenAnalyticsRow[] }) {
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {token.symbol ? `${token.symbol} · ` : ""}
-              {chainIds.length} {chainIds.length === 1 ? "network" : "networks"} · cumulative indexed activity
+              {chainIds.length} {chainIds.length === 1 ? "network" : "networks"} · total activity
             </p>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">

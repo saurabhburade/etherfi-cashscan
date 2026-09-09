@@ -46,10 +46,9 @@ export default async function AccountPage({
           <DeferredAccountCharts daysPromise={daysPromise} positionsPromise={positionsPromise} summary={summary} />
         </Suspense>
         <section className="mt-16 border-t border-border pt-16">
-          <h2 className="text-2xl font-normal tracking-[-.03em] text-foreground">Account events</h2>
+          <h2 className="text-2xl font-normal tracking-[-.03em] text-foreground">Account activity</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Canonical scanner events for this Safe across{" "}
-            {chainId === null ? "all indexed networks" : `chain ${chainId}`}.
+            Activity across {chainId === null ? "all supported networks" : `chain ${chainId}`}.
           </p>
           <div className="mt-6">
             <Suspense fallback={<TransactionTableSkeleton />}>

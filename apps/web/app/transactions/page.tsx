@@ -8,7 +8,7 @@ import { type ExplorerData, loadActivityEventTypes, loadActivityPage, loadExplor
 
 export const metadata: Metadata = {
   title: "Transactions · Ether.fi Cash Scanner",
-  description: "Explore the latest indexed Ether.fi Cash protocol transactions.",
+  description: "Explore the latest Ether.fi Cash protocol transactions.",
 };
 
 export default function TransactionsPage() {

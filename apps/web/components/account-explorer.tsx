@@ -177,7 +177,7 @@ function AccountTable({ rows }: { rows: AccountAnalyticsPage["accounts"] }) {
   if (!rows.length)
     return (
       <div className="border-t border-border/40 px-6 py-16 text-center text-sm text-muted-foreground">
-        No indexed accounts match these filters.
+        No accounts match these filters.
       </div>
     );
   return (
@@ -216,7 +216,7 @@ function AccountTable({ rows }: { rows: AccountAnalyticsPage["accounts"] }) {
                 </td>
                 <Metric
                   partial={row.unpricedDepositCount > 0}
-                  partialLabel={`${row.unpricedDepositCount} unpriced ${row.unpricedDepositCount === 1 ? "deposit" : "deposits"}`}
+                  partialLabel={`${row.unpricedDepositCount} ${row.unpricedDepositCount === 1 ? "deposit has" : "deposits have"} no price`}
                   value={row.lifetimeDepositedUsd ?? 0}
                 />
                 <Metric value={row.lifetimeSpentUsd} />
@@ -250,7 +250,7 @@ function Metric({
   return (
     <td className={`${trailing ? "px-4" : "px-3"} py-4 text-right`}>
       <span className="block whitespace-nowrap text-foreground">
-        {value === null ? "Unpriced" : `${partial ? "≥" : ""}${compactUsd(value)}`}
+        {value === null ? "Price unavailable" : `${partial ? "≥" : ""}${compactUsd(value)}`}
       </span>
       {partial ? <span className="mt-1 block text-xs text-muted-foreground">{partialLabel}</span> : null}
     </td>

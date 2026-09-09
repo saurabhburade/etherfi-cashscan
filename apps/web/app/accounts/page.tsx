@@ -21,7 +21,7 @@ export default function AccountsPage() {
           <div className="max-w-3xl">
             <h1 className="text-2xl font-normal tracking-[-.03em] text-foreground">Accounts</h1>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Explore indexed Cash Safe balances, deposits, spend, withdrawals, and debt across every supported network.
+              Explore Cash Safe balances, deposits, spend, withdrawals, and debt across every supported network.
             </p>
           </div>
         </section>

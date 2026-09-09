@@ -49,43 +49,44 @@ export function AccountAnalyticsCharts({ detail }: { detail: AccountAnalyticsDet
   return (
     <section className="mt-16 scroll-mt-24 border-t border-border pt-16" id="account-charts">
       <h2 className="text-2xl font-normal tracking-[-.03em] text-foreground">Account charts</h2>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Portfolio uses latest indexed prices. Cash flows use event-time USD and remain separate from Safe transfers.
-      </p>
       <div className="mt-8 grid gap-5 lg:grid-cols-2">
         <AccountDoughnut
           data={portfolio}
           empty="No priced token balances are available for this account."
           label="Portfolio allocation"
-          note={hasUnpricedPortfolio ? "Unpriced token balances are excluded." : "Latest indexed token prices."}
+          note={hasUnpricedPortfolio ? "Balances without prices are excluded." : "Latest available token prices."}
           subtitle="by token"
         />
         <AccountDoughnut
           data={safeInflows}
           empty="No priced Safe inflows are available for this account."
           label="Safe inflow distribution"
-          note={unpriced.safeInflows ? "Unpriced token inflows are excluded." : "Latest indexed token prices."}
+          note={unpriced.safeInflows ? "Inflows without prices are excluded." : "Latest available token prices."}
           subtitle="by token"
         />
         <AccountDoughnut
           data={deposits}
           empty="No priced Cash top-ups are available for this account."
           label="Cash top-up distribution"
-          note={unpriced.deposits ? "Unpriced token deposits are excluded." : "Cash TopUp event-time USD."}
+          note={unpriced.deposits ? "Deposits without prices are excluded." : "Deposit value at the time of transfer."}
           subtitle="by token"
         />
         <AccountDoughnut
           data={spend}
           empty="No priced spend is available for this account."
           label="Spend distribution"
-          note={unpriced.spend ? "Unpriced token spend is excluded." : "Spend event-time USD."}
+          note={unpriced.spend ? "Spend without prices is excluded." : "Spend value at the time of payment."}
           subtitle="by token"
         />
         <AccountDoughnut
           data={withdrawals}
           empty="No priced withdrawals are available for this account."
           label="Withdrawal distribution"
-          note={unpriced.withdrawals ? "Unpriced token withdrawals are excluded." : "Withdrawal event-time USD."}
+          note={
+            unpriced.withdrawals
+              ? "Withdrawals without prices are excluded."
+              : "Withdrawal value at the time of transfer."
+          }
           subtitle="by token"
         />
         <AccountDoughnut
@@ -93,7 +94,9 @@ export function AccountAnalyticsCharts({ detail }: { detail: AccountAnalyticsDet
           empty="No priced received cashback is available for this account."
           label="Received cashback distribution"
           note={
-            unpriced.cashback ? "Unpriced token cashback is excluded." : "Paid and cleared cashback · event-time USD."
+            unpriced.cashback
+              ? "Cashback without prices is excluded."
+              : "Paid and cleared cashback · value at the time of payment."
           }
           subtitle="by token"
         />
@@ -105,7 +108,7 @@ export function AccountAnalyticsCharts({ detail }: { detail: AccountAnalyticsDet
         />
         <AccountDoughnut
           data={funding}
-          empty="No credit or debit spend is indexed for this account."
+          empty="No credit or debit spend available for this account."
           label="Spend funding mode"
           note="Cash mode 0 is Credit; mode 1 is Debit."
           subtitle="credit vs debit"
@@ -117,7 +120,7 @@ export function AccountAnalyticsCharts({ detail }: { detail: AccountAnalyticsDet
           dailyColor="var(--chart-2)"
           dailyLabel="Daily spend"
           data={daily}
-          empty="No daily spend is indexed for this account."
+          empty="No daily spend available for this account."
           filename="etherfi-account-spending.svg"
           label="Spend Volume"
           unpricedKey="hasUnpricedSpend"
@@ -129,7 +132,7 @@ export function AccountAnalyticsCharts({ detail }: { detail: AccountAnalyticsDet
           dailyColor="var(--chart-3)"
           dailyLabel="Daily cashback"
           data={daily}
-          empty="No daily cashback is indexed for this account."
+          empty="No daily cashback available for this account."
           filename="etherfi-account-cashback.svg"
           label="Cashbacks"
           unpricedKey="hasUnpricedCashback"
@@ -305,7 +308,7 @@ function AccountDailySeriesChart({
           </BarChart>
           {hasUnpriced ? (
             <p className="px-5 pb-5 text-xs text-amber-500 sm:px-6">
-              Some {dailyLabel.toLowerCase()} is unpriced and omitted.
+              Some {dailyLabel.toLowerCase()} has no price and is omitted.
             </p>
           ) : null}
         </div>

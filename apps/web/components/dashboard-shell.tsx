@@ -118,7 +118,7 @@ function FooterSocialLink({ children, href, label }: { children: ReactNode; href
 function DataNotice({ data }: { data: ExplorerData }) {
   const copy =
     data.mode === "empty"
-      ? ["Indexer connected.", "No entities have been indexed yet."]
+      ? ["Connected.", "No activity available yet."]
       : ["Live source unavailable.", "No fixture data is shown."];
   return (
     <div className="mx-auto mt-4 w-full max-w-[1540px] px-8 sm:px-12 lg:px-24 xl:px-32">

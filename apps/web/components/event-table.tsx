@@ -29,11 +29,11 @@ export function EventTableColumnGroup() {
 export function EventTable({ activity }: { activity: Activity[] }) {
   return (
     <div className="overflow-x-auto rounded-2xl border border-white/[.075] bg-[#181818]">
-      <Table aria-label="Latest protocol events" className={eventTableClassName}>
+      <Table aria-label="Latest protocol activity" className={eventTableClassName}>
         <EventTableColumnGroup />
         <TableHeader>
           <TableRow className="border-white/[.07] bg-transparent hover:bg-transparent">
-            <TableHead>Event</TableHead>
+            <TableHead>Activity</TableHead>
             <TableHead>Account</TableHead>
             <TableHead>Contract</TableHead>
             <TableHead>Value</TableHead>
@@ -55,7 +55,7 @@ export function EventTable({ activity }: { activity: Activity[] }) {
                       <span className="relative inline-flex size-10 shrink-0">
                         {!hasToken && iconSymbol === "TX" ? (
                           <span
-                            aria-label="Protocol event"
+                            aria-label="Protocol activity"
                             className="inline-grid size-10 place-items-center rounded-full border border-border bg-secondary text-muted-foreground dark:bg-zinc-800 dark:text-zinc-400"
                             role="img"
                           >
@@ -117,7 +117,7 @@ export function EventTable({ activity }: { activity: Activity[] }) {
           ) : (
             <TableRow>
               <TableCell className="h-36 text-center text-sm" colSpan={5}>
-                No indexed events match these filters.
+                No cashback payments match these filters.
               </TableCell>
             </TableRow>
           )}
@@ -222,7 +222,7 @@ function TokenDetailLink({ label, token }: { label: string; token: string }) {
 function UnpricedBadge() {
   return (
     <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-      Unpriced
+      Price unavailable
     </span>
   );
 }

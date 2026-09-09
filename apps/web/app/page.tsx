@@ -73,7 +73,7 @@ function ActivityRow({ activity }: { activity: Activity }) {
       <span className="relative inline-flex size-11">
         {!hasToken && iconSymbol === "TX" ? (
           <span
-            aria-label="Protocol event"
+            aria-label="Protocol activity"
             className="inline-grid size-11 place-items-center rounded-full border border-border bg-secondary text-muted-foreground dark:bg-zinc-800 dark:text-zinc-400"
             role="img"
           >
