@@ -27,7 +27,7 @@ export function TokenIcon({ address, chainId, className, symbol }: TokenIconProp
     <span
       aria-label={`${label} token`}
       className={cn(
-        "relative inline-grid size-6 shrink-0 place-items-center overflow-hidden rounded-full border border-border bg-secondary text-[9px] font-semibold uppercase text-muted-foreground dark:bg-zinc-800 dark:text-zinc-400",
+        "relative inline-grid size-6 shrink-0 place-items-center overflow-hidden rounded-full border border-border bg-secondary text-[9px] font-semibold uppercase text-muted-foreground",
         className,
       )}
       role="img"

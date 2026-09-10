@@ -35,6 +35,15 @@ type GlobalDailyActiveSafe {
   firstSpendChainId: Int!
 }
 
+# One row per globally distinct active safe and UTC hour. This keeps the 24h
+# dashboard's hourly active-card series exact across chains.
+type GlobalHourlyActiveSafe {
+  id: ID!
+  hour: Int!
+  address: String!
+  firstSpendChainId: Int!
+}
+
 type AccountTokenBalance
   @index(fields: [["isPositive", "ASC"], ["amount", "DESC"]])
   @index(fields: [["chainId", "ASC"], ["isPositive", "ASC"], ["amount", "DESC"]])
@@ -817,6 +826,16 @@ type HourlySpendMetric {
   hour: Int!
   spendCount: BigInt!
   spendUsd: BigInt!
+  creditSpendUsd: BigInt!
+  debitSpendUsd: BigInt!
+  activeCardCount: BigInt!
+  newCardCount: BigInt!
+  topUpCount: BigInt!
+  cashbackUsd: BigInt!
+  onrampUsd: BigInt!
+  offrampUsd: BigInt!
+  borrowedUsd: BigInt!
+  repaidUsd: BigInt!
 }
 
 # The activity feed has two access paths: global and one-chain. Its canonical

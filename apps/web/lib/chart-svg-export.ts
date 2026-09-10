@@ -2,19 +2,29 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const CSS_VARIABLE_PATTERN = /var\(\s*(--[\w-]+)(?:\s*,[^)]*)?\)/g;
 const EXPORT_SIDE_PADDING = 24;
 const EXPORT_HEADER_HEIGHT = 80;
+const EXPORT_CHART_TOP_PADDING = 24;
 const EXPORT_BOTTOM_PADDING = 40;
 const EXPORT_CARD_INSET = 24;
 const EXPORT_CARD_RADIUS = 6;
+const EXPORT_HEADER_HORIZONTAL_PADDING = 16;
+const EXPORT_CONTENT_X_PADDING = 24;
 const EXPORT_CROP = { top: 16, right: 8, bottom: 12, left: 12 } as const;
 const EXPORT_FONT_FAMILY = "Inter, Arial, Helvetica, sans-serif";
 const PIE_EXPORT_PADDING = 32;
 const PIE_EXPORT_LEGEND_ROW_HEIGHT = 27;
 const PIE_EXPORT_LEGEND_OPTICAL_OFFSET = 16;
+const DEFAULT_EXPORT_WIDTH = 720;
+const DEFAULT_EXPORT_HEIGHT = 460;
+const SOCIAL_EXPORT_SIZE = 460;
+const EXPORT_PIXEL_DENSITY = 4;
 
 export interface ChartSvgExportOptions {
+  aspect?: ChartExportAspect;
   title?: string;
   value?: string;
 }
+
+export type ChartExportAspect = "default" | "social";
 
 interface ExportHeaderAlignment {
   left: number;
@@ -80,6 +90,11 @@ export function serializeChartSvg(container: HTMLElement, options: ChartSvgExpor
       border,
       headerAlignment,
     );
+  if (options.aspect === "social") {
+    applyExportAspect(svg, background, SOCIAL_EXPORT_SIZE, SOCIAL_EXPORT_SIZE, "social");
+  } else {
+    applyExportAspect(svg, background, DEFAULT_EXPORT_WIDTH, DEFAULT_EXPORT_HEIGHT, "default");
+  }
 
   return new XMLSerializer().serializeToString(svg);
 }
@@ -177,8 +192,7 @@ async function transcodeJpegToPng(jpegBlob: Blob): Promise<Blob> {
 }
 
 async function renderSvgAsJpeg(markup: string, width: number, height: number): Promise<Blob> {
-  const maxDimension = Math.max(width, height);
-  const scale = Math.min(4, 4096 / maxDimension);
+  const scale = Math.min(EXPORT_PIXEL_DENSITY, 4096 / Math.max(width, height));
   const canvas = document.createElement("canvas");
   const image = new Image();
   const svgUrl = URL.createObjectURL(new Blob([markup], { type: "image/svg+xml;charset=utf-8" }));
@@ -256,7 +270,13 @@ function exportSize(width: number, height: number, options: ChartSvgExportOption
   return options.title?.trim()
     ? {
         width: width - EXPORT_CROP.left - EXPORT_CROP.right + EXPORT_SIDE_PADDING * 2,
-        height: height - EXPORT_CROP.top - EXPORT_CROP.bottom + EXPORT_HEADER_HEIGHT + EXPORT_BOTTOM_PADDING,
+        height:
+          height -
+          EXPORT_CROP.top -
+          EXPORT_CROP.bottom +
+          EXPORT_HEADER_HEIGHT +
+          EXPORT_CHART_TOP_PADDING +
+          EXPORT_BOTTOM_PADDING,
       }
     : { width, height };
 }
@@ -404,8 +424,11 @@ function expandCanvasForTitle(svg: SVGSVGElement): void {
 
   const [x, y, width, height] = viewBox;
   const exportWidth = width + EXPORT_SIDE_PADDING * 2;
-  const exportHeight = height + EXPORT_HEADER_HEIGHT + EXPORT_BOTTOM_PADDING;
-  svg.setAttribute("viewBox", `${x - EXPORT_SIDE_PADDING} ${y - EXPORT_HEADER_HEIGHT} ${exportWidth} ${exportHeight}`);
+  const exportHeight = height + EXPORT_HEADER_HEIGHT + EXPORT_CHART_TOP_PADDING + EXPORT_BOTTOM_PADDING;
+  svg.setAttribute(
+    "viewBox",
+    `${x - EXPORT_SIDE_PADDING} ${y - EXPORT_HEADER_HEIGHT - EXPORT_CHART_TOP_PADDING} ${exportWidth} ${exportHeight}`,
+  );
   svg.setAttribute("width", String(exportWidth));
   svg.setAttribute("height", String(exportHeight));
 }
@@ -423,16 +446,16 @@ function insertExportTitle(
   if (!viewBox) return;
 
   const [x, y, width] = viewBox;
-  const originalX = x + EXPORT_SIDE_PADDING;
-  const originalWidth = width - EXPORT_SIDE_PADDING * 2;
-  const headerLeft = alignment?.left ?? originalX + 24;
-  const headerRight = alignment?.right ?? originalX + originalWidth - 18;
+  const minimumHeaderLeft = x + EXPORT_CARD_INSET + EXPORT_HEADER_HORIZONTAL_PADDING;
+  const maximumHeaderRight = x + width - EXPORT_CARD_INSET - EXPORT_HEADER_HORIZONTAL_PADDING;
+  const headerLeft = Math.max(alignment?.left ?? minimumHeaderLeft, minimumHeaderLeft);
+  const headerRight = Math.min(alignment?.right ?? maximumHeaderRight, maximumHeaderRight);
   const titleElement = document.createElementNS(SVG_NAMESPACE, "text");
   titleElement.setAttribute("x", String(headerLeft));
   titleElement.setAttribute("y", String(y + 54));
   titleElement.setAttribute("fill", foreground);
   titleElement.setAttribute("font-family", EXPORT_FONT_FAMILY);
-  titleElement.setAttribute("font-size", "12");
+  titleElement.setAttribute("font-size", "11");
   titleElement.setAttribute("font-weight", "500");
   titleElement.style.fontWeight = "500";
   titleElement.textContent = title;
@@ -451,7 +474,7 @@ function insertExportTitle(
     valueElement.setAttribute("y", String(y + 54));
     valueElement.setAttribute("fill", secondary);
     valueElement.setAttribute("font-family", EXPORT_FONT_FAMILY);
-    valueElement.setAttribute("font-size", "12");
+    valueElement.setAttribute("font-size", "11");
     valueElement.setAttribute("font-weight", "500");
     valueElement.setAttribute("text-anchor", "end");
     valueElement.textContent = value ?? "";
@@ -465,6 +488,148 @@ function insertExportTitle(
   svg.insertBefore(titleElement, firstChartChild ?? null);
   svg.insertBefore(divider, firstChartChild ?? null);
   if (valueElement) svg.insertBefore(valueElement, firstChartChild ?? null);
+}
+
+/** Reflows chart content across the full dimensions of an export preset. */
+function applyExportAspect(
+  svg: SVGSVGElement,
+  canvasFill: string,
+  exportWidth: number,
+  exportHeight: number,
+  aspect: ChartExportAspect,
+): void {
+  const viewBox = parseViewBox(svg.getAttribute("viewBox"));
+  if (!viewBox) return;
+
+  const [x, y, width, height] = viewBox;
+
+  const sourceBackgrounds = [...svg.querySelectorAll<SVGRectElement>(":scope > rect[data-export-background='true']")];
+  const sourceCard = svg.querySelector<SVGRectElement>(":scope > [data-export-card]");
+  const cardFill = sourceCard?.getAttribute("fill") ?? sourceBackgrounds.at(-1)?.getAttribute("fill") ?? canvasFill;
+  const cardOpacity = sourceCard?.getAttribute("fill-opacity");
+  const cardRadius = sourceCard?.getAttribute("rx") ?? String(EXPORT_CARD_RADIUS);
+  for (const background of sourceBackgrounds) background.remove();
+
+  const content = document.createElementNS(SVG_NAMESPACE, "g");
+  const isPie = Boolean(svg.querySelector("[data-export-pie-chart]"));
+  const contentWidth = exportWidth - EXPORT_CONTENT_X_PADDING * 2;
+  const scaleX = contentWidth / width;
+  const scaleY = exportHeight / height;
+  const pieScale = Math.min(scaleX, scaleY);
+  content.setAttribute("data-export-content", "true");
+  content.setAttribute(
+    "transform",
+    isPie
+      ? `matrix(${pieScale} 0 0 ${pieScale} ${EXPORT_CONTENT_X_PADDING + (contentWidth - width * pieScale) / 2 - x * pieScale} ${(exportHeight - height * pieScale) / 2 - y * pieScale})`
+      : `matrix(${scaleX} 0 0 ${scaleY} ${EXPORT_CONTENT_X_PADDING - x * scaleX} ${-y * scaleY})`,
+  );
+  [...svg.children]
+    .filter((child) => !["defs", "desc", "metadata", "style", "title"].includes(child.localName))
+    .forEach((child) => {
+      content.appendChild(child);
+    });
+  if (!isPie) preserveExportChartDetails(content, scaleX, scaleY);
+
+  const background = document.createElementNS(SVG_NAMESPACE, "rect");
+  background.setAttribute("x", "0");
+  background.setAttribute("y", "0");
+  background.setAttribute("width", String(exportWidth));
+  background.setAttribute("height", String(exportHeight));
+  background.setAttribute("fill", canvasFill);
+  background.setAttribute("data-export-background", "true");
+  background.setAttribute("data-export-canvas", "true");
+  background.setAttribute("pointer-events", "none");
+
+  const card = document.createElementNS(SVG_NAMESPACE, "rect");
+  card.setAttribute("x", String(EXPORT_CARD_INSET));
+  card.setAttribute("y", String(EXPORT_CARD_INSET));
+  card.setAttribute("width", String(exportWidth - EXPORT_CARD_INSET * 2));
+  card.setAttribute("height", String(exportHeight - EXPORT_CARD_INSET * 2));
+  card.setAttribute("rx", cardRadius);
+  card.setAttribute("fill", cardFill);
+  if (cardOpacity) card.setAttribute("fill-opacity", cardOpacity);
+  card.setAttribute("data-export-background", "true");
+  card.setAttribute("data-export-card", "true");
+  card.setAttribute("pointer-events", "none");
+
+  const firstVisualChild = [...svg.children].find(
+    (child) => !["defs", "desc", "metadata", "style", "title"].includes(child.localName),
+  );
+  svg.insertBefore(background, firstVisualChild ?? null);
+  svg.insertBefore(card, firstVisualChild ?? null);
+  svg.appendChild(content);
+  svg.setAttribute("data-export-aspect", aspect);
+  svg.setAttribute("viewBox", `0 0 ${exportWidth} ${exportHeight}`);
+  svg.setAttribute("width", String(exportWidth));
+  svg.setAttribute("height", String(exportHeight));
+}
+
+/** Keeps labels, round markers, legend keys, and strokes crisp under an aspect reflow. */
+function preserveExportChartDetails(content: SVGGElement, scaleX: number, scaleY: number): void {
+  const inverseX = 1 / scaleX;
+  const inverseY = 1 / scaleY;
+
+  for (const text of content.querySelectorAll<SVGTextElement>("text")) {
+    wrapWithInverseScale(
+      text,
+      inverseX,
+      inverseY,
+      numericCoordinate(text.getAttribute("x")),
+      numericCoordinate(text.getAttribute("y")),
+    );
+  }
+  for (const circle of content.querySelectorAll<SVGCircleElement>("circle")) {
+    wrapWithInverseScale(
+      circle,
+      inverseX,
+      inverseY,
+      numericCoordinate(circle.getAttribute("cx")),
+      numericCoordinate(circle.getAttribute("cy")),
+    );
+  }
+  for (const ellipse of content.querySelectorAll<SVGEllipseElement>("ellipse")) {
+    wrapWithInverseScale(
+      ellipse,
+      inverseX,
+      inverseY,
+      numericCoordinate(ellipse.getAttribute("cx")),
+      numericCoordinate(ellipse.getAttribute("cy")),
+    );
+  }
+  for (const swatch of content.querySelectorAll<SVGRectElement>(".chart-svg-legend rect")) {
+    const centerX = numericCoordinate(swatch.getAttribute("x")) + numericCoordinate(swatch.getAttribute("width")) / 2;
+    const centerY = numericCoordinate(swatch.getAttribute("y")) + numericCoordinate(swatch.getAttribute("height")) / 2;
+    wrapWithInverseScale(swatch, inverseX, inverseY, centerX, centerY);
+  }
+  for (const shape of content.querySelectorAll<SVGGeometryElement>(
+    "path, line, polyline, polygon, rect, circle, ellipse",
+  )) {
+    shape.setAttribute("vector-effect", "non-scaling-stroke");
+  }
+}
+
+function wrapWithInverseScale(
+  element: SVGElement,
+  inverseX: number,
+  inverseY: number,
+  anchorX: number,
+  anchorY: number,
+): void {
+  const parent = element.parentNode;
+  if (!parent) return;
+
+  const wrapper = document.createElementNS(SVG_NAMESPACE, "g");
+  wrapper.setAttribute(
+    "transform",
+    `matrix(${inverseX} 0 0 ${inverseY} ${anchorX * (1 - inverseX)} ${anchorY * (1 - inverseY)})`,
+  );
+  parent.insertBefore(wrapper, element);
+  wrapper.appendChild(element);
+}
+
+function numericCoordinate(value: string | null): number {
+  const coordinate = Number.parseFloat(value ?? "0");
+  return Number.isFinite(coordinate) ? coordinate : 0;
 }
 
 function measureAxisAlignment(svg: SVGSVGElement): ExportHeaderAlignment | undefined {
@@ -609,6 +774,7 @@ function insertExportCard(svg: SVGSVGElement, canvasFill: string, cardFill: stri
   canvas.setAttribute("height", String(height));
   canvas.setAttribute("fill", canvasFill);
   canvas.setAttribute("data-export-background", "true");
+  canvas.setAttribute("data-export-canvas", "true");
   canvas.setAttribute("pointer-events", "none");
 
   const card = document.createElementNS(SVG_NAMESPACE, "rect");
@@ -620,6 +786,7 @@ function insertExportCard(svg: SVGSVGElement, canvasFill: string, cardFill: stri
   card.setAttribute("fill", cardFill);
   card.setAttribute("fill-opacity", String(cardOpacity));
   card.setAttribute("data-export-background", "true");
+  card.setAttribute("data-export-card", "true");
   card.setAttribute("pointer-events", "none");
 
   const firstVisualChild = [...svg.children].find(
@@ -650,7 +817,7 @@ function parseViewBox(value: string | null): [number, number, number, number] | 
     ?.trim()
     .split(/[\s,]+/)
     .map(Number);
-  if (!values || values.length !== 4 || !values.every(Number.isFinite) || values[2] <= 0 || values[3] <= 0) {
+  if (values?.length !== 4 || !values.every(Number.isFinite) || values[2] <= 0 || values[3] <= 0) {
     return undefined;
   }
 

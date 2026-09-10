@@ -214,25 +214,3 @@ a {
   background: color-mix(in oklch, var(--foreground) 18%, transparent);
   color: var(--foreground);
 }
-
-/* Bridge legacy dashboard surfaces to the exact preset tokens. */
-:root:not(.dark) [class*="bg-[#101010]"] {
-  background-color: var(--background) !important;
-}
-:root:not(.dark) [class*="bg-[#181818]"] {
-  background-color: var(--card) !important;
-}
-:root:not(.dark) [class*="border-white"] {
-  border-color: var(--border) !important;
-}
-.dark [class*="border-white"] {
-  border-color: var(--border) !important;
-}
-:root:not(.dark) [class*="ring-white"] {
-  --tw-ring-color: var(--border) !important;
-}
-:root:not(.dark) [class~="text-zinc-100"],
-:root:not(.dark) [class~="text-zinc-200"],
-:root:not(.dark) [class~="text-zinc-300"] {
-  color: var(--foreground) !important;
-}

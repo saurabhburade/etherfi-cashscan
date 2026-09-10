@@ -91,6 +91,7 @@ export function AreaChartLoading({
         shimmerStroke={gridShimmerStroke}
         shimmerSync={gridShimmerSync}
         stroke={gridStroke}
+        strokeOpacity={0.5}
       />
       <Area
         curve={curveNatural}

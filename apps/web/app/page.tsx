@@ -74,7 +74,7 @@ function ActivityRow({ activity }: { activity: Activity }) {
         {!hasToken && iconSymbol === "TX" ? (
           <span
             aria-label="Protocol activity"
-            className="inline-grid size-11 place-items-center rounded-full border border-border bg-secondary text-muted-foreground dark:bg-zinc-800 dark:text-zinc-400"
+            className="inline-grid size-11 place-items-center rounded-full border border-border bg-secondary text-muted-foreground"
             role="img"
           >
             <FileText aria-hidden="true" className="size-5" />
@@ -90,15 +90,15 @@ function ActivityRow({ activity }: { activity: Activity }) {
         <ChainBadge className="absolute -bottom-0.5 -right-0.5" chainId={activity.chainId} />
       </span>
       <div className="min-w-0">
-        <span className="block truncate text-zinc-100">{activityLabel(activity.type)}</span>
-        <span className="mt-1 flex min-w-0 items-center gap-1 text-zinc-400">
+        <span className="block truncate text-foreground">{activityLabel(activity.type)}</span>
+        <span className="mt-1 flex min-w-0 items-center gap-1 text-muted-foreground">
           <time className="shrink-0" dateTime={activity.timestamp}>
             {timeAgo(activity.timestamp)}
           </time>
           <span aria-hidden="true">·</span>
           <span className="shrink-0">by</span>
           <Link
-            className="truncate font-mono underline decoration-zinc-600 underline-offset-4 transition hover:text-zinc-100"
+            className="truncate font-mono underline decoration-muted-foreground/60 underline-offset-4 transition-colors hover:text-foreground"
             href={`/accounts/${activity.actor}`}
           >
             {shortAddress(activity.actor)}
@@ -107,10 +107,10 @@ function ActivityRow({ activity }: { activity: Activity }) {
       </div>
 
       <div className="min-w-0 text-right">
-        {hasValue ? <span className="block max-w-48 truncate text-zinc-300">{activityValue(activity)}</span> : null}
+        {hasValue ? <span className="block max-w-48 truncate text-foreground">{activityValue(activity)}</span> : null}
         {href ? (
           <a
-            className={`${hasValue ? "mt-1" : ""} block max-w-28 truncate font-mono text-zinc-500 underline decoration-zinc-700 underline-offset-4 transition hover:text-zinc-100 sm:max-w-none`}
+            className={`${hasValue ? "mt-1" : ""} block max-w-28 truncate font-mono text-muted-foreground underline decoration-muted-foreground/60 underline-offset-4 transition-colors hover:text-foreground sm:max-w-none`}
             href={href}
             target="_blank"
             rel="noreferrer"
@@ -119,7 +119,7 @@ function ActivityRow({ activity }: { activity: Activity }) {
             {shortAddress(activity.transactionHash)}
           </a>
         ) : (
-          <span className={`${hasValue ? "mt-1" : ""} block max-w-28 truncate font-mono text-zinc-600`}>
+          <span className={`${hasValue ? "mt-1" : ""} block max-w-28 truncate font-mono text-muted-foreground`}>
             {shortAddress(activity.transactionHash)}
           </span>
         )}

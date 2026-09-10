@@ -7,6 +7,13 @@ import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { ChainBadge } from "@/components/chain-badge";
 import { SafeTierImage } from "@/components/safe-tier-image";
 import { Button } from "@/components/ui/button";
+import {
+  SelectContent,
+  SelectItem,
+  Select as SelectPrimitive,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { AccountAnalyticsPage, AccountAnalyticsSort } from "@/lib/account-analytics";
 import { compactUsd, shortAddress } from "@/lib/format";
 import { safeTierName } from "@/lib/safe-tier";
@@ -102,30 +109,28 @@ export function AccountExplorer({ initialPage }: { initialPage: AccountAnalytics
             setChainId(Number(value));
             resetPage();
           }}
+          options={[
+            { label: "All networks", value: "0" },
+            ...INDEXED_CHAINS.map((chain) => ({ label: chain.name, value: String(chain.id) })),
+          ]}
           value={String(chainId)}
-        >
-          <option value="0">All networks</option>
-          {INDEXED_CHAINS.map((chain) => (
-            <option key={chain.id} value={chain.id}>
-              {chain.name}
-            </option>
-          ))}
-        </Select>
+        />
         <Select
           label="Sort accounts"
           onChange={(value) => {
             setSort(value as AccountAnalyticsSort);
             resetPage();
           }}
+          options={[
+            { label: "Highest balance", value: "balance" },
+            { label: "Highest spend", value: "spend" },
+            { label: "Highest deposits", value: "deposits" },
+            { label: "Most transactions", value: "transactions" },
+            { label: "Recently active", value: "recent" },
+          ]}
           value={sort}
           wide
-        >
-          <option value="balance">Highest balance</option>
-          <option value="spend">Highest spend</option>
-          <option value="deposits">Highest deposits</option>
-          <option value="transactions">Most transactions</option>
-          <option value="recent">Recently active</option>
-        </Select>
+        />
         {hasFilters ? (
           <Button className="h-10 sm:px-4" onClick={clearFilters} variant="ghost">
             Reset
@@ -261,26 +266,33 @@ function Select({
   label,
   value,
   onChange,
-  children,
+  options,
   wide = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
-  children: React.ReactNode;
+  options: Array<{ label: string; value: string }>;
   wide?: boolean;
 }) {
   return (
-    <label>
-      <span className="sr-only">{label}</span>
-      <select
-        className={`h-10 w-full appearance-none rounded-xl border border-border bg-background px-3 text-sm text-foreground outline-none transition focus:border-ring focus:ring-3 focus:ring-ring/20 ${wide ? "sm:w-48" : "sm:w-36"}`}
-        onChange={(event) => onChange(event.target.value)}
-        value={value}
+    <SelectPrimitive onValueChange={(nextValue) => onChange(String(nextValue))} value={value}>
+      <SelectTrigger
+        aria-label={label}
+        className={`w-full border-border bg-background ${wide ? "sm:w-48" : "sm:w-40"}`}
       >
-        {children}
-      </select>
-    </label>
+        <SelectValue>
+          {(selectedValue) => options.find((option) => option.value === selectedValue)?.label ?? label}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent align="start">
+        {options.map((option) => (
+          <SelectItem key={option.value} label={option.label} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </SelectPrimitive>
   );
 }
 

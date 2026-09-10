@@ -46,6 +46,7 @@ const CLIP_EXCLUDED_COMPONENT_NAMES = new Set([
   "YAxis",
   "BarXAxis",
   "BarYAxis",
+  "ChartLegend",
   "LiveXAxis",
   "LiveYAxis",
 ]);

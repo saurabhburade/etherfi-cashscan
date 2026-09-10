@@ -28,11 +28,11 @@ export function EventTableColumnGroup() {
 /** A compact, explorer-linked ledger for indexed protocol events. */
 export function EventTable({ activity }: { activity: Activity[] }) {
   return (
-    <div className="overflow-x-auto rounded-2xl border border-white/[.075] bg-[#181818]">
+    <div className="overflow-x-auto rounded-2xl border border-border/40 bg-card">
       <Table aria-label="Latest protocol activity" className={eventTableClassName}>
         <EventTableColumnGroup />
         <TableHeader>
-          <TableRow className="border-white/[.07] bg-transparent hover:bg-transparent">
+          <TableRow className="border-border/40 bg-transparent hover:bg-transparent">
             <TableHead>Activity</TableHead>
             <TableHead>Account</TableHead>
             <TableHead>Contract</TableHead>
@@ -56,7 +56,7 @@ export function EventTable({ activity }: { activity: Activity[] }) {
                         {!hasToken && iconSymbol === "TX" ? (
                           <span
                             aria-label="Protocol activity"
-                            className="inline-grid size-10 place-items-center rounded-full border border-border bg-secondary text-muted-foreground dark:bg-zinc-800 dark:text-zinc-400"
+                            className="inline-grid size-10 place-items-center rounded-full border border-border bg-secondary text-muted-foreground"
                             role="img"
                           >
                             <FileText aria-hidden="true" className="size-4" />

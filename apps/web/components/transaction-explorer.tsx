@@ -6,6 +6,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { TransactionTableSkeleton } from "@/components/dashboard-skeletons";
 import { EventTable } from "@/components/event-table";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { exactCashExplorerEventLabel } from "@/lib/cash-explorer";
 import type { ActivityPage, ActivityTokenScope } from "@/lib/envio";
 
@@ -136,43 +137,55 @@ export function TransactionExplorer({
           ) : null}
         </label>
 
-        <label>
-          <span className="sr-only">Filter by network</span>
-          <select
-            className="h-10 w-full appearance-none rounded-xl border border-border bg-background px-3 text-sm text-foreground outline-none transition focus:border-ring focus:ring-3 focus:ring-ring/20 sm:w-36"
-            onChange={(event) => {
-              setChainId(Number(event.target.value));
-              resetPagination();
-            }}
-            value={chainId}
-          >
-            <option value={0}>All networks</option>
+        <Select
+          onValueChange={(value) => {
+            setChainId(Number(value));
+            resetPagination();
+          }}
+          value={String(chainId)}
+        >
+          <SelectTrigger aria-label="Filter by network" className="w-full border-border bg-background sm:w-40">
+            <SelectValue>
+              {(value) =>
+                value === "0"
+                  ? "All networks"
+                  : (INDEXED_CHAINS.find((chain) => String(chain.id) === value)?.name ?? "All networks")
+              }
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent align="start">
+            <SelectItem label="All networks" value="0">
+              All networks
+            </SelectItem>
             {INDEXED_CHAINS.map((chain) => (
-              <option key={chain.id} value={chain.id}>
+              <SelectItem key={chain.id} label={chain.name} value={String(chain.id)}>
                 {chain.name}
-              </option>
+              </SelectItem>
             ))}
-          </select>
-        </label>
+          </SelectContent>
+        </Select>
 
-        <label>
-          <span className="sr-only">Filter by activity</span>
-          <select
-            className="h-10 w-full appearance-none rounded-xl border border-border bg-background px-3 text-sm text-foreground outline-none transition focus:border-ring focus:ring-3 focus:ring-ring/20 sm:w-48"
-            onChange={(event) => {
-              setEventType(event.target.value);
-              resetPagination();
-            }}
-            value={eventType}
-          >
-            <option value="all">All activity types</option>
+        <Select
+          onValueChange={(value) => {
+            setEventType(String(value));
+            resetPagination();
+          }}
+          value={eventType}
+        >
+          <SelectTrigger aria-label="Filter by activity" className="w-full border-border bg-background sm:w-48">
+            <SelectValue>{(value) => (value === "all" ? "All activity types" : labelEvent(String(value)))}</SelectValue>
+          </SelectTrigger>
+          <SelectContent align="start">
+            <SelectItem label="All activity types" value="all">
+              All activity types
+            </SelectItem>
             {eventTypes.map((type) => (
-              <option key={type} value={type}>
+              <SelectItem key={type} label={labelEvent(type)} value={type}>
                 {labelEvent(type)}
-              </option>
+              </SelectItem>
             ))}
-          </select>
-        </label>
+          </SelectContent>
+        </Select>
 
         {hasFilters ? (
           <Button className="h-10 sm:px-4" onClick={clearFilters} variant="ghost">

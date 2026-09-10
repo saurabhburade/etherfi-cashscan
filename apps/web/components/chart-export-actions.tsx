@@ -4,7 +4,15 @@ import { Dialog } from "@base-ui/react/dialog";
 import { Check, Copy, Download, Share2, TriangleAlert, X } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { copyChartJpeg, copyChartJpegFromElement, downloadChartJpeg, renderChartJpeg } from "@/lib/chart-svg-export";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  type ChartExportAspect,
+  copyChartJpeg,
+  copyChartJpegFromElement,
+  downloadChartJpeg,
+  renderChartJpeg,
+} from "@/lib/chart-svg-export";
+import { cn } from "@/lib/utils";
 
 type ExportFeedback = "copied" | "copy-error" | "download-error" | "preview-error" | null;
 
@@ -18,11 +26,13 @@ export interface ChartExportActionsProps {
 export function ChartExportActions({ containerRef, filename, title, value }: ChartExportActionsProps) {
   const [feedback, setFeedback] = useState<ExportFeedback>(null);
   const [open, setOpen] = useState(false);
+  const [aspect, setAspect] = useState<ChartExportAspect>("default");
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const feedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewBlob = useRef<Blob | null>(null);
   const previewObjectUrl = useRef<string | null>(null);
+  const previewRequest = useRef(0);
 
   useEffect(
     () => () => {
@@ -38,7 +48,8 @@ export function ChartExportActions({ containerRef, filename, title, value }: Cha
     feedbackTimeout.current = setTimeout(() => setFeedback(null), 1_800);
   }
 
-  async function handleShare() {
+  async function preparePreview(nextAspect: ChartExportAspect) {
+    const requestId = ++previewRequest.current;
     setFeedback(null);
     setPreviewLoading(true);
     setPreviewUrl(null);
@@ -55,16 +66,27 @@ export function ChartExportActions({ containerRef, filename, title, value }: Cha
     }
 
     try {
-      const blob = await renderChartJpeg(container, { title, value });
+      const blob = await renderChartJpeg(container, { aspect: nextAspect, title, value });
+      if (requestId !== previewRequest.current) return;
       const objectUrl = URL.createObjectURL(blob);
       previewBlob.current = blob;
       previewObjectUrl.current = objectUrl;
       setPreviewUrl(objectUrl);
     } catch {
-      showFeedback("preview-error");
+      if (requestId === previewRequest.current) showFeedback("preview-error");
     } finally {
-      setPreviewLoading(false);
+      if (requestId === previewRequest.current) setPreviewLoading(false);
     }
+  }
+
+  function handleAspectChange(nextAspect: ChartExportAspect) {
+    setAspect(nextAspect);
+    void preparePreview(nextAspect);
+  }
+
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen);
+    if (nextOpen) void preparePreview(aspect);
   }
 
   async function handleCopy() {
@@ -78,7 +100,7 @@ export function ChartExportActions({ containerRef, filename, title, value }: Cha
       if (previewBlob.current) {
         await copyChartJpeg(previewBlob.current);
       } else {
-        await copyChartJpegFromElement(container, { title, value });
+        await copyChartJpegFromElement(container, { aspect, title, value });
       }
       showFeedback("copied");
     } catch {
@@ -94,7 +116,7 @@ export function ChartExportActions({ containerRef, filename, title, value }: Cha
     }
 
     try {
-      await downloadChartJpeg(container, filename, { title, value });
+      await downloadChartJpeg(container, filename, { aspect, title, value });
     } catch {
       showFeedback("download-error");
     }
@@ -105,7 +127,7 @@ export function ChartExportActions({ containerRef, filename, title, value }: Cha
   const downloadLabel = feedback === "download-error" ? "Could not save JPEG" : "Save JPEG";
 
   return (
-    <Dialog.Root onOpenChange={setOpen} open={open}>
+    <Dialog.Root onOpenChange={handleOpenChange} open={open}>
       <Dialog.Trigger
         aria-label={`Share ${title}`}
         className={buttonVariants({
@@ -113,14 +135,18 @@ export function ChartExportActions({ containerRef, filename, title, value }: Cha
           size: "icon-sm",
           variant: "ghost",
         })}
-        onClick={handleShare}
         title="Share"
       >
         <Share2 aria-hidden="true" />
       </Dialog.Trigger>
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-50 bg-foreground/30 backdrop-blur-[2px] transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0 dark:bg-black/65" />
-        <Dialog.Popup className="fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[min(92vw,60rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-2xl outline-none transition-[opacity,scale] duration-150 data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0">
+        <Dialog.Backdrop className="fixed inset-0 z-50 bg-foreground/30 backdrop-blur-[2px] transition-opacity duration-[280ms] ease-[cubic-bezier(0.16,1,0.3,1)] data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:duration-[100ms] dark:bg-black/65" />
+        <Dialog.Popup
+          className={cn(
+            "fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-2xl outline-none [clip-path:inset(0_0_0_0_round_1rem)] transition-[clip-path,opacity,width] duration-[430ms] ease-[cubic-bezier(0.2,0,0.2,1)] will-change-[clip-path] data-ending-style:[clip-path:inset(48%_48%_48%_48%_round_1rem)] data-starting-style:[clip-path:inset(48%_48%_48%_48%_round_1rem)] motion-reduce:duration-[140ms] motion-reduce:data-ending-style:opacity-0 motion-reduce:data-ending-style:[clip-path:inset(0_0_0_0_round_1rem)] motion-reduce:data-starting-style:opacity-0 motion-reduce:data-starting-style:[clip-path:inset(0_0_0_0_round_1rem)]",
+            aspect === "social" ? "w-[min(92vw,calc(100dvh-14rem),60rem)]" : "w-[min(92vw,60rem)]",
+          )}
+        >
           <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
             <div className="min-w-0">
               <Dialog.Title className="text-base font-semibold">Share Chart</Dialog.Title>
@@ -139,14 +165,19 @@ export function ChartExportActions({ containerRef, filename, title, value }: Cha
             </Dialog.Close>
           </div>
           <div className="min-h-0 flex-1 overflow-hidden p-4 sm:p-6">
-            <div className="flex h-full min-h-56 items-center justify-center overflow-hidden bg-secondary">
+            <div
+              className={cn(
+                "flex min-h-56 items-center justify-center overflow-hidden bg-secondary",
+                aspect === "social" ? "aspect-square w-full" : "h-full",
+              )}
+            >
               {previewUrl ? (
                 <>
                   {/* The blob URL is the exact, maximum-quality JPEG copied or downloaded. */}
                   {/* biome-ignore lint/performance/noImgElement: Next Image cannot render a transient client-side blob URL */}
                   <img
                     alt={`${title} chart preview`}
-                    className="block h-auto max-h-[calc(100dvh-13rem)] w-auto max-w-full object-contain"
+                    className="block h-auto max-h-[calc(100dvh-17rem)] w-auto max-w-full object-contain"
                     src={previewUrl}
                   />
                 </>
@@ -157,21 +188,41 @@ export function ChartExportActions({ containerRef, filename, title, value }: Cha
               )}
             </div>
           </div>
-          <div className="flex flex-col-reverse gap-2 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-            <Button className="w-fit text-xs" onClick={handleDownload} type="button" variant="secondary">
-              {feedback === "download-error" ? <TriangleAlert aria-hidden="true" /> : <Download aria-hidden="true" />}{" "}
-              {downloadLabel}
-            </Button>
-            <Button className="w-fit text-xs" onClick={handleCopy} type="button" variant="secondary">
-              {feedback === "copied" ? (
-                <Check aria-hidden="true" />
-              ) : feedback === "copy-error" ? (
-                <TriangleAlert aria-hidden="true" />
-              ) : (
-                <Copy aria-hidden="true" />
-              )}{" "}
-              {copyLabel}
-            </Button>
+          <div className="flex flex-col gap-3 border-t border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <Select
+              onValueChange={(nextAspect) => handleAspectChange(nextAspect === "social" ? "social" : "default")}
+              value={aspect}
+            >
+              <SelectTrigger aria-label="Export aspect ratio" className="h-9 border-border bg-background text-xs">
+                <SelectValue>
+                  {(selectedAspect) => (selectedAspect === "social" ? "Social Media" : "Default")}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent align="start" className="min-w-28 rounded-xl" side="top" sideOffset={6}>
+                <SelectItem className="min-h-8 rounded-lg py-1 text-xs" label="Default" value="default">
+                  Default
+                </SelectItem>
+                <SelectItem className="min-h-8 rounded-lg py-1 text-xs" label="Social Media" value="social">
+                  Social Media
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
+              <Button className="w-fit text-xs" onClick={handleDownload} type="button" variant="secondary">
+                {feedback === "download-error" ? <TriangleAlert aria-hidden="true" /> : <Download aria-hidden="true" />}{" "}
+                {downloadLabel}
+              </Button>
+              <Button className="w-fit text-xs" onClick={handleCopy} type="button" variant="secondary">
+                {feedback === "copied" ? (
+                  <Check aria-hidden="true" />
+                ) : feedback === "copy-error" ? (
+                  <TriangleAlert aria-hidden="true" />
+                ) : (
+                  <Copy aria-hidden="true" />
+                )}{" "}
+                {copyLabel}
+              </Button>
+            </div>
           </div>
           <span aria-live="polite" className="sr-only">
             {feedback === "copied"

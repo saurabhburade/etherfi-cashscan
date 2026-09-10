@@ -160,7 +160,13 @@ export function CashProductPanels({
                 margin={{ top: 24, right: 18, bottom: 72, left: 64 }}
                 xDataKey="date"
               >
-                <Grid fadeHorizontal={false} numTicksRows={5} stroke="var(--chart-grid)" yAxisId="cumulative" />
+                <Grid
+                  fadeHorizontal={false}
+                  numTicksRows={3}
+                  stroke="var(--chart-grid)"
+                  strokeOpacity={0.5}
+                  yAxisId="cumulative"
+                />
                 <Bar dataKey="cashbackUsd" fill="var(--chart-2)" lineCap={3} />
                 <Area
                   dataKey="cumulativeCashbackUsd"
@@ -171,7 +177,7 @@ export function CashProductPanels({
                   strokeWidth={2}
                   yAxisId="cumulative"
                 />
-                <CartesianYAxis tickFormatter={currency} yAxisId="cumulative" />
+                <CartesianYAxis numTicks={3} tickFormatter={currency} yAxisId="cumulative" />
                 <CartesianXAxis numTicks={4} />
                 <ChartLegend
                   items={[
@@ -224,7 +230,7 @@ export function CashProductPanels({
                 margin={{ top: 24, right: 18, bottom: 72, left: 18 }}
                 xDataKey="date"
               >
-                <Grid fadeHorizontal={false} numTicksRows={4} stroke="var(--chart-grid)" />
+                <Grid fadeHorizontal={false} numTicksRows={3} stroke="var(--chart-grid)" strokeOpacity={0.5} />
                 <Area
                   dataKey="onrampUsd"
                   fill="var(--chart-1)"
@@ -285,7 +291,7 @@ export function CashProductPanels({
                 margin={{ top: 24, right: 18, bottom: 92, left: 64 }}
                 xDataKey="date"
               >
-                <Grid fadeHorizontal={false} numTicksRows={4} stroke="var(--chart-grid)" />
+                <Grid fadeHorizontal={false} numTicksRows={3} stroke="var(--chart-grid)" strokeOpacity={0.5} />
                 <Bar dataKey="borrowedUsd" fill="var(--chart-2)" lineCap={3} />
                 <Bar dataKey="repaidUsd" fill="var(--chart-3)" lineCap={3} />
                 <Area
@@ -296,7 +302,7 @@ export function CashProductPanels({
                   stroke="var(--chart-1)"
                   strokeWidth={2.5}
                 />
-                <CartesianYAxis tickFormatter={currency} />
+                <CartesianYAxis numTicks={3} tickFormatter={currency} />
                 <CartesianXAxis numTicks={4} />
                 <ChartLegend
                   items={[

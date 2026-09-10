@@ -117,7 +117,7 @@ export function CashAccountAnalytics({
                 margin={{ top: 24, right: 18, bottom: 38, left: 18 }}
                 xDataKey="date"
               >
-                <Grid fadeHorizontal={false} numTicksRows={4} />
+                <Grid fadeHorizontal={false} numTicksRows={3} strokeOpacity={0.5} />
                 <Bar dataKey="credit" fill={chartPrimary} lineCap={3} />
                 <Bar dataKey="debit" fill={chartSecondary} lineCap={3} />
                 <BarXAxis maxLabels={5} />
@@ -162,7 +162,7 @@ export function CashAccountAnalytics({
                 margin={{ top: 24, right: 18, bottom: 38, left: 18 }}
                 xDataKey="date"
               >
-                <Grid fadeHorizontal={false} numTicksRows={4} />
+                <Grid fadeHorizontal={false} numTicksRows={3} strokeOpacity={0.5} />
                 <Area
                   dataKey="upgrades"
                   fill={chartPrimary}

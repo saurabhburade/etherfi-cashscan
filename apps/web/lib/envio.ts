@@ -61,7 +61,14 @@ export type SpendProfile = {
   spendUsd: number;
 };
 
-export type HourlyActivity = { hour: number; spendCount: number; spendUsd: number };
+export type HourlyActivity = {
+  hour: number;
+  spendCount: number;
+  spendUsd: number;
+  activeCards: number;
+  newCards: number;
+  cashbackUsd: number;
+};
 export type RampToken = { label: string; token: string; tokenSymbol: string; amountUsd: number };
 export type DebtToken = {
   token: string;
@@ -282,8 +289,16 @@ const SPEND_BUCKETS_QUERY = /* GraphQL */ `
   }
 `;
 
-const HOURLY_QUERY = /* GraphQL */ `
+const EXTENDED_HOURLY_QUERY = /* GraphQL */ `
   query EtherFiCashExplorerHourly($where: HourlySpendMetric_bool_exp!) {
+    HourlySpendMetric(where: $where, order_by: { hour: asc }) {
+      hour spendCount spendUsd activeCardCount newCardCount cashbackUsd
+    }
+  }
+`;
+
+const BASIC_HOURLY_QUERY = /* GraphQL */ `
+  query EtherFiCashExplorerBasicHourly($where: HourlySpendMetric_bool_exp!) {
     HourlySpendMetric(where: $where, order_by: { hour: asc }) { hour spendCount spendUsd }
   }
 `;
@@ -802,7 +817,7 @@ const fullExplorerDataOperations: readonly ExplorerDataOperation[] = [
 const profileOperations: Record<ExplorerDataProfile, readonly ExplorerDataOperation[]> = {
   full: fullExplorerDataOperations,
   home: ["core", "globalActiveSafes", "events", "tokens"],
-  homeOverview: ["core", "globalActiveSafes"],
+  homeOverview: ["core", "globalActiveSafes", "hourly"],
   homeActivity: ["events", "tokens"],
   stats: [
     "globalActiveSafes",
@@ -886,9 +901,7 @@ export async function loadExplorerData(
       includes("spendBuckets")
         ? graphqlOptional<SpendBucketsResponse>(endpoint, SPEND_BUCKETS_QUERY, { where: chainWhere }, adminSecret)
         : Promise.resolve(null),
-      includes("hourly")
-        ? graphqlOptional<HourlyResponse>(endpoint, HOURLY_QUERY, { where: chainWhere }, adminSecret)
-        : Promise.resolve(null),
+      includes("hourly") ? loadHourlyData(endpoint, chainWhere, adminSecret) : Promise.resolve(null),
       includes("events")
         ? Promise.all([
             graphqlOptional<LatestEventsResponse>(
@@ -1544,6 +1557,16 @@ async function graphqlOptional<T>(
   }
 }
 
+async function loadHourlyData(
+  endpoint: string,
+  where: Record<string, unknown>,
+  adminSecret?: string,
+): Promise<HourlyResponse | null> {
+  const extended = await graphqlOptional<HourlyResponse>(endpoint, EXTENDED_HOURLY_QUERY, { where }, adminSecret);
+  if (extended) return extended;
+  return graphqlOptional<HourlyResponse>(endpoint, BASIC_HOURLY_QUERY, { where }, adminSecret);
+}
+
 function sumDailyMetrics(rows: Row[]) {
   return rows.reduce<DailyTotals>(
     (totals, row) => ({
@@ -1666,9 +1689,19 @@ function buildHourly(rows: Row[]): HourlyActivity[] {
   const grouped = new Map<number, HourlyActivity>();
   for (const row of rows) {
     const hour = Number(row.hour);
-    const current = grouped.get(hour) ?? { hour, spendCount: 0, spendUsd: 0 };
+    const current = grouped.get(hour) ?? {
+      hour,
+      spendCount: 0,
+      spendUsd: 0,
+      activeCards: 0,
+      newCards: 0,
+      cashbackUsd: 0,
+    };
     current.spendCount += integer(row.spendCount);
     current.spendUsd += usd(row.spendUsd);
+    current.activeCards += integer(row.activeCardCount);
+    current.newCards += integer(row.newCardCount);
+    current.cashbackUsd += usd(row.cashbackUsd);
     grouped.set(hour, current);
   }
   return [...grouped.values()].sort((a, b) => a.hour - b.hour);

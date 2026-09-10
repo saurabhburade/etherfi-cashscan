@@ -58,6 +58,7 @@ type MetricDelta = Partial<{
   creditSpendUsd: bigint;
   debitSpendUsd: bigint;
   activeCardCount: bigint;
+  hourlyActiveCardCount: bigint;
   newCardCount: bigint;
   topUpCount: bigint;
   cashbackUsd: bigint;
@@ -448,6 +449,43 @@ async function recordSpendTokenValuations(
   }
 }
 
+async function bumpHourly(context: any, event: BlockEvent, delta: MetricDelta) {
+  const hour = hourFromUnixSeconds(event.block.timestamp);
+  const id = `${event.chainId}:${hour}`;
+  const current = (await context.HourlySpendMetric.get(id)) ?? {
+    id,
+    chainId: event.chainId,
+    hour,
+    spendCount: 0n,
+    spendUsd: 0n,
+    creditSpendUsd: 0n,
+    debitSpendUsd: 0n,
+    activeCardCount: 0n,
+    newCardCount: 0n,
+    topUpCount: 0n,
+    cashbackUsd: 0n,
+    onrampUsd: 0n,
+    offrampUsd: 0n,
+    borrowedUsd: 0n,
+    repaidUsd: 0n,
+  };
+  context.HourlySpendMetric.set({
+    ...current,
+    spendCount: current.spendCount + (delta.spendCount ?? 0n),
+    spendUsd: current.spendUsd + (delta.spendUsd ?? 0n),
+    creditSpendUsd: current.creditSpendUsd + (delta.creditSpendUsd ?? 0n),
+    debitSpendUsd: current.debitSpendUsd + (delta.debitSpendUsd ?? 0n),
+    activeCardCount: current.activeCardCount + (delta.hourlyActiveCardCount ?? delta.activeCardCount ?? 0n),
+    newCardCount: current.newCardCount + (delta.newCardCount ?? 0n),
+    topUpCount: current.topUpCount + (delta.topUpCount ?? 0n),
+    cashbackUsd: current.cashbackUsd + (delta.cashbackUsd ?? 0n),
+    onrampUsd: current.onrampUsd + (delta.onrampUsd ?? 0n),
+    offrampUsd: current.offrampUsd + (delta.offrampUsd ?? 0n),
+    borrowedUsd: current.borrowedUsd + (delta.borrowedUsd ?? 0n),
+    repaidUsd: current.repaidUsd + (delta.repaidUsd ?? 0n),
+  });
+}
+
 async function bumpDaily(context: any, event: BlockEvent, delta: MetricDelta) {
   const id = dailyMetricId(event.chainId, event.block.timestamp);
   const current = (await context.DailyCashMetric.get(id)) ?? {
@@ -482,22 +520,26 @@ async function bumpDaily(context: any, event: BlockEvent, delta: MetricDelta) {
     borrowedUsd: current.borrowedUsd + (delta.borrowedUsd ?? 0n),
     repaidUsd: current.repaidUsd + (delta.repaidUsd ?? 0n),
   });
+  await bumpHourly(context, event, delta);
 }
 
 async function trackActiveSafe(
   context: any,
   event: BlockEvent,
   address: string,
-): Promise<Pick<MetricDelta, "activeCardCount" | "newCardCount">> {
+): Promise<Pick<MetricDelta, "activeCardCount" | "hourlyActiveCardCount" | "newCardCount">> {
   const safe = lower(address);
   const activeId = accountId(event.chainId, safe);
   const dailyId = `${dailyMetricId(event.chainId, event.block.timestamp)}:${safe}`;
   const globalDailyId = `${dayFromUnixSeconds(event.block.timestamp)}:${safe}`;
-  const [active, daily, globalActive, globalDaily] = await Promise.all([
+  const hour = hourFromUnixSeconds(event.block.timestamp);
+  const globalHourlyId = `${hour}:${safe}`;
+  const [active, daily, globalActive, globalDaily, globalHourly] = await Promise.all([
     context.ActiveSafe.get(activeId),
     context.DailyActiveSafe.get(dailyId),
     context.GlobalActiveSafe.get(safe),
     context.GlobalDailyActiveSafe.get(globalDailyId),
+    context.GlobalHourlyActiveSafe.get(globalHourlyId),
   ]);
   if (!active) {
     context.ActiveSafe.set({
@@ -535,7 +577,19 @@ async function trackActiveSafe(
       firstSpendChainId: event.chainId,
     });
   }
-  return { activeCardCount: globalDaily ? 0n : 1n, newCardCount: globalActive ? 0n : 1n };
+  if (!globalHourly) {
+    context.GlobalHourlyActiveSafe.set({
+      id: globalHourlyId,
+      hour,
+      address: safe,
+      firstSpendChainId: event.chainId,
+    });
+  }
+  return {
+    activeCardCount: globalDaily ? 0n : 1n,
+    hourlyActiveCardCount: globalHourly ? 0n : 1n,
+    newCardCount: globalActive ? 0n : 1n,
+  };
 }
 
 async function bumpSpendDimensions(context: any, event: BlockEvent, amountUsd: bigint) {
@@ -553,21 +607,6 @@ async function bumpSpendDimensions(context: any, event: BlockEvent, amountUsd: b
     ...currentBucket,
     spendCount: currentBucket.spendCount + 1n,
     spendUsd: currentBucket.spendUsd + amountUsd,
-  });
-
-  const hour = hourFromUnixSeconds(event.block.timestamp);
-  const hourId = `${event.chainId}:${hour}`;
-  const currentHour = (await context.HourlySpendMetric.get(hourId)) ?? {
-    id: hourId,
-    chainId: event.chainId,
-    hour,
-    spendCount: 0n,
-    spendUsd: 0n,
-  };
-  context.HourlySpendMetric.set({
-    ...currentHour,
-    spendCount: currentHour.spendCount + 1n,
-    spendUsd: currentHour.spendUsd + amountUsd,
   });
 }
 

@@ -16,7 +16,7 @@ export interface GridProps {
   horizontal?: boolean;
   /** Show vertical grid lines. Default: false */
   vertical?: boolean;
-  /** Number of horizontal grid lines. Default: 5 */
+  /** Number of horizontal grid lines. Default: 3 */
   numTicksRows?: number;
   /** Number of vertical grid lines. Default: 10 */
   numTicksColumns?: number;
@@ -89,7 +89,7 @@ function resolveRowTickValues(options: {
 export function Grid({
   horizontal = true,
   vertical = false,
-  numTicksRows = 5,
+  numTicksRows = 3,
   numTicksColumns = 10,
   rowTickValues,
   stroke = chartCssVars.grid,

@@ -90,7 +90,7 @@ describe("event query contract", () => {
 
   it("omits unrelated explorer operations for every route profile", () => {
     expect(explorerDataOperations("home")).toEqual(["core", "globalActiveSafes", "events", "tokens"]);
-    expect(explorerDataOperations("homeOverview")).toEqual(["core", "globalActiveSafes"]);
+    expect(explorerDataOperations("homeOverview")).toEqual(["core", "globalActiveSafes", "hourly"]);
     expect(explorerDataOperations("homeActivity")).toEqual(["events", "tokens"]);
     expect(explorerDataOperations("stats")).toEqual([
       "globalActiveSafes",

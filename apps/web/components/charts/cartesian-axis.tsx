@@ -92,7 +92,7 @@ export function CartesianXAxis({ numTicks = 5 }: CartesianXAxisProps) {
 }
 
 /** SVG-native value labels that use the exact scale and ticks as the grid. */
-export function CartesianYAxis({ yAxisId, tickFormatter, numTicks = 5 }: CartesianYAxisProps) {
+export function CartesianYAxis({ yAxisId, tickFormatter, numTicks = 3 }: CartesianYAxisProps) {
   const yScale = useYScale(yAxisId);
   const ticks = useMemo(() => yScale.ticks?.(numTicks) ?? [], [numTicks, yScale]);
   return (

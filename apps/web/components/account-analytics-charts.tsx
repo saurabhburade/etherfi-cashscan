@@ -273,7 +273,13 @@ function AccountDailySeriesChart({
             margin={{ top: 24, right: 18, bottom: 72, left: 64 }}
             xDataKey="date"
           >
-            <Grid fadeHorizontal={false} numTicksRows={5} stroke="var(--chart-grid)" yAxisId="cumulative" />
+            <Grid
+              fadeHorizontal={false}
+              numTicksRows={3}
+              stroke="var(--chart-grid)"
+              strokeOpacity={0.5}
+              yAxisId="cumulative"
+            />
             <Bar dataKey={dailyDataKey} fill={dailyColor} lineCap={3} />
             <Area
               dataKey={cumulativeDataKey}
@@ -284,7 +290,7 @@ function AccountDailySeriesChart({
               strokeWidth={2}
               yAxisId="cumulative"
             />
-            <CartesianYAxis tickFormatter={money} yAxisId="cumulative" />
+            <CartesianYAxis numTicks={3} tickFormatter={money} yAxisId="cumulative" />
             <CartesianXAxis numTicks={3} />
             <ChartLegend
               items={[

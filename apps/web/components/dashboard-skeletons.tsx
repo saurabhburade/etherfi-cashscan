@@ -65,14 +65,14 @@ export function TransactionTableSkeleton() {
   return (
     <section
       aria-label="Loading transactions"
-      className="animate-pulse overflow-hidden rounded-2xl border border-white/[.075] bg-[#181818]"
+      className="animate-pulse overflow-hidden rounded-2xl border border-border/40 bg-card"
       role="status"
     >
       <span className="sr-only">Loading the next transaction page</span>
       <Table aria-hidden="true" className={eventTableClassName}>
         <EventTableColumnGroup />
         <TableHeader>
-          <TableRow className="border-white/[.07] bg-transparent hover:bg-transparent">
+          <TableRow className="border-border/40 bg-transparent hover:bg-transparent">
             {transactionColumnIds.map((column) => (
               <TableHead key={column}>
                 <div className="h-3 w-20 rounded-full bg-secondary" />

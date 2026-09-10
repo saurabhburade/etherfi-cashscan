@@ -1,9 +1,9 @@
 "use client";
 
 import { INDEXED_CHAIN_BY_ID } from "@etherfi/contracts";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { type ReactNode, useRef, useState } from "react";
+import { TextMorph } from "torph/react";
 import { formatUnits } from "viem";
 import { ChainBadge } from "@/components/chain-badge";
 import { ChartExportActions } from "@/components/chart-export-actions";
@@ -20,12 +20,11 @@ import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
 import { XAxis } from "@/components/charts/x-axis";
 import { TokenIcon } from "@/components/token-icon";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { ExplorerData, TokenAnalyticsRow } from "@/lib/envio";
+import type { DailyAnalytics, ExplorerData, TokenAnalyticsRow } from "@/lib/envio";
 
 const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 });
 const wholeNumber = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const chartRangeEasing = "cubic-bezier(0.22, 1, 0.36, 1)";
-const chartRangeMotionEasing = [0.22, 1, 0.36, 1] as const;
 const colors = [
   "var(--chart-1)",
   "var(--chart-2)",
@@ -46,6 +45,57 @@ const overviewRanges: Array<{ label: string; value: OverviewRange; days?: number
   { label: "All time", value: "all" },
 ];
 const OVERVIEW_RANGE_BY_VALUE = new Map(overviewRanges.map((option) => [option.value, option]));
+
+type OverviewPoint = DailyAnalytics & { cumulativeCashbackUsd: number; date: Date };
+
+function buildLast24HourlyPoints(data: ExplorerData): OverviewPoint[] {
+  const currentHour = Math.floor(Date.now() / 3_600_000);
+  const firstHour = currentHour - 23;
+  const hourlyByHour = new Map(data.hourly.map((row) => [row.hour, row]));
+  const recent = Array.from({ length: 24 }, (_, index) => {
+    const hour = firstHour + index;
+    return (
+      hourlyByHour.get(hour) ?? {
+        hour,
+        spendCount: 0,
+        spendUsd: 0,
+        activeCards: 0,
+        newCards: 0,
+        cashbackUsd: 0,
+      }
+    );
+  });
+  let cumulativeSpendUsd = Math.max(0, data.spendUsd - recent.reduce((total, row) => total + row.spendUsd, 0));
+  let cumulativeTransactions = Math.max(0, data.spendCount - recent.reduce((total, row) => total + row.spendCount, 0));
+  let cumulativeCards = Math.max(0, data.activeCardCount - recent.reduce((total, row) => total + row.newCards, 0));
+  let cumulativeCashbackUsd = Math.max(0, data.cashbackUsd - recent.reduce((total, row) => total + row.cashbackUsd, 0));
+
+  return recent.map((row) => {
+    cumulativeSpendUsd += row.spendUsd;
+    cumulativeTransactions += row.spendCount;
+    cumulativeCards += row.newCards;
+    cumulativeCashbackUsd += row.cashbackUsd;
+    const date = new Date(row.hour * 3_600_000);
+    return {
+      day: date.toISOString(),
+      date,
+      spendUsd: row.spendUsd,
+      transactions: row.spendCount,
+      activeCards: row.activeCards,
+      newCards: row.newCards,
+      topUps: 0,
+      cashbackUsd: row.cashbackUsd,
+      onrampUsd: 0,
+      offrampUsd: 0,
+      borrowedUsd: 0,
+      repaidUsd: 0,
+      cumulativeSpendUsd,
+      cumulativeTransactions,
+      cumulativeCards,
+      cumulativeCashbackUsd,
+    };
+  });
+}
 
 export function SpendOverviewCharts({
   data,
@@ -73,13 +123,15 @@ export function SpendOverviewCharts({
   });
   const selectedRange = OVERVIEW_RANGE_BY_VALUE.get(range);
   const rangeDays = selectedRange?.days;
-  const visibleDaily = rangeDays ? daily.slice(-rangeDays) : daily;
+  const visibleDaily = range === "24h" ? buildLast24HourlyPoints(data) : rangeDays ? daily.slice(-rangeDays) : daily;
   const visibleSpendUsd = visibleDaily.reduce((total, row) => total + row.spendUsd, 0);
   const visibleCashbackUsd = visibleDaily.reduce((total, row) => total + row.cashbackUsd, 0);
   const visibleTransactions = visibleDaily.reduce((total, row) => total + row.transactions, 0);
+  const visibleNewCards = visibleDaily.reduce((total, row) => total + row.newCards, 0);
   const today = new Date().toISOString().slice(0, 10);
   const newCardsToday = data.daily.find((row) => row.day === today)?.newCards ?? 0;
-  const cumulativeActiveCards = data.daily.at(-1)?.cumulativeCards ?? data.activeCardCount;
+  const issuedCards = range === "all" ? newCardsToday : visibleNewCards;
+  const issuedContext = range === "all" ? "today" : `in ${selectedRange?.label ?? range}`;
   const spendShare = data.spendProfiles.map((row, index) => ({
     label: row.bucket,
     value: row.spendUsd,
@@ -97,10 +149,14 @@ export function SpendOverviewCharts({
           }}
           value={range}
         >
-          <TabsList aria-label="Chart duration" className="shrink-0 border border-secondary bg-background">
+          <TabsList
+            aria-label="Chart duration"
+            className="shrink-0 border border-secondary bg-background"
+            indicatorClassName="bg-secondary dark:border-transparent dark:bg-secondary"
+          >
             {overviewRanges.map((option) => (
               <TabsTrigger
-                className="flex-none px-3 font-sans text-xs! font-medium tracking-normal text-muted-foreground data-active:bg-secondary data-active:text-foreground dark:data-active:border-transparent dark:data-active:bg-secondary dark:data-active:text-foreground"
+                className="flex-none px-3 font-sans text-xs! font-medium tracking-normal text-muted-foreground data-active:text-foreground dark:data-active:text-foreground"
                 key={option.value}
                 value={option.value}
               >
@@ -128,7 +184,13 @@ export function SpendOverviewCharts({
               revealSignature={range}
               xDataKey="date"
             >
-              <Grid fadeHorizontal={false} numTicksRows={5} stroke="var(--chart-grid)" yAxisId="cumulative" />
+              <Grid
+                fadeHorizontal={false}
+                numTicksRows={3}
+                stroke="var(--chart-grid)"
+                strokeOpacity={0.5}
+                yAxisId="cumulative"
+              />
               <Bar dataKey="spendUsd" fill="var(--chart-2)" lineCap={3} />
               <Area
                 dataKey="cumulativeSpendUsd"
@@ -139,7 +201,7 @@ export function SpendOverviewCharts({
                 strokeWidth={2}
                 yAxisId="cumulative"
               />
-              <CartesianYAxis tickFormatter={money} yAxisId="cumulative" />
+              <CartesianYAxis numTicks={3} tickFormatter={money} yAxisId="cumulative" />
               <CartesianXAxis numTicks={3} />
               <ChartLegend
                 items={[
@@ -173,7 +235,13 @@ export function SpendOverviewCharts({
               revealSignature={range}
               xDataKey="date"
             >
-              <Grid fadeHorizontal={false} numTicksRows={5} stroke="var(--chart-grid)" yAxisId="cumulative" />
+              <Grid
+                fadeHorizontal={false}
+                numTicksRows={3}
+                stroke="var(--chart-grid)"
+                strokeOpacity={0.5}
+                yAxisId="cumulative"
+              />
               <Bar dataKey="cashbackUsd" fill="var(--chart-3)" lineCap={3} />
               <Area
                 dataKey="cumulativeCashbackUsd"
@@ -184,7 +252,7 @@ export function SpendOverviewCharts({
                 strokeWidth={2}
                 yAxisId="cumulative"
               />
-              <CartesianYAxis tickFormatter={money} yAxisId="cumulative" />
+              <CartesianYAxis numTicks={3} tickFormatter={money} yAxisId="cumulative" />
               <CartesianXAxis numTicks={3} />
               <ChartLegend
                 items={[
@@ -210,7 +278,7 @@ export function SpendOverviewCharts({
             duration={selectedRange?.label ?? range}
             filename={`etherfi-active-new-cards-${range}.svg`}
             label="Active/new cards"
-            total={`${compact.format(cumulativeActiveCards)} / ${compact.format(newCardsToday)} issued today`}
+            total={`${compact.format(data.activeCardCount)} / ${compact.format(issuedCards)} issued ${issuedContext}`}
           >
             <AreaChart
               animationDuration={animateRangeChanges ? 600 : 0}
@@ -221,7 +289,7 @@ export function SpendOverviewCharts({
               revealSignature={range}
               xDataKey="date"
             >
-              <Grid fadeHorizontal={false} numTicksRows={5} stroke="var(--chart-grid)" />
+              <Grid fadeHorizontal={false} numTicksRows={3} stroke="var(--chart-grid)" strokeOpacity={0.5} />
               <Area
                 dataKey="cumulativeCards"
                 fill="var(--chart-1)"
@@ -246,7 +314,7 @@ export function SpendOverviewCharts({
                 stroke="var(--chart-4)"
                 strokeWidth={1.25}
               />
-              <CartesianYAxis tickFormatter={compact.format} />
+              <CartesianYAxis numTicks={3} tickFormatter={compact.format} />
               <CartesianXAxis numTicks={3} />
               <ChartLegend
                 items={[
@@ -294,7 +362,13 @@ export function SpendOverviewCharts({
               revealSignature={range}
               xDataKey="date"
             >
-              <Grid fadeHorizontal={false} numTicksRows={5} stroke="var(--chart-grid)" yAxisId="cumulative" />
+              <Grid
+                fadeHorizontal={false}
+                numTicksRows={3}
+                stroke="var(--chart-grid)"
+                strokeOpacity={0.5}
+                yAxisId="cumulative"
+              />
               <Bar dataKey="transactions" fill="var(--chart-2)" lineCap={3} />
               <Area
                 dataKey="cumulativeTransactions"
@@ -305,7 +379,7 @@ export function SpendOverviewCharts({
                 strokeWidth={2}
                 yAxisId="cumulative"
               />
-              <CartesianYAxis tickFormatter={compact.format} yAxisId="cumulative" />
+              <CartesianYAxis numTicks={3} tickFormatter={compact.format} yAxisId="cumulative" />
               <CartesianXAxis numTicks={3} />
               <ChartLegend
                 items={[
@@ -400,20 +474,20 @@ export function AnalyticsCharts({
           subtitle="Per-token destination credits minus settled spend debits"
           title="Derived destination balances"
         >
-          <div className="overflow-hidden rounded-2xl border border-white/[.075] bg-[#181818]">
-            <div className="flex flex-wrap items-end justify-between gap-3 border-b border-white/[.06] px-5 py-5 sm:px-6">
+          <div className="overflow-hidden rounded-2xl border border-border/40 bg-card">
+            <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border/40 px-5 py-5 sm:px-6">
               <div>
-                <span className="text-sm text-zinc-500">Token balances</span>
+                <span className="text-sm text-muted-foreground">Token balances</span>
                 <h3 className="mt-2 text-xl font-normal tracking-[-.03em]">Account activity</h3>
               </div>
-              <span className="text-[11px] text-zinc-600">
+              <span className="text-[11px] text-muted-foreground">
                 ERC-20 decimals · current verified oracle price when available
               </span>
             </div>
             {data.balances.length ? (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[760px] text-left text-xs">
-                  <thead className="text-zinc-600">
+                  <thead className="text-muted-foreground">
                     <tr>
                       <th className="px-6 py-4 font-normal">Destination</th>
                       <th className="px-6 py-4 font-normal">Kind</th>
@@ -423,28 +497,28 @@ export function AnalyticsCharts({
                   </thead>
                   <tbody>
                     {data.balances.slice(0, 8).map((row) => (
-                      <tr className="border-t border-white/[.05]" key={`${row.chainId}:${row.account}:${row.token}`}>
-                        <td className="px-6 py-4 font-mono text-zinc-300">
+                      <tr className="border-t border-border/40" key={`${row.chainId}:${row.account}:${row.token}`}>
+                        <td className="px-6 py-4 font-mono text-foreground">
                           <Link
-                            className="underline decoration-zinc-500/50 underline-offset-4 transition hover:opacity-70"
+                            className="underline decoration-muted-foreground/60 underline-offset-4 transition-colors hover:text-foreground"
                             href={`/accounts/${row.account}`}
                           >
                             {short(row.account)}
                           </Link>
                         </td>
-                        <td className="px-6 py-4 text-zinc-500">{row.accountKind.replaceAll("_", " ")}</td>
-                        <td className="px-6 py-4 font-mono text-zinc-500">
+                        <td className="px-6 py-4 text-muted-foreground">{row.accountKind.replaceAll("_", " ")}</td>
+                        <td className="px-6 py-4 font-mono text-muted-foreground">
                           <span className="inline-flex items-center gap-2.5">
                             <TokenIcon address={row.token} chainId={row.chainId} symbol={row.symbol} />
                             <Link
-                              className="underline decoration-zinc-500/50 underline-offset-4 transition hover:opacity-70"
+                              className="underline decoration-muted-foreground/60 underline-offset-4 transition-colors hover:text-foreground"
                               href={`/tokens/${row.token}`}
                             >
                               {row.symbol || short(row.token)}
                             </Link>
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-right font-mono text-zinc-200">{balanceValue(row)}</td>
+                        <td className="px-6 py-4 text-right font-mono text-foreground">{balanceValue(row)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -584,20 +658,10 @@ function TimeSeriesCard({
   );
 }
 function AnimatedTotal({ value }: { value: string }) {
-  const reduceMotion = useReducedMotion();
   return (
-    <AnimatePresence initial={false} mode="wait">
-      <motion.strong
-        animate={{ opacity: 1, y: 0 }}
-        className="mt-2 block text-2xl font-normal tracking-[-.03em]"
-        exit={reduceMotion ? undefined : { opacity: 0, y: -3 }}
-        initial={reduceMotion ? undefined : { opacity: 0, y: 3 }}
-        key={value}
-        transition={{ duration: 0.24, ease: chartRangeMotionEasing }}
-      >
-        {value}
-      </motion.strong>
-    </AnimatePresence>
+    <TextMorph as="strong" className="mt-2 block text-2xl font-normal tracking-[-.03em] tabular-nums" duration={400}>
+      {value}
+    </TextMorph>
   );
 }
 function ChartEmpty({ label }: { label: string }) {
@@ -884,7 +948,7 @@ function ScatterCard({
             margin={{ top: 28, right: 18, bottom: 48, left: 18 }}
             xDataKey="date"
           >
-            <Grid fadeHorizontal={false} numTicksRows={4} stroke="var(--chart-grid)" />
+            <Grid fadeHorizontal={false} numTicksRows={3} stroke="var(--chart-grid)" strokeOpacity={0.5} />
             <Scatter dataKey={dataKey} fill="var(--chart-1)" radius={4} />
             <XAxis numTicks={6} />
             <ChartTooltip
