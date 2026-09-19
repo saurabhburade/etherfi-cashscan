@@ -266,13 +266,6 @@ async function readLendingSnapshot(
   reserves: Reserve[],
 ): Promise<EffectValue> {
   const tag = blockTag(blockNumber);
-  // Verify the archive node has this exact block before doing one multicall.
-  const header = await rpcCall(chainId, "archive", "eth_getBlockByNumber", [tag, false]);
-  if (!header.ok) return unavailable(header.error);
-  const parsedHeader = parseHeader(header.value, tag);
-  if (!parsedHeader) return unavailable("Exact block header unavailable");
-  if (expectedBlockHash && parsedHeader.toLowerCase() !== expectedBlockHash.toLowerCase())
-    return unavailable("Archive RPC block hash does not match the indexed event block");
   const calls = [spokeCall(spokeAddress, "getUserAccountData", [safeAddress])];
   for (const reserve of reserves) {
     calls.push(spokeCall(spokeAddress, "getUserPosition", [reserve.reserveId, safeAddress]));
@@ -282,7 +275,10 @@ async function readLendingSnapshot(
     if (reserve.tokenAddress) calls.push(erc20Call(reserve.tokenAddress, safeAddress));
   }
   const data = encodeFunctionData({ abi: multicallAbi, functionName: "aggregate3", args: [calls] });
-  const response = await rpcCall(chainId, "archive", "eth_call", [{ to: MULTICALL3_ADDRESS, data }, tag]);
+  // Chains are deliberately indexed behind their finalized heads, so the
+  // event block number is sufficient. Batch calls across safe snapshots to
+  // avoid one HTTP request per safe.
+  const response = await batchedRpcCall(chainId, "archive", "eth_call", [{ to: MULTICALL3_ADDRESS, data }, tag]);
   if (!response.ok) return unavailable(response.error);
   try {
     if (typeof response.value !== "string") return unavailable("Snapshot RPC returned an invalid payload");
@@ -293,8 +289,8 @@ async function readLendingSnapshot(
     });
     const snapshot = decodeSnapshotValues(values, reserves);
     return snapshot.partial
-      ? partial({ blockHash: parsedHeader, blockNumber: blockNumber.toString(), ...snapshot })
-      : resolved({ blockHash: parsedHeader, blockNumber: blockNumber.toString(), ...snapshot });
+      ? partial({ blockHash: expectedBlockHash.toLowerCase(), blockNumber: blockNumber.toString(), ...snapshot })
+      : resolved({ blockHash: expectedBlockHash.toLowerCase(), blockNumber: blockNumber.toString(), ...snapshot });
   } catch (error) {
     return unavailable(errorMessage(error));
   }
@@ -557,11 +553,6 @@ function decodeReservePlan(value: string): Reserve[] | null {
   } catch {
     return null;
   }
-}
-function parseHeader(value: unknown, expectedNumber: `0x${string}`): string | null {
-  if (!value || typeof value !== "object") return null;
-  const header = value as { number?: unknown; hash?: unknown };
-  return header.number === expectedNumber && typeof header.hash === "string" ? header.hash : null;
 }
 function parseBlockNumber(value: string): bigint | null {
   try {

@@ -128,6 +128,9 @@ contracts:
 chains:
   - id: 10
     start_block: 149021274
+    # Stay behind the provider's finalized head (observed near 620 blocks)
+    # with additional margin; rollback protection remains enabled above.
+    block_lag: 1000
     rpc:
       - url: ${OPTIMISM_RPC_URL:-https://optimism-rpc.publicnode.com}
         for: realtime
@@ -183,6 +186,9 @@ chains:
 
   - id: 534352
     start_block: 11314554
+    # Scroll finality was observed near 954 blocks behind the head. Keep a
+    # larger margin because finalization time can vary with L1 conditions.
+    block_lag: 1500
     rpc:
       - url: ${SCROLL_RPC_URL:-https://scroll-rpc.publicnode.com}
         for: realtime

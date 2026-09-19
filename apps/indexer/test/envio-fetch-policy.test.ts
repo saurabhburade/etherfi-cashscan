@@ -31,5 +31,7 @@ describe("Envio mixed-source fetch policy", () => {
 
     expect(optimism.match(/for: fallback/g)?.length).toBeGreaterThanOrEqual(2);
     expect(scroll.match(/for: fallback/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(optimism).toContain("block_lag: 1000");
+    expect(scroll).toContain("block_lag: 1500");
   });
 });

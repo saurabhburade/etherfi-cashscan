@@ -193,6 +193,20 @@ describe("Envio enrichment effect keys", () => {
     expect(effect.cacheKey).toBeUndefined();
   });
 
+  it("batches finalized lending snapshots at the event block number without a header lookup", async () => {
+    const source = await import("node:fs/promises").then((fs) =>
+      fs.readFile(new URL("../src/envio-enrichment-effects.ts", import.meta.url), "utf8"),
+    );
+    const lendingSnapshot = source.slice(
+      source.indexOf("async function readLendingSnapshot"),
+      source.indexOf("function decodeSnapshotValues"),
+    );
+
+    expect(lendingSnapshot).toContain('batchedRpcCall(chainId, "archive", "eth_call"');
+    expect(lendingSnapshot).toContain("blockTag(blockNumber)");
+    expect(lendingSnapshot).not.toContain("eth_getBlockByNumber");
+  });
+
   it("does not cache a bucket-wide pre-deployment miss", async () => {
     const context = { chain: { id: 10 }, cache: true };
     const handler = (
