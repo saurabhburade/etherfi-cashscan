@@ -1,4 +1,4 @@
-import { CHAIN_IDS } from "@etherfi/contracts";
+import { CHAIN_IDS, publicRpcUrlsFor } from "@etherfi/contracts";
 import { createEffect, S } from "envio";
 import { decodeFunctionResult, encodeFunctionData, parseAbi } from "viem";
 
@@ -185,7 +185,10 @@ export const lendingStateSnapshotEffect = createEffect(
     output: { status: S.string, valueJson: S.string, error: S.nullable(S.string) },
     cache: true,
     crossChain: false,
-    rateLimit: { calls: 4, per: "second" },
+    // Each snapshot is one header lookup plus one bounded Multicall3 request.
+    // Ten logical calls/second keeps the public archive providers below a
+    // modest request rate while avoiding a ~45s floor for 5k-event batches.
+    rateLimit: { calls: 10, per: "second" },
   },
   async ({ input, context }) => {
     const blockNumber = parseBlockNumber(input.blockNumber);
@@ -491,11 +494,14 @@ export function rpcUrlsFor(chainId: number, scope: RpcScope = "current"): string
             "https://optimism.rpc.sentio.xyz",
             "https://mainnet.optimism.io",
             "https://rpc-optimism.blockmachine.io",
+            "https://optimism.drpc.org",
           ]
         : chainId === CHAIN_IDS.scroll
           ? [
               process.env.SCROLL_ARCHIVE_RPC_URL,
               process.env.SCROLL_ARCHIVE_RPC_FALLBACK_URL,
+              "https://scroll.drpc.org",
+              "https://rpc.scroll.io",
               "https://scroll.rpc.sentio.xyz",
               "https://scroll.api.pocket.network",
               "https://scroll-rpc.publicnode.com",
@@ -503,9 +509,9 @@ export function rpcUrlsFor(chainId: number, scope: RpcScope = "current"): string
             ]
           : []
       : chainId === CHAIN_IDS.optimism
-        ? [process.env.OPTIMISM_RPC_URL ?? "https://optimism-rpc.publicnode.com", process.env.OPTIMISM_RPC_FALLBACK_URL]
+        ? [process.env.OPTIMISM_RPC_URL, process.env.OPTIMISM_RPC_FALLBACK_URL, ...publicRpcUrlsFor(chainId)]
         : chainId === CHAIN_IDS.scroll
-          ? [process.env.SCROLL_RPC_URL ?? "https://scroll-rpc.publicnode.com", process.env.SCROLL_RPC_FALLBACK_URL]
+          ? [process.env.SCROLL_RPC_URL, process.env.SCROLL_RPC_FALLBACK_URL, ...publicRpcUrlsFor(chainId)]
           : [];
   return [...new Set(urls.filter((url): url is string => Boolean(url)))];
 }

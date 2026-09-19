@@ -1,6 +1,14 @@
-import { CHAIN_IDS } from "@etherfi/contracts";
+import { CHAIN_IDS, publicRpcUrlsFor } from "@etherfi/contracts";
 import { type Address, createEffect, S } from "envio";
-import { createPublicClient, decodeAbiParameters, type Hex, hexToString, http, type PublicClient } from "viem";
+import {
+  createPublicClient,
+  decodeAbiParameters,
+  fallback,
+  type Hex,
+  hexToString,
+  http,
+  type PublicClient,
+} from "viem";
 
 import { tokenFromRegistry } from "./token-enrichment.js";
 
@@ -57,19 +65,32 @@ export const erc20MetadataEffect = createEffect(
 function clientFor(chainId: number): PublicClient | null {
   const existing = clients.get(chainId);
   if (existing) return existing;
-  const rpcUrl = rpcUrlFor(chainId);
-  if (!rpcUrl) return null;
-  const client = createPublicClient({ transport: http(rpcUrl, { retryCount: 3, timeout: 12_000 }) });
+  const rpcUrls = currentRpcUrlsFor(chainId);
+  if (!rpcUrls.length) return null;
+  const client = createPublicClient({
+    transport: fallback(
+      rpcUrls.map((url) => http(url, { retryCount: 0, timeout: 12_000 })),
+      { retryCount: 0 },
+    ),
+  });
   clients.set(chainId, client);
   return client;
 }
 
-function rpcUrlFor(chainId: number) {
-  if (chainId === CHAIN_IDS.optimism) {
-    return process.env.OPTIMISM_RPC_URL ?? "https://optimism-rpc.publicnode.com";
-  }
-  if (chainId === CHAIN_IDS.scroll) return process.env.SCROLL_RPC_URL ?? "https://scroll-rpc.publicnode.com";
-  return null;
+function currentRpcUrlsFor(chainId: number) {
+  const configuredUrl =
+    chainId === CHAIN_IDS.optimism
+      ? process.env.OPTIMISM_RPC_URL
+      : chainId === CHAIN_IDS.scroll
+        ? process.env.SCROLL_RPC_URL
+        : undefined;
+  const configuredFallbackUrl =
+    chainId === CHAIN_IDS.optimism
+      ? process.env.OPTIMISM_RPC_FALLBACK_URL
+      : chainId === CHAIN_IDS.scroll
+        ? process.env.SCROLL_RPC_FALLBACK_URL
+        : undefined;
+  return [...new Set([configuredUrl, configuredFallbackUrl, ...publicRpcUrlsFor(chainId)].filter(Boolean))];
 }
 
 async function readText(client: PublicClient, address: Address, selector: Hex): Promise<string | null> {

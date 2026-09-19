@@ -40,10 +40,11 @@ the normalized account, pricing, and lending GraphQL entities declared in
 `apps/indexer/schema.graphql`. A fresh deployment does not run a SQL migration,
 Hasura metadata import, or a separate enrichment worker.
 
-Historical effects default to dRPC and fall back to PublicNode for block-exact
-same-chain prices, timestamp-aligned cross-chain price fallbacks, and Aave V4
-position snapshots. Explicit archive endpoints remain first priority and are
-recommended for higher limits or production deployments:
+RPC reads use an ordered pool of keyless HTTPS endpoints sourced from Chainlist,
+with configured endpoints taking first priority. Historical effects use the
+archive-capable subset for block-exact same-chain prices, timestamp-aligned
+cross-chain price fallbacks, and Aave V4 position snapshots. Explicit archive
+endpoints remain recommended for higher limits or production deployments:
 
 ```bash
 OPTIMISM_ARCHIVE_RPC_URL='https://your-optimism-archive-rpc.example' \

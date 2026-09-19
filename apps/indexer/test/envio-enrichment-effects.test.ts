@@ -115,8 +115,11 @@ describe("Envio enrichment effect keys", () => {
         "https://optimism.rpc.sentio.xyz",
         "https://mainnet.optimism.io",
         "https://rpc-optimism.blockmachine.io",
+        "https://optimism.drpc.org",
       ]);
       expect(rpcUrlsFor(534352, "archive")).toEqual([
+        "https://scroll.drpc.org",
+        "https://rpc.scroll.io",
         "https://scroll.rpc.sentio.xyz",
         "https://scroll.api.pocket.network",
         "https://scroll-rpc.publicnode.com",

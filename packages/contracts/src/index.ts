@@ -22,6 +22,36 @@ export const CHAIN_IDS = {
   scroll: 534352,
 } as const;
 
+/**
+ * Keyless HTTPS endpoints sourced from https://chainlist.org/rpcs.json. Keep
+ * the first entry as the low-tracking default; consumers may prepend a
+ * private/configured endpoint.
+ */
+export const PUBLIC_RPC_URLS_BY_CHAIN_ID = {
+  [CHAIN_IDS.optimism]: [
+    "https://optimism-rpc.publicnode.com",
+    "https://optimism.drpc.org",
+    "https://mainnet.optimism.io",
+    "https://public.1rpc.io/op",
+    "https://op.api.pocket.network",
+    "https://optimism.rpc.sentio.xyz",
+    "https://rpc-optimism.blockmachine.io",
+  ],
+  [CHAIN_IDS.scroll]: [
+    "https://scroll-rpc.publicnode.com",
+    "https://scroll.drpc.org",
+    "https://rpc.scroll.io",
+    "https://public.1rpc.io/scroll",
+    "https://scroll.api.pocket.network",
+    "https://scroll.rpc.sentio.xyz",
+    "https://rpc-scroll.blockmachine.io",
+  ],
+} as const satisfies Partial<Record<number, readonly string[]>>;
+
+export function publicRpcUrlsFor(chainId: number): readonly string[] {
+  return PUBLIC_RPC_URLS_BY_CHAIN_ID[chainId as keyof typeof PUBLIC_RPC_URLS_BY_CHAIN_ID] ?? [];
+}
+
 export const CHAINS: readonly ChainDefinition[] = [
   { id: CHAIN_IDS.ethereum, name: "Ethereum", explorer: "https://etherscan.io", role: "source" },
   { id: CHAIN_IDS.optimism, name: "Optimism", explorer: "https://optimistic.etherscan.io", role: "cash" },

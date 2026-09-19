@@ -133,15 +133,27 @@ chains:
         for: realtime
         initial_block_interval: 100
         interval_ceiling: 50000
+      - url: https://optimism.drpc.org
+        for: fallback
+        initial_block_interval: 1000
+        interval_ceiling: 50000
+      - url: https://public.1rpc.io/op
+        for: fallback
+        initial_block_interval: 500
+        interval_ceiling: 50000
+      - url: https://op.api.pocket.network
+        for: fallback
+        initial_block_interval: 500
+        interval_ceiling: 50000
       - url: https://optimism.rpc.sentio.xyz
         for: fallback
         initial_block_interval: 1000
         interval_ceiling: 50000
-      - url: https://mainnet.optimism.io
-        for: fallback
-        initial_block_interval: 100
-        interval_ceiling: 50000
       - url: https://rpc-optimism.blockmachine.io
+        for: fallback
+        initial_block_interval: 500
+        interval_ceiling: 50000
+      - url: https://mainnet.optimism.io
         for: fallback
         initial_block_interval: 100
         interval_ceiling: 50000
@@ -176,15 +188,27 @@ chains:
         for: realtime
         initial_block_interval: 100
         interval_ceiling: 50000
+      - url: https://scroll.drpc.org
+        for: fallback
+        initial_block_interval: 1000
+        interval_ceiling: 50000
+      - url: https://rpc.scroll.io
+        for: fallback
+        initial_block_interval: 500
+        interval_ceiling: 50000
+      - url: https://scroll.api.pocket.network
+        for: fallback
+        initial_block_interval: 500
+        interval_ceiling: 50000
       - url: https://scroll.rpc.sentio.xyz
         for: fallback
         initial_block_interval: 1000
         interval_ceiling: 50000
-      - url: https://scroll.api.pocket.network
-        for: fallback
-        initial_block_interval: 100
-        interval_ceiling: 50000
       - url: https://rpc-scroll.blockmachine.io
+        for: fallback
+        initial_block_interval: 500
+        interval_ceiling: 50000
+      - url: https://public.1rpc.io/scroll
         for: fallback
         initial_block_interval: 100
         interval_ceiling: 50000

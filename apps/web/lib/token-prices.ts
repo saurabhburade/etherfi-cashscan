@@ -1,5 +1,5 @@
-import { CHAIN_IDS } from "@etherfi/contracts";
-import { type Address, createPublicClient, http, parseAbi, zeroAddress } from "viem";
+import { CHAIN_IDS, publicRpcUrlsFor } from "@etherfi/contracts";
+import { type Address, createPublicClient, fallback, http, parseAbi, zeroAddress } from "viem";
 import { optimism, scroll } from "viem/chains";
 
 const feedAbi = parseAbi([
@@ -18,16 +18,24 @@ export type TokenOracle = {
 
 export type CurrentTokenPrice = { answer: bigint; decimals: number; updatedAt: bigint };
 
+function rpcTransport(chainId: number, configuredUrl?: string, configuredFallbackUrl?: string) {
+  const urls = [...new Set([configuredUrl, configuredFallbackUrl, ...publicRpcUrlsFor(chainId)].filter(Boolean))];
+  return fallback(
+    urls.map((url) => http(url, { retryCount: 0, timeout: 8_000 })),
+    { retryCount: 0 },
+  );
+}
+
 const clients = {
   [CHAIN_IDS.optimism]: createPublicClient({
     chain: optimism,
     batch: { multicall: true },
-    transport: http(process.env.OPTIMISM_RPC_URL ?? "https://optimism-rpc.publicnode.com"),
+    transport: rpcTransport(CHAIN_IDS.optimism, process.env.OPTIMISM_RPC_URL, process.env.OPTIMISM_RPC_FALLBACK_URL),
   }),
   [CHAIN_IDS.scroll]: createPublicClient({
     chain: scroll,
     batch: { multicall: true },
-    transport: http(process.env.SCROLL_RPC_URL ?? "https://scroll-rpc.publicnode.com"),
+    transport: rpcTransport(CHAIN_IDS.scroll, process.env.SCROLL_RPC_URL, process.env.SCROLL_RPC_FALLBACK_URL),
   }),
 } as const;
 const SUPPORTED_PRICE_CHAIN_IDS = [CHAIN_IDS.optimism, CHAIN_IDS.scroll] as const;
