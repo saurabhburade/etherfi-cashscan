@@ -52,6 +52,7 @@ type PendingRpcCall = {
 type RpcBatchState = { queue: PendingRpcCall[]; running: boolean; nextDispatchAt: number };
 
 const RPC_BATCH_SIZE = 20;
+const RPC_BATCH_CONCURRENCY = 4;
 const RPC_BATCH_MIN_INTERVAL_MS = 100;
 const rpcBatchStates = new Map<string, RpcBatchState>();
 
@@ -401,10 +402,16 @@ async function drainRpcBatch(chainId: number, scope: RpcScope, state: RpcBatchSt
       const waitMs = state.nextDispatchAt - Date.now();
       if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
       state.nextDispatchAt = Date.now() + RPC_BATCH_MIN_INTERVAL_MS;
-      const calls = state.queue.splice(0, RPC_BATCH_SIZE);
-      const results = await executeRpcBatch(chainId, scope, calls);
-      for (let index = 0; index < calls.length; index += 1)
-        calls[index].resolve(results[index] ?? { ok: false, error: "RPC batch omitted a result" });
+      const batches = Array.from({ length: RPC_BATCH_CONCURRENCY }, () => state.queue.splice(0, RPC_BATCH_SIZE)).filter(
+        (calls) => calls.length > 0,
+      );
+      const resultsByBatch = await Promise.all(batches.map((calls) => executeRpcBatch(chainId, scope, calls)));
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+        const calls = batches[batchIndex];
+        const results = resultsByBatch[batchIndex];
+        for (let callIndex = 0; callIndex < calls.length; callIndex += 1)
+          calls[callIndex].resolve(results[callIndex] ?? { ok: false, error: "RPC batch omitted a result" });
+      }
     }
   } finally {
     state.running = false;

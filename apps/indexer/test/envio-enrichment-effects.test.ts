@@ -100,6 +100,57 @@ describe("Envio enrichment effect keys", () => {
     expect(effect.rateLimit).toBeUndefined();
   });
 
+  it("dispatches more than one bounded RPC batch while the first is in flight", async () => {
+    let requestsStarted = 0;
+    let releaseFirstRequest = () => {};
+    const firstRequestGate = new Promise<void>((resolve) => {
+      releaseFirstRequest = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as Array<{ id: number }>;
+        requestsStarted += 1;
+        if (requestsStarted === 1) await firstRequestGate;
+        const encodedOne = `0x${"0".repeat(63)}1`;
+        return new Response(JSON.stringify(body.map(({ id }) => ({ jsonrpc: "2.0", id, result: encodedOne }))), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+    const handler = (
+      currentTokenPriceEffect as unknown as {
+        handler: (args: {
+          input: Record<string, string>;
+          context: { chain: { id: number }; cache: boolean };
+        }) => Promise<{ status: string }>;
+      }
+    ).handler;
+    const pending = Promise.all(
+      Array.from({ length: 40 }, (_, index) => {
+        const suffix = (index + 1).toString(16);
+        return handler({
+          input: {
+            tokenAddress: `0x${suffix.padStart(40, "0")}`,
+            bucketStart: "2026-01-01T10:00:00.000Z",
+            blockNumber: "149521166",
+            blockHash: `0x${suffix.padStart(64, "0")}`,
+            blockTimestamp: "1767261601",
+          },
+          context: { chain: { id: 10 }, cache: true },
+        });
+      }),
+    );
+
+    try {
+      await vi.waitFor(() => expect(requestsStarted).toBeGreaterThanOrEqual(2), { timeout: 500 });
+    } finally {
+      releaseFirstRequest();
+    }
+    await pending;
+  });
+
   it("does not silently configure an RPC for unsupported chains", () => {
     expect(rpcUrlsFor(1)).toEqual([]);
   });
