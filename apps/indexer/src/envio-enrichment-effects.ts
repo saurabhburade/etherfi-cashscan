@@ -55,6 +55,7 @@ const RPC_BATCH_SIZE = 20;
 const RPC_BATCH_CONCURRENCY = 4;
 const RPC_BATCH_MIN_INTERVAL_MS = 100;
 const rpcBatchStates = new Map<string, RpcBatchState>();
+const rpcBatchStartOffsets = new Map<string, number>();
 
 export const historicalTokenPriceEffect = createEffect(
   {
@@ -360,26 +361,6 @@ function decodeSpoke(name: SpokeFunction, data: `0x${string}`) {
   return decodeFunctionResult({ abi: spokeAbi, functionName: name, data } as never);
 }
 
-async function rpcCall(chainId: number, scope: RpcScope, method: string, params: unknown[]): Promise<RpcCallResult> {
-  let lastError = "No RPC URL configured";
-  for (const url of rpcUrlsFor(chainId, scope)) {
-    try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-        signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
-      });
-      const body = (await response.json()) as RpcResponse;
-      if (response.ok && body.result !== undefined && body.result !== null) return { ok: true, value: body.result };
-      lastError = body.error?.message ?? `RPC HTTP ${response.status}`;
-    } catch (error) {
-      lastError = errorMessage(error);
-    }
-  }
-  return { ok: false, error: lastError };
-}
-
 function batchedRpcCall(chainId: number, scope: RpcScope, method: string, params: unknown[]): Promise<RpcCallResult> {
   const key = `${chainId}:${scope}`;
   let state = rpcBatchStates.get(key);
@@ -427,7 +408,7 @@ async function executeRpcBatch(chainId: number, scope: RpcScope, calls: PendingR
   const errors = new Array<string>(calls.length).fill("No RPC URL configured");
   let remaining = calls.map((_, index) => index);
 
-  for (const url of rpcUrlsFor(chainId, scope)) {
+  for (const url of rpcUrlsForBatch(chainId, scope)) {
     if (remaining.length === 0) break;
     const requests = remaining.map((index) => ({
       jsonrpc: "2.0" as const,
@@ -465,6 +446,16 @@ async function executeRpcBatch(chainId: number, scope: RpcScope, calls: PendingR
   }
 
   return results.map((result, index) => result ?? { ok: false, error: errors[index] });
+}
+
+function rpcUrlsForBatch(chainId: number, scope: RpcScope): string[] {
+  const urls = rpcUrlsFor(chainId, scope);
+  if (urls.length <= 1) return urls;
+  const key = `${chainId}:${scope}`;
+  const startPoolSize = Math.min(RPC_BATCH_CONCURRENCY, urls.length);
+  const offset = (rpcBatchStartOffsets.get(key) ?? 0) % startPoolSize;
+  rpcBatchStartOffsets.set(key, offset + 1);
+  return [...urls.slice(offset), ...urls.slice(0, offset)];
 }
 
 function withPriceReference(

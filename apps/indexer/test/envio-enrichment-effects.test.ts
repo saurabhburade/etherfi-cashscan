@@ -102,15 +102,17 @@ describe("Envio enrichment effect keys", () => {
 
   it("dispatches more than one bounded RPC batch while the first is in flight", async () => {
     let requestsStarted = 0;
+    const requestUrls = new Set<string>();
     let releaseFirstRequest = () => {};
     const firstRequestGate = new Promise<void>((resolve) => {
       releaseFirstRequest = resolve;
     });
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (_url: string, init?: RequestInit) => {
+      vi.fn(async (url: string, init?: RequestInit) => {
         const body = JSON.parse(String(init?.body)) as Array<{ id: number }>;
         requestsStarted += 1;
+        requestUrls.add(url);
         if (requestsStarted === 1) await firstRequestGate;
         const encodedOne = `0x${"0".repeat(63)}1`;
         return new Response(JSON.stringify(body.map(({ id }) => ({ jsonrpc: "2.0", id, result: encodedOne }))), {
@@ -144,7 +146,13 @@ describe("Envio enrichment effect keys", () => {
     );
 
     try {
-      await vi.waitFor(() => expect(requestsStarted).toBeGreaterThanOrEqual(2), { timeout: 500 });
+      await vi.waitFor(
+        () => {
+          expect(requestsStarted).toBeGreaterThanOrEqual(2);
+          expect(requestUrls.size).toBeGreaterThanOrEqual(2);
+        },
+        { timeout: 500 },
+      );
     } finally {
       releaseFirstRequest();
     }
