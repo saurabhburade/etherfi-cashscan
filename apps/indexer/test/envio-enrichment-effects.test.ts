@@ -100,7 +100,7 @@ describe("Envio enrichment effect keys", () => {
     expect(effect.rateLimit).toBeUndefined();
   });
 
-  it("dispatches more than one bounded RPC batch while the first is in flight", async () => {
+  it("keeps bounded RPC workers draining when one provider is slow", async () => {
     let requestsStarted = 0;
     const requestUrls = new Set<string>();
     let releaseFirstRequest = () => {};
@@ -130,7 +130,7 @@ describe("Envio enrichment effect keys", () => {
       }
     ).handler;
     const pending = Promise.all(
-      Array.from({ length: 40 }, (_, index) => {
+      Array.from({ length: 100 }, (_, index) => {
         const suffix = (index + 1).toString(16);
         return handler({
           input: {
@@ -148,7 +148,7 @@ describe("Envio enrichment effect keys", () => {
     try {
       await vi.waitFor(
         () => {
-          expect(requestsStarted).toBeGreaterThanOrEqual(2);
+          expect(requestsStarted).toBeGreaterThanOrEqual(5);
           expect(requestUrls.size).toBeGreaterThanOrEqual(2);
         },
         { timeout: 500 },

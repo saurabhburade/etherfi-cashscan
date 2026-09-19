@@ -49,7 +49,7 @@ type PendingRpcCall = {
   params: unknown[];
   resolve: (result: RpcCallResult) => void;
 };
-type RpcBatchState = { queue: PendingRpcCall[]; running: boolean; nextDispatchAt: number };
+type RpcBatchState = { queue: PendingRpcCall[]; activeBatches: number; dispatchScheduled: boolean };
 
 const RPC_BATCH_SIZE = 20;
 const RPC_BATCH_CONCURRENCY = 4;
@@ -365,41 +365,44 @@ function batchedRpcCall(chainId: number, scope: RpcScope, method: string, params
   const key = `${chainId}:${scope}`;
   let state = rpcBatchStates.get(key);
   if (!state) {
-    state = { queue: [], running: false, nextDispatchAt: 0 };
+    state = { queue: [], activeBatches: 0, dispatchScheduled: false };
     rpcBatchStates.set(key, state);
   }
 
   return new Promise((resolve) => {
     state.queue.push({ method, params, resolve });
-    if (state.running) return;
-    state.running = true;
-    queueMicrotask(() => void drainRpcBatch(chainId, scope, state));
+    scheduleRpcBatchDrain(chainId, scope, state);
   });
 }
 
-async function drainRpcBatch(chainId: number, scope: RpcScope, state: RpcBatchState) {
+function scheduleRpcBatchDrain(chainId: number, scope: RpcScope, state: RpcBatchState) {
+  if (state.dispatchScheduled) return;
+  state.dispatchScheduled = true;
+  queueMicrotask(() => {
+    state.dispatchScheduled = false;
+    dispatchRpcBatches(chainId, scope, state);
+  });
+}
+
+function dispatchRpcBatches(chainId: number, scope: RpcScope, state: RpcBatchState) {
+  while (state.activeBatches < RPC_BATCH_CONCURRENCY && state.queue.length > 0) {
+    const calls = state.queue.splice(0, RPC_BATCH_SIZE);
+    state.activeBatches += 1;
+    void runRpcBatch(chainId, scope, state, calls);
+  }
+}
+
+async function runRpcBatch(chainId: number, scope: RpcScope, state: RpcBatchState, calls: PendingRpcCall[]) {
+  const startedAt = Date.now();
   try {
-    while (state.queue.length > 0) {
-      const waitMs = state.nextDispatchAt - Date.now();
-      if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
-      state.nextDispatchAt = Date.now() + RPC_BATCH_MIN_INTERVAL_MS;
-      const batches = Array.from({ length: RPC_BATCH_CONCURRENCY }, () => state.queue.splice(0, RPC_BATCH_SIZE)).filter(
-        (calls) => calls.length > 0,
-      );
-      const resultsByBatch = await Promise.all(batches.map((calls) => executeRpcBatch(chainId, scope, calls)));
-      for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
-        const calls = batches[batchIndex];
-        const results = resultsByBatch[batchIndex];
-        for (let callIndex = 0; callIndex < calls.length; callIndex += 1)
-          calls[callIndex].resolve(results[callIndex] ?? { ok: false, error: "RPC batch omitted a result" });
-      }
-    }
+    const results = await executeRpcBatch(chainId, scope, calls);
+    for (let index = 0; index < calls.length; index += 1)
+      calls[index].resolve(results[index] ?? { ok: false, error: "RPC batch omitted a result" });
   } finally {
-    state.running = false;
-    if (state.queue.length > 0) {
-      state.running = true;
-      queueMicrotask(() => void drainRpcBatch(chainId, scope, state));
-    }
+    const waitMs = startedAt + RPC_BATCH_MIN_INTERVAL_MS - Date.now();
+    if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+    state.activeBatches -= 1;
+    if (state.queue.length > 0) scheduleRpcBatchDrain(chainId, scope, state);
   }
 }
 
