@@ -6,6 +6,7 @@ import {
   exactBlockTag,
   exactTokenPriceEffect,
   fifteenMinuteBucket,
+  lendingStateSnapshotEffect,
   priceProviderAvailableAtBlock,
   priceProviderDeploymentFor,
   priceProviderFor,
@@ -92,6 +93,11 @@ describe("Envio enrichment effect keys", () => {
     expect(results.map(({ status }) => status)).toEqual(["resolved", "resolved"]);
     expect(requests).toHaveLength(1);
     expect(requests[0]).toHaveLength(2);
+  });
+
+  it("lets the bounded JSON-RPC batcher control lending snapshot throughput", () => {
+    const effect = lendingStateSnapshotEffect as unknown as { rateLimit?: unknown };
+    expect(effect.rateLimit).toBeUndefined();
   });
 
   it("does not silently configure an RPC for unsupported chains", () => {

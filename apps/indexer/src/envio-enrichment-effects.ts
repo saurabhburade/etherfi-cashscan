@@ -185,10 +185,11 @@ export const lendingStateSnapshotEffect = createEffect(
     output: { status: S.string, valueJson: S.string, error: S.nullable(S.string) },
     cache: true,
     crossChain: false,
-    // Each snapshot is one header lookup plus one bounded Multicall3 request.
-    // Ten logical calls/second keeps the public archive providers below a
-    // modest request rate while avoiding a ~45s floor for 5k-event batches.
-    rateLimit: { calls: 10, per: "second" },
+    // Each snapshot becomes one Multicall3 eth_call. Let the shared batcher
+    // pack those logical calls into bounded groups of 20; an effect-level
+    // limiter here throttles calls before they can be batched and creates a
+    // growing preload queue.
+    rateLimit: false,
   },
   async ({ input, context }) => {
     const blockNumber = parseBlockNumber(input.blockNumber);
