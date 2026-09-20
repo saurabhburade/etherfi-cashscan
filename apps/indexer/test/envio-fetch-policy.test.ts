@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
-describe("Envio mixed-source fetch policy", () => {
+describe("Envio HyperSync-only fetch policy", () => {
   const config = read("../config.yaml");
   const workspace = read("../../../pnpm-workspace.yaml");
   const patch = read("../../../patches/envio@3.6.1.patch");
@@ -25,13 +25,13 @@ describe("Envio mixed-source fetch policy", () => {
     expect(patch).toContain("input->makeCacheKey->Utils.Hash.makeOrThrow");
   });
 
-  it("provides several independent sync fallbacks on each indexed chain", () => {
+  it("disables RPC sources and applies the configured head lag", () => {
     const optimism = /- id: 10\n([\s\S]*?)(?=\n {2}- id: 534352)/.exec(config)?.[1] ?? "";
     const scroll = /- id: 534352\n([\s\S]*)/.exec(config)?.[1] ?? "";
 
-    expect(optimism.match(/for: fallback/g)?.length).toBeGreaterThanOrEqual(2);
-    expect(scroll.match(/for: fallback/g)?.length).toBeGreaterThanOrEqual(3);
-    expect(optimism).toContain("block_lag: 1000");
-    expect(scroll).toContain("block_lag: 1500");
+    expect(optimism).not.toMatch(/^\s+rpc:/m);
+    expect(scroll).not.toMatch(/^\s+rpc:/m);
+    expect(optimism).toContain("block_lag: 50");
+    expect(scroll).toContain("block_lag: 50");
   });
 });
