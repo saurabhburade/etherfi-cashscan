@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
-describe("Envio HyperSync-only fetch policy", () => {
+describe("Envio HyperSync-first fetch policy", () => {
   const config = read("../config.yaml");
   const workspace = read("../../../pnpm-workspace.yaml");
   const patch = read("../../../patches/envio@3.6.1.patch");
@@ -25,12 +25,14 @@ describe("Envio HyperSync-only fetch policy", () => {
     expect(patch).toContain("input->makeCacheKey->Utils.Hash.makeOrThrow");
   });
 
-  it("disables RPC sources and indexes directly with reorg rollback", () => {
+  it("uses fallback-only RPC sources and indexes directly with reorg rollback", () => {
     const optimism = /- id: 10\n([\s\S]*?)(?=\n {2}- id: 534352)/.exec(config)?.[1] ?? "";
     const scroll = /- id: 534352\n([\s\S]*)/.exec(config)?.[1] ?? "";
 
-    expect(optimism).not.toMatch(/^\s+rpc:/m);
-    expect(scroll).not.toMatch(/^\s+rpc:/m);
+    expect(optimism.match(/for: fallback/g)).toHaveLength(3);
+    expect(scroll.match(/for: fallback/g)).toHaveLength(3);
+    expect(optimism).not.toMatch(/for: (?:sync|realtime)/);
+    expect(scroll).not.toMatch(/for: (?:sync|realtime)/);
     expect(config).toContain("rollback_on_reorg: true");
     expect(optimism).toContain("block_lag: 0");
     expect(scroll).toContain("block_lag: 0");
