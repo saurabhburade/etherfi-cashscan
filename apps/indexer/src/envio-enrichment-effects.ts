@@ -278,9 +278,8 @@ async function readLendingSnapshot(
     if (reserve.tokenAddress) calls.push(erc20Call(reserve.tokenAddress, safeAddress));
   }
   const data = encodeFunctionData({ abi: multicallAbi, functionName: "aggregate3", args: [calls] });
-  // Chains are deliberately indexed behind their heads with Envio rollback
-  // protection, so the event block number is sufficient. Batch calls across
-  // safe snapshots to avoid one HTTP request per safe.
+  // Envio's reorg-aware indexing makes the event block number sufficient.
+  // Batch calls across safe snapshots to avoid one HTTP request per safe.
   const response = await batchedRpcCall(chainId, "archive", "eth_call", [{ to: MULTICALL3_ADDRESS, data }, tag]);
   if (!response.ok) return unavailable(response.error);
   try {

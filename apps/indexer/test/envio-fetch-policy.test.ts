@@ -25,13 +25,14 @@ describe("Envio HyperSync-only fetch policy", () => {
     expect(patch).toContain("input->makeCacheKey->Utils.Hash.makeOrThrow");
   });
 
-  it("disables RPC sources and applies the configured head lag", () => {
+  it("disables RPC sources and indexes directly with reorg rollback", () => {
     const optimism = /- id: 10\n([\s\S]*?)(?=\n {2}- id: 534352)/.exec(config)?.[1] ?? "";
     const scroll = /- id: 534352\n([\s\S]*)/.exec(config)?.[1] ?? "";
 
     expect(optimism).not.toMatch(/^\s+rpc:/m);
     expect(scroll).not.toMatch(/^\s+rpc:/m);
-    expect(optimism).toContain("block_lag: 50");
-    expect(scroll).toContain("block_lag: 50");
+    expect(config).toContain("rollback_on_reorg: true");
+    expect(optimism).toContain("block_lag: 0");
+    expect(scroll).toContain("block_lag: 0");
   });
 });

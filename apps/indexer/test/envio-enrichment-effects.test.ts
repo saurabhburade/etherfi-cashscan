@@ -258,7 +258,7 @@ describe("Envio enrichment effect keys", () => {
     expect(effect.cacheKey).toBeUndefined();
   });
 
-  it("batches lagged lending snapshots at the event block number without a header lookup", async () => {
+  it("batches reorg-aware lending snapshots at the event block number without a header lookup", async () => {
     const source = await import("node:fs/promises").then((fs) =>
       fs.readFile(new URL("../src/envio-enrichment-effects.ts", import.meta.url), "utf8"),
     );
