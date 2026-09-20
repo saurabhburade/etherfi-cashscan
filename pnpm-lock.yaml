@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  envio@3.6.1: bfce177cbb8817d5a19c4f54db31f7433d444feb24ebba7b0564c5a4282569e5
+  envio@3.6.1: 9f59b91f990d96f02e319c2ffc1cda89918317743345e851d5682c1907ce1fd1
 
 importers:
 
@@ -62,7 +62,7 @@ importers:
         version: link:../../packages/contracts
       envio:
         specifier: 3.6.1
-        version: 3.6.1(patch_hash=bfce177cbb8817d5a19c4f54db31f7433d444feb24ebba7b0564c5a4282569e5)(@types/react@19.2.18)(react-dom@19.2.5(react@19.2.8))(supports-color@10.2.2)(typescript@5.9.2)(zod@4.5.2)
+        version: 3.6.1(patch_hash=9f59b91f990d96f02e319c2ffc1cda89918317743345e851d5682c1907ce1fd1)(@types/react@19.2.18)(react-dom@19.2.5(react@19.2.8))(supports-color@10.2.2)(typescript@5.9.2)(zod@4.5.2)
       react-dom:
         specifier: 19.2.5
         version: 19.2.5(react@19.2.8)
@@ -2373,7 +2373,6 @@ packages:
   '@smithy/node-http-handler@4.12.0':
     resolution: {integrity: sha512-0mq1pHadfyXCYCqm2cNpbjNIT+fbaUpNxewZb/YNr2L0IrEVMOb8gM/Fl4K6XvHCW3uSNDFwPl/+iKm0bx9jYg==}
     engines: {node: '>=18.0.0'}
-
   '@smithy/protocol-http@5.6.2':
     resolution: {integrity: sha512-Asd04MaxODN6FNY8EPTeCAM4kPNi3jDUAjZU0Y4F9rHvpLUrrUo7KLcxFgSthywFr6dZfIyDLIJda6jxmVTk5w==}
     engines: {node: '>=18.0.0'}
@@ -8566,7 +8565,7 @@ snapshots:
   envio-linux-x64@3.6.1:
     optional: true
 
-  envio@3.6.1(patch_hash=bfce177cbb8817d5a19c4f54db31f7433d444feb24ebba7b0564c5a4282569e5)(@types/react@19.2.18)(react-dom@19.2.5(react@19.2.8))(supports-color@10.2.2)(typescript@5.9.2)(zod@4.5.2):
+  envio@3.6.1(patch_hash=9f59b91f990d96f02e319c2ffc1cda89918317743345e851d5682c1907ce1fd1)(@types/react@19.2.18)(react-dom@19.2.5(react@19.2.8))(supports-color@10.2.2)(typescript@5.9.2)(zod@4.5.2):
     dependencies:
       '@clickhouse/client': 1.17.0
       '@elastic/ecs-pino-format': 1.4.0

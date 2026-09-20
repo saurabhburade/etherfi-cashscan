@@ -35,4 +35,18 @@ describe("Envio HyperSync-only fetch policy", () => {
     expect(optimism).toContain("block_lag: 0");
     expect(scroll).toContain("block_lag: 0");
   });
+
+  it("allows block lag changes when resuming existing indexed data", async () => {
+    const Config = await import(new URL("../node_modules/envio/src/Config.res.mjs", import.meta.url).href);
+    const makeConfig = (optimismBlockLag: number, scrollBlockLag: number) => ({
+      evm: {
+        chains: {
+          optimism: { blockLag: optimismBlockLag, contracts: {} },
+          scroll: { blockLag: scrollBlockLag, contracts: {} },
+        },
+      },
+    });
+
+    expect(Config.diffPaths(makeConfig(1000, 1500), makeConfig(0, 0))).toEqual([]);
+  });
 });

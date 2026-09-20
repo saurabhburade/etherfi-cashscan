@@ -22,6 +22,65 @@ index 5d971ca3d909083d9db25450b5ec430cd6a72b1c..37692aa32e09f7755500ed247a1c3779
      /** Whether the effect's cache is shared across all chains. Defaults to
       * `true`, or to `false` when config.yaml sets
       * `disable_default_cross_chain: true`. Set to `false` to isolate the cache
+diff --git a/src/Config.res b/src/Config.res
+index 0421e4d4ac9cbe9685e25204985156b0f617610e..c877f2ebe8a65ca90a032df3d08582042a01a88e 100644
+--- a/src/Config.res
++++ b/src/Config.res
+@@ -1213,10 +1213,10 @@ let getPublicConfigJson = () =>
+   | None => Core.getConfigJson()->JSON.parseOrThrow
+   }
+
+-// Drops source URLs from each chain so RPC/hypersync edits don't trigger
+-// the resume-time compat check (and don't end up in `envio_info`). Also
+-// drops `isDev`, which toggles between `envio dev` and `envio start` and
+-// has no bearing on schema/indexing compatibility.
++// Drops runtime-only fetch settings from each chain so source or head-lag
++// edits don't trigger the resume-time compat check (and don't end up in
++// `envio_info`). Also drops `isDev`, which toggles between `envio dev` and
++// `envio start` and has no bearing on schema/indexing compatibility.
+ let stripSensitiveData = (json: JSON.t): JSON.t => {
+   let cloned = json->JSON.stringify->JSON.parseOrThrow
+   let stripChains = (ecosystem: option<JSON.t>) =>
+@@ -1232,6 +1232,7 @@ let stripSensitiveData = (json: JSON.t): JSON.t => {
+               chain->Utils.Dict.deleteInPlace("rpcs")
+               chain->Utils.Dict.deleteInPlace("rpc")
+               chain->Utils.Dict.deleteInPlace("hypersync")
++              chain->Utils.Dict.deleteInPlace("blockLag")
+             }
+           | _ => ()
+           }
+@@ -1275,6 +1276,10 @@ let rec canonicalJson = (json: JSON.t): JSON.t =>
+ // containing a diff is the only one rendered; lower tiers are silenced
+ // so a single noisy section doesn't bury the actionable change.
+ let diffPaths = (~stored: JSON.t, ~current: JSON.t): array<string> => {
++  // Normalize both sides so rows written by older versions, before a runtime
++  // field was excluded from envio_info, remain resumable without a reset.
++  let stored = stored->stripSensitiveData
++  let current = current->stripSensitiveData
+   let canonEq = (a: JSON.t, b: JSON.t) =>
+     JSON.stringify(canonicalJson(a)) === JSON.stringify(canonicalJson(b))
+
+diff --git a/src/Config.res.mjs b/src/Config.res.mjs
+index 5103686d86bfa4fbf25cc748528130c1db40909a..ff5da73626701fb3426c89563e986210c46f0162 100644
+--- a/src/Config.res.mjs
++++ b/src/Config.res.mjs
+@@ -895,6 +895,7 @@ function stripSensitiveData(json) {
+       Utils.Dict.deleteInPlace(chainJson, "rpcs");
+       Utils.Dict.deleteInPlace(chainJson, "rpc");
+       Utils.Dict.deleteInPlace(chainJson, "hypersync");
++      Utils.Dict.deleteInPlace(chainJson, "blockLag");
+     });
+   };
+   if (typeof cloned === "object" && cloned !== null && !Array.isArray(cloned)) {
+@@ -926,6 +927,8 @@ function canonicalJson(json) {
+ }
+
+ function diffPaths(stored, current) {
++  stored = stripSensitiveData(stored);
++  current = stripSensitiveData(current);
+   let canonEq = (a, b) => JSON.stringify(canonicalJson(a)) === JSON.stringify(canonicalJson(b));
+   let acc = [];
+   let go = (s, c, prefix) => {
 diff --git a/src/Env.res b/src/Env.res
 index ab23da20d3d46fe33b13ef908f2fc40a7a53da48..740131205a9746453394d1b796d09acef7ab88d7 100644
 --- a/src/Env.res
