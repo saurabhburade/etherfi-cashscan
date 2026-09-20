@@ -133,7 +133,7 @@ chains:
     block_lag: 1000
     rpc:
       - url: ${OPTIMISM_RPC_URL:-https://optimism-rpc.publicnode.com}
-        for: realtime
+        for: fallback
         initial_block_interval: 100
         interval_ceiling: 50000
       - url: https://optimism.drpc.org
@@ -191,7 +191,7 @@ chains:
     block_lag: 1500
     rpc:
       - url: ${SCROLL_RPC_URL:-https://scroll-rpc.publicnode.com}
-        for: realtime
+        for: fallback
         initial_block_interval: 100
         interval_ceiling: 50000
       - url: https://scroll.drpc.org
