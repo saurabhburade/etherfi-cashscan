@@ -195,6 +195,7 @@ export type ExplorerData = {
   rampTokens: RampToken[];
   debtTokens: DebtToken[];
   tierDistribution: Array<{ tierId: number; safeCount: number }>;
+  tierDaily: Array<{ day: string; entries: number; exits: number; netChange: number }>;
   tierTransitions: Array<{
     day: string;
     fromTierId: number | null;
@@ -611,6 +612,18 @@ export const TIER_COUNT_METRICS_QUERY = /* GraphQL */ `
     }
   }
 `;
+export const TIER_DAILY_METRICS_QUERY = /* GraphQL */ `
+  query EtherFiCashExplorerTierDailyMetrics($where: TierDailyMetric_bool_exp!) {
+    TierDailyMetric_aggregate(where: $where) { aggregate { count } }
+    TierDailyMetric(
+      limit: 5000
+      where: $where
+      order_by: { day: asc }
+    ) {
+      day entries exits netChange
+    }
+  }
+`;
 const CASH_HISTORY_QUERY = /* GraphQL */ `
   query EtherFiCashExplorerCashHistory($tierWhere: SafeTierChange_bool_exp!, $modeWhere: SafeModeChange_bool_exp!) {
     SafeTierChange_aggregate(where: $tierWhere) { aggregate { count } }
@@ -711,6 +724,7 @@ type CashSafeStateResponse = {
   PendingCashbackBalance?: Row[];
 };
 type TierCountMetricsResponse = { SafeTierCountMetric: Row[] };
+type TierDailyMetricsResponse = { TierDailyMetric_aggregate?: AggregateResponse; TierDailyMetric: Row[] };
 type CashHistoryResponse = {
   SafeTierChange_aggregate?: AggregateResponse;
   SafeTierChange: Row[];
@@ -770,6 +784,7 @@ const explorerDataOperationNames = [
   "debtMetrics",
   "cashSafeState",
   "tierCountMetrics",
+  "tierDailyMetrics",
   "cashHistory",
   "tierHistory",
   "cashOperations",
@@ -829,7 +844,7 @@ const profileOperations: Record<ExplorerDataProfile, readonly ExplorerDataOperat
     "rampTokenMetrics",
     "fxRates",
     "tierCountMetrics",
-    "tierHistory",
+    "tierDailyMetrics",
   ],
   tokens: ["status"],
   accounts: ["core", "globalActiveSafes", "tierCountMetrics"],
@@ -873,6 +888,7 @@ export async function loadExplorerData(
       debtMetrics,
       cashSafeState,
       tierCountMetrics,
+      tierDailyMetrics,
       cashHistory,
       tierHistory,
       cashOperations,
@@ -991,6 +1007,14 @@ export async function loadExplorerData(
         ? graphqlOptional<TierCountMetricsResponse>(
             endpoint,
             TIER_COUNT_METRICS_QUERY,
+            { where: chainWhere },
+            adminSecret,
+          )
+        : Promise.resolve(null),
+      includes("tierDailyMetrics")
+        ? graphqlOptional<TierDailyMetricsResponse>(
+            endpoint,
+            TIER_DAILY_METRICS_QUERY,
             { where: chainWhere },
             adminSecret,
           )
@@ -1168,6 +1192,13 @@ export async function loadExplorerData(
       activity: activityEvents.map((row) => activityRow(row, tokenById, spendById)),
       rampTokens: rampSnapshotsComplete ? buildRampTokens(rampAnalytics.rows, tokenById) : [],
       debtTokens: debtUsdComplete ? buildDebtTokens(debtPositions, tokenById) : [],
+      tierDaily: (() => {
+        const rows = tierDailyMetrics?.TierDailyMetric ?? [];
+        const count = tierDailyMetrics?.TierDailyMetric_aggregate?.aggregate?.count;
+        return tierDailyMetrics && count !== null && count !== undefined && integer(count) <= rows.length
+          ? tierDailyFromMetricRows(rows)
+          : [];
+      })(),
       ...cash,
       creditSpendUsd: sumDailyMetric(metricRows, "creditSpendUsd"),
       debitSpendUsd: sumDailyMetric(metricRows, "debitSpendUsd"),
@@ -1841,6 +1872,23 @@ export function tierDistributionFromMetricRows(
     .sort((left, right) => left.tierId - right.tierId);
 }
 
+/** Convert compact per-chain and per-tier rows to one daily tier series. */
+export function tierDailyFromMetricRows(
+  rows: ReadonlyArray<{ day?: unknown; entries?: unknown; exits?: unknown; netChange?: unknown }>,
+): Array<{ day: string; entries: number; exits: number; netChange: number }> {
+  const daily = new Map<string, { day: string; entries: number; exits: number; netChange: number }>();
+  for (const row of rows) {
+    if (row.day === null || row.day === undefined || String(row.day) === "") continue;
+    const day = String(row.day);
+    const current = daily.get(day) ?? { day, entries: 0, exits: 0, netChange: 0 };
+    current.entries += integer(row.entries);
+    current.exits += integer(row.exits);
+    current.netChange += integer(row.netChange);
+    daily.set(day, current);
+  }
+  return [...daily.values()].sort((left, right) => left.day.localeCompare(right.day));
+}
+
 export function deriveCashSafeData(rows: {
   tierStates?: Row[];
   tierDistribution?: Array<{ tierId: number; safeCount: number }>;
@@ -2285,6 +2333,7 @@ function unavailableData(errorMessage: string): ExplorerData {
     activity: [],
     rampTokens: [],
     debtTokens: [],
+    tierDaily: [],
     ...deriveCashSafeData({}),
     coverage: buildCoverage({ cards: false, cashback: false, ramps: false, debt: false, cashHistory: false }),
     updatedAt: new Date().toISOString(),

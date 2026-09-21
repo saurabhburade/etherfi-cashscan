@@ -10,9 +10,11 @@ import {
   LATEST_EVENTS_QUERY,
   loadExplorerData,
   TIER_COUNT_METRICS_QUERY,
+  TIER_DAILY_METRICS_QUERY,
   TOKEN_ACTIVITY_EVENT_TYPES_QUERY,
   TOKEN_ANALYTICS_QUERY,
   type TokenRecord,
+  tierDailyFromMetricRows,
   tierDistributionFromMetricRows,
   tokenAnalyticsRows,
 } from "./envio";
@@ -102,7 +104,7 @@ describe("event query contract", () => {
       "rampTokenMetrics",
       "fxRates",
       "tierCountMetrics",
-      "tierHistory",
+      "tierDailyMetrics",
     ]);
     expect(explorerDataOperations("transactions")).toEqual(["core", "spendBuckets"]);
     expect(explorerDataOperations("accounts")).toEqual(["core", "globalActiveSafes", "tierCountMetrics"]);
@@ -133,6 +135,79 @@ describe("event query contract", () => {
     expect(TIER_COUNT_METRICS_QUERY).toContain("id chainId tierId safeCount updatedAt updatedBlock");
     expect(TIER_COUNT_METRICS_QUERY).not.toContain("SafeTierState");
     expect(TIER_COUNT_METRICS_QUERY).not.toContain("_aggregate");
+  });
+
+  it("uses bounded daily tier metrics instead of raw tier history", () => {
+    expect(TIER_DAILY_METRICS_QUERY).toContain("TierDailyMetric_bool_exp!");
+    expect(TIER_DAILY_METRICS_QUERY).toContain("TierDailyMetric(");
+    expect(TIER_DAILY_METRICS_QUERY).toContain("limit: 5000");
+    expect(TIER_DAILY_METRICS_QUERY).toContain("where: $where");
+    expect(TIER_DAILY_METRICS_QUERY).toContain("TierDailyMetric_aggregate(where: $where)");
+    expect(TIER_DAILY_METRICS_QUERY).toContain("day entries exits netChange");
+    expect(TIER_DAILY_METRICS_QUERY).not.toContain("chainId day");
+    expect(TIER_DAILY_METRICS_QUERY).not.toContain("day tierId");
+    expect(explorerDataOperations("stats")).not.toContain("tierHistory");
+  });
+
+  it("aggregates daily tier metrics across chains and tiers with numeric conversion", () => {
+    expect(
+      tierDailyFromMetricRows([
+        { day: "2026-09-02", entries: "2", exits: "1", netChange: "1" },
+        { day: "2026-09-01", entries: 3, exits: "0", netChange: 3 },
+        { day: "2026-09-02", entries: "4", exits: 2, netChange: "2" },
+      ]),
+    ).toEqual([
+      { day: "2026-09-01", entries: 3, exits: 0, netChange: 3 },
+      { day: "2026-09-02", entries: 6, exits: 3, netChange: 3 },
+    ]);
+  });
+
+  it("loads stats tier daily data without issuing raw tier history queries", async () => {
+    const requests: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const query = JSON.parse(String(init?.body)).query as string;
+        requests.push(query);
+        return new Response(
+          JSON.stringify({
+            data: {
+              GlobalActiveSafe_aggregate: { aggregate: { count: 0 } },
+              SpendBucketMetric: [],
+              HourlySpendMetric: [],
+              Token: [],
+              DailyCashMetric: [],
+              CashbackReceiverMetric_aggregate: { aggregate: { count: 0, sum: { amountUsd: 0, rewardCount: 0 } } },
+              RampVolumeSnapshot_aggregate: { aggregate: { count: 0 } },
+              RampVolumeSnapshot: [],
+              DailyFxRate: [],
+              PriceFeedState: [],
+              SafeTierCountMetric: [],
+              TierDailyMetric_aggregate: { aggregate: { count: 2 } },
+              TierDailyMetric: [{ day: "2026-09-01", entries: "1", exits: "0", netChange: "1" }],
+            },
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+
+    const data = await loadExplorerData({}, "stats");
+
+    expect(requests.some((query) => query.includes("TierDailyMetric"))).toBe(true);
+    expect(requests.some((query) => query.includes("SafeTierChange"))).toBe(false);
+    expect(data.tierDaily).toEqual([]);
+  });
+
+  it("includes tierDaily in unavailable data", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("offline");
+      }),
+    );
+
+    await expect(loadExplorerData({}, "stats")).resolves.toMatchObject({ tierDaily: [] });
   });
 
   it("sends the requested chain predicate to tier count metrics", async () => {

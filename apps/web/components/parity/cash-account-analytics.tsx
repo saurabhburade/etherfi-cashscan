@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { type ReactNode, useRef } from "react";
 import { ChartExportActions } from "@/components/chart-export-actions";
-import { Area, AreaChart } from "@/components/charts/area-chart";
 import { Bar } from "@/components/charts/bar";
 import { BarChart } from "@/components/charts/bar-chart";
 import { BarXAxis } from "@/components/charts/bar-x-axis";
@@ -16,6 +15,7 @@ import { XAxis } from "@/components/charts/x-axis";
 import type { ExplorerData } from "@/lib/envio";
 import { shortAddress } from "@/lib/format";
 import { effectiveTierCounts } from "@/lib/safe-tier";
+import { dailyTierSeries } from "../analytics-chart-data";
 
 const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 });
 const money = (value: number) => `$${compact.format(value)}`;
@@ -72,12 +72,13 @@ export function CashAccountAnalytics({
   const lend = data.lendSummary;
   const pending = data.pendingActions;
   const modeSeries = dailyModeSeries(modeChanges);
-  const tierSeries = dailyTierSeries(transitions);
+  const tierSeries = dailyTierSeries(data.tierDaily);
   const modeChangeCount = modeChanges.reduce(
     (total, row) => total + numeric(value(row, "count", "modeChanges", "changeCount")),
     0,
   );
-  const tierTransitionCount = tierSeries.reduce((total, row) => total + row.upgrades + row.segments, 0);
+  const tierEntries = tierSeries.reduce((total, row) => total + row.entries, 0);
+  const tierExits = tierSeries.reduce((total, row) => total + row.exits, 0);
   const tierDistribution = effectiveTierCounts(
     tiers.map((row) => ({
       tierId: numeric(value(row, "tier", "tierId", "effectiveTier")),
@@ -151,46 +152,34 @@ export function CashAccountAnalytics({
         <ExplorerSection id="tiers" title="Cash tiers">
           <div className="grid gap-5 lg:grid-cols-2">
             <Trend
-              title="Tier upgrades & segment changes"
-              value={number(tierTransitionCount)}
-              hasData={tierSeries.some((row) => row.upgrades > 0 || row.segments > 0)}
-              empty="No tier changes available yet."
+              title="Tier entries & exits"
+              value={`${number(tierEntries)} / ${number(tierExits)}`}
+              hasData={tierSeries.some((row) => row.entries > 0 || row.exits > 0)}
+              empty="No tier entries or exits available yet."
             >
-              <AreaChart
+              <BarChart
                 aspectRatio="2.25 / 1"
+                barGap={0.24}
                 data={tierSeries}
                 margin={{ top: 24, right: 18, bottom: 38, left: 18 }}
                 xDataKey="date"
               >
                 <Grid fadeHorizontal={false} numTicksRows={3} strokeOpacity={0.5} />
-                <Area
-                  dataKey="upgrades"
-                  fill={chartPrimary}
-                  fillOpacity={0.08}
-                  showHighlight
-                  stroke={chartPrimary}
-                  strokeWidth={2}
-                />
-                <Area
-                  dataKey="segments"
-                  fill={chartSecondary}
-                  fillOpacity={0.04}
-                  showHighlight
-                  stroke={chartSecondary}
-                  strokeWidth={1.5}
-                />
+                <Bar dataKey="entries" fill={chartPrimary} lineCap={3} />
+                <Bar dataKey="exits" fill={chartSecondary} lineCap={3} />
                 <XAxis numTicks={5} />
                 <ChartTooltip
                   rows={(point) => [
-                    { color: chartPrimary, label: "Upgrades", value: number(numeric(point.upgrades)) },
+                    { color: chartPrimary, label: "Entries", value: number(numeric(point.entries)) },
                     {
                       color: chartSecondary,
-                      label: "Business segment changes",
-                      value: number(numeric(point.segments)),
+                      label: "Exits",
+                      value: number(numeric(point.exits)),
                     },
+                    { color: "var(--muted-foreground)", label: "Net change", value: number(numeric(point.netChange)) },
                   ]}
                 />
-              </AreaChart>
+              </BarChart>
             </Trend>
             <TierDistribution data={tierDistribution} />
           </div>
@@ -346,22 +335,6 @@ function dailyModeSeries(rows: Record<string, unknown>[]) {
     const point = points.get(dateKey) ?? { date: new Date(`${dateKey}T00:00:00Z`), credit: 0, debit: 0 };
     if (modeId === 0) point.credit += count;
     if (modeId === 1) point.debit += count;
-    points.set(dateKey, point);
-  }
-  return [...points.values()].sort((a, b) => a.date.getTime() - b.date.getTime());
-}
-function dailyTierSeries(rows: Record<string, unknown>[]) {
-  const points = new Map<string, { date: Date; upgrades: number; segments: number }>();
-  for (const row of rows) {
-    const dateKey = day(row);
-    if (!dateKey) continue;
-    const upgrade = isUpgrade(row);
-    const segment = isSegmentChange(row);
-    if (!(upgrade || segment)) continue;
-    const count = numeric(value(row, "count", "transitionCount"));
-    const point = points.get(dateKey) ?? { date: new Date(`${dateKey}T00:00:00Z`), upgrades: 0, segments: 0 };
-    if (upgrade) point.upgrades += count;
-    if (segment) point.segments += count;
     points.set(dateKey, point);
   }
   return [...points.values()].sort((a, b) => a.date.getTime() - b.date.getTime());

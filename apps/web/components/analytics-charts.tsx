@@ -20,7 +20,8 @@ import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
 import { XAxis } from "@/components/charts/x-axis";
 import { TokenIcon } from "@/components/token-icon";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { DailyAnalytics, ExplorerData, TokenAnalyticsRow } from "@/lib/envio";
+import type { ExplorerData, TokenAnalyticsRow } from "@/lib/envio";
+import { aggregateOverviewPoints, type OverviewPoint } from "./analytics-chart-data";
 
 const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 });
 const wholeNumber = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
@@ -45,8 +46,6 @@ const overviewRanges: Array<{ label: string; value: OverviewRange; days?: number
   { label: "All time", value: "all" },
 ];
 const OVERVIEW_RANGE_BY_VALUE = new Map(overviewRanges.map((option) => [option.value, option]));
-
-type OverviewPoint = DailyAnalytics & { cumulativeCashbackUsd: number; date: Date };
 
 function buildLast24HourlyPoints(data: ExplorerData): OverviewPoint[] {
   const currentHour = Math.floor(Date.now() / 3_600_000);
@@ -114,7 +113,7 @@ export function SpendOverviewCharts({
   subtitle?: string;
   title?: string;
 }) {
-  const [range, setRange] = useState<OverviewRange>("all");
+  const [range, setRange] = useState<OverviewRange>("30d");
   const [animateRangeChanges, setAnimateRangeChanges] = useState(false);
   let cumulativeCashbackUsd = 0;
   const daily = data.daily.map((row) => {
@@ -123,7 +122,12 @@ export function SpendOverviewCharts({
   });
   const selectedRange = OVERVIEW_RANGE_BY_VALUE.get(range);
   const rangeDays = selectedRange?.days;
-  const visibleDaily = range === "24h" ? buildLast24HourlyPoints(data) : rangeDays ? daily.slice(-rangeDays) : daily;
+  const visibleDaily =
+    range === "24h"
+      ? buildLast24HourlyPoints(data)
+      : rangeDays
+        ? daily.slice(-rangeDays)
+        : aggregateOverviewPoints(daily);
   const visibleSpendUsd = visibleDaily.reduce((total, row) => total + row.spendUsd, 0);
   const visibleCashbackUsd = visibleDaily.reduce((total, row) => total + row.cashbackUsd, 0);
   const visibleTransactions = visibleDaily.reduce((total, row) => total + row.transactions, 0);
